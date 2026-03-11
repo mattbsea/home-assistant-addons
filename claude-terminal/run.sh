@@ -112,7 +112,7 @@ migrate_legacy_auth_files() {
 install_tools() {
     bashio::log.info "Installing additional tools..."
     apt-get update -qq
-    if ! apt-get install -y --no-install-recommends ttyd jq curl tmux; then
+    if ! apt-get install -y --no-install-recommends jq curl tmux; then
         bashio::log.error "Failed to install required tools"
         exit 1
     fi
