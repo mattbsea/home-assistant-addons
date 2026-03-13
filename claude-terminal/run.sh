@@ -21,9 +21,8 @@ init_environment() {
         exit 1
     fi
 
-    # Set permissions and transfer ownership to the non-root claude user
+    # Set permissions
     chmod 755 "$data_home" "$config_dir" "$cache_dir" "$state_dir" "$claude_config_dir"
-    chown -R claude:claude /data
 
     # Ensure Claude native binary is available at $HOME/.local/bin/claude
     # The native installer places it at /root/.local/bin/claude during Docker build,
@@ -43,7 +42,7 @@ init_environment() {
     export XDG_CACHE_HOME="$cache_dir"
     export XDG_STATE_HOME="$state_dir"
     export XDG_DATA_HOME="/data/.local/share"
-    
+
     # Claude-specific environment variables
     export ANTHROPIC_CONFIG_DIR="$claude_config_dir"
     export ANTHROPIC_HOME="/data"
@@ -57,6 +56,11 @@ init_environment() {
         chmod 644 "$data_home/.tmux.conf"
         bashio::log.info "tmux configuration installed to $data_home/.tmux.conf"
     fi
+
+    # Transfer ownership of all /data files to the non-root claude user.
+    # Done last so every file created above (symlinks, tmux.conf, migrated
+    # auth files) is included in the chown.
+    chown -R claude:claude /data
 
     bashio::log.info "Environment initialized:"
     bashio::log.info "  - Home: $HOME"
