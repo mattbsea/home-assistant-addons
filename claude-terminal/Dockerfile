@@ -50,12 +50,13 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -Lo /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" && \
     chmod +x /usr/local/bin/yq
 
-# Install Claude Code CLI using native installer
-# The installer places the binary in ~/.local/bin; make it world-executable
-# so the non-root claude user can run it via the /usr/local/bin symlink
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && chmod a+rx /root/.local/bin/claude \
-    && ln -sf /root/.local/bin/claude /usr/local/bin/claude
+# Install Claude Code CLI as the claude user so all install files
+# (~/.local/bin, ~/.local/lib, etc.) are owned by uid 1000 and accessible
+# at runtime without root. A system-wide symlink exposes it on PATH.
+USER claude
+RUN curl -fsSL https://claude.ai/install.sh | bash
+USER root
+RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude
 
 # Set working directory to data (only mounted volume at runtime)
 WORKDIR /data
