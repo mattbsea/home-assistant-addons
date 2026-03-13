@@ -42,7 +42,7 @@ init_environment() {
     export XDG_CACHE_HOME="$cache_dir"
     export XDG_STATE_HOME="$state_dir"
     export XDG_DATA_HOME="/data/.local/share"
-    
+
     # Claude-specific environment variables
     export ANTHROPIC_CONFIG_DIR="$claude_config_dir"
     export ANTHROPIC_HOME="/data"
@@ -56,6 +56,11 @@ init_environment() {
         chmod 644 "$data_home/.tmux.conf"
         bashio::log.info "tmux configuration installed to $data_home/.tmux.conf"
     fi
+
+    # Transfer ownership of all /data files to the non-root claude user.
+    # Done last so every file created above (symlinks, tmux.conf, migrated
+    # auth files) is included in the chown.
+    chown -R claude:claude /data
 
     bashio::log.info "Environment initialized:"
     bashio::log.info "  - Home: $HOME"
@@ -286,9 +291,11 @@ start_web_terminal() {
     # This disables tmux mouse mode since ttyd has better mouse handling for web terminals
     export TTYD=1
 
+    # Drop from root to the claude user for the terminal process
+    # gosu performs a clean privilege drop (no sudo, no setuid shell overhead)
     # Run ttyd with keepalive configuration to prevent WebSocket disconnects
     # See: https://github.com/heytcass/home-assistant-addons/issues/24
-    exec ttyd \
+    exec gosu claude ttyd \
         --port "${port}" \
         --interface 0.0.0.0 \
         --writable \
