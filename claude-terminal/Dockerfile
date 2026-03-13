@@ -5,6 +5,7 @@ FROM ${BUILD_FROM}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     curl \
+    gosu \
     nano \
     nodejs \
     npm \
@@ -21,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tree \
     tmux \
     && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for running the terminal process
+RUN groupadd --gid 1000 claude \
+    && useradd --uid 1000 --gid claude --shell /bin/bash --create-home claude
 
 # Install ttyd binary (not in Debian repos, use GitHub release)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -46,8 +51,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/yq
 
 # Install Claude Code CLI using native installer
-# The installer places the binary in ~/.local/bin
+# The installer places the binary in ~/.local/bin; make it world-executable
+# so the non-root claude user can run it via the /usr/local/bin symlink
 RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && chmod a+rx /root/.local/bin/claude \
     && ln -sf /root/.local/bin/claude /usr/local/bin/claude
 
 # Set working directory to data (only mounted volume at runtime)
