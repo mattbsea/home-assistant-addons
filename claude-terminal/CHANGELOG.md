@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.19.1
+
+### 🐛 Bug Fix
+- **Fixed `claude_args` not being passed to Claude**: Single quotes in the tmux command prevented shell variable expansion, so configured arguments were silently ignored. Args are now embedded directly into the command string.
+
 ## 1.9.0
 
 ### ✨ New Features
