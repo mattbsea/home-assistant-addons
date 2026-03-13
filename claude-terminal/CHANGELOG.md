@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.21.0
+
+### ✨ New Features
+- **Persistent `/home/claude` directory**: `/home/claude` is now symlinked to `/data/home` at startup, so all files in the home directory survive container restarts
+- **`/home/claude` as default working directory**: Dockerfile `WORKDIR` and runtime `HOME` are both set to `/home/claude`, giving a consistent and intuitive working location
+
 ## 1.20.1
 
 ### 🐛 Bug Fixes
