@@ -22,6 +22,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     && rm -rf /var/lib/apt/lists/*
 
+# Install ttyd binary (not in Debian repos, use GitHub release)
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+        amd64)  TTYD_ARCH="x86_64" ;; \
+        arm64)  TTYD_ARCH="aarch64" ;; \
+        armhf)  TTYD_ARCH="armv7l" ;; \
+        *)      TTYD_ARCH="x86_64" ;; \
+    esac && \
+    TTYD_VER=$(curl -fsSL https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') && \
+    curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VER}/ttyd.${TTYD_ARCH}" -o /usr/local/bin/ttyd && \
+    chmod +x /usr/local/bin/ttyd
+
 # Install yq binary (multi-arch)
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
@@ -38,9 +50,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     && ln -sf /root/.local/bin/claude /usr/local/bin/claude
 
-# Create directory for Claude configuration and set working directory
-RUN mkdir -p /config/claude-config
-WORKDIR /config
+# Set working directory to data (only mounted volume at runtime)
+WORKDIR /data
 
 # Copy startup script and modular scripts
 COPY run.sh /run.sh

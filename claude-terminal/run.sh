@@ -112,7 +112,7 @@ migrate_legacy_auth_files() {
 install_tools() {
     bashio::log.info "Installing additional tools..."
     apt-get update -qq
-    if ! apt-get install -y --no-install-recommends ttyd jq curl tmux; then
+    if ! apt-get install -y --no-install-recommends jq curl tmux; then
         bashio::log.error "Failed to install required tools"
         exit 1
     fi
@@ -233,23 +233,31 @@ setup_session_picker() {
 # Determine Claude launch command based on configuration
 get_claude_launch_command() {
     local auto_launch_claude
-    
+    local claude_args
+
     # Get configuration value, default to true for backward compatibility
     auto_launch_claude=$(bashio::config 'auto_launch_claude' 'true')
-    
-    if [ "$auto_launch_claude" = "true" ]; then                                                                 
-        # Use tmux for session persistence - attach to existing or create new                                   
-        echo "tmux new-session -A -s claude 'claude'"                                                           
-    else                                                                                                        
-        # New behavior: show interactive session picker (also with tmux persistence)                            
-        if [ -f /usr/local/bin/claude-session-picker ]; then                                                    
-            echo "tmux new-session -A -s claude-picker '/usr/local/bin/claude-session-picker'"                  
-        else                                                                                                    
-            # Fallback if session picker is missing                                                             
-            bashio::log.warning "Session picker not found, falling back to auto-launch"                         
-            echo "tmux new-session -A -s claude 'claude'"                                                       
-        fi                                                                                                      
-    fi                 
+
+    # Get optional extra CLI arguments for claude (may be empty)
+    claude_args=$(bashio::config 'claude_args' '')
+    if [ -n "$claude_args" ]; then
+        bashio::log.info "Using additional Claude args: ${claude_args}"
+        export CLAUDE_ARGS="$claude_args"
+    fi
+
+    if [ "$auto_launch_claude" = "true" ]; then
+        # Use tmux for session persistence - attach to existing or create new
+        echo "tmux new-session -A -s claude 'claude \${CLAUDE_ARGS}'"
+    else
+        # New behavior: show interactive session picker (also with tmux persistence)
+        if [ -f /usr/local/bin/claude-session-picker ]; then
+            echo "tmux new-session -A -s claude-picker '/usr/local/bin/claude-session-picker'"
+        else
+            # Fallback if session picker is missing
+            bashio::log.warning "Session picker not found, falling back to auto-launch"
+            echo "tmux new-session -A -s claude 'claude \${CLAUDE_ARGS}'"
+        fi
+    fi
 }
 
 
@@ -271,6 +279,7 @@ start_web_terminal() {
     local auto_launch_claude
     auto_launch_claude=$(bashio::config 'auto_launch_claude' 'true')
     bashio::log.info "Auto-launch Claude: ${auto_launch_claude}"
+    bashio::log.info "Claude args: ${CLAUDE_ARGS:-<none>}"
     
     # Set TTYD environment variable for tmux configuration
     # This disables tmux mouse mode since ttyd has better mouse handling for web terminals
