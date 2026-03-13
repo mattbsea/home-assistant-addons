@@ -24,6 +24,14 @@ init_environment() {
     # Set permissions
     chmod 755 "$data_home" "$config_dir" "$cache_dir" "$state_dir" "$claude_config_dir"
 
+    # Persist /home/claude by symlinking it to /data/home
+    # This makes /home/claude survive container restarts as /data is a mounted volume
+    if [ ! -L /home/claude ]; then
+        rm -rf /home/claude
+        ln -sf "$data_home" /home/claude
+        bashio::log.info "  - /home/claude -> $data_home (persistent symlink created)"
+    fi
+
     # Ensure Claude native binary is available at $HOME/.local/bin/claude
     # The native installer placed it in /home/claude/.local/bin/ during build.
     # At runtime HOME=/data/home, so Claude's self-check looks in /data/home/.local/bin/
@@ -37,7 +45,7 @@ init_environment() {
     fi
 
     # Set XDG and application environment variables
-    export HOME="$data_home"
+    export HOME="/home/claude"
     export XDG_CONFIG_HOME="$config_dir"
     export XDG_CACHE_HOME="$cache_dir"
     export XDG_STATE_HOME="$state_dir"

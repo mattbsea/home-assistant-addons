@@ -58,8 +58,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
 RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude
 
-# Set working directory to data (only mounted volume at runtime)
-WORKDIR /data
+# Set working directory to /home/claude (persisted to /data/home at runtime)
+WORKDIR /home/claude
 
 # Copy startup script and modular scripts
 COPY run.sh /run.sh
