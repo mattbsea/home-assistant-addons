@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.0
+
+### ✨ New Features
+- **Claude CLI arguments**: New `claude_args` configuration option lets you pass extra command-line flags to Claude on every launch (e.g. `--model claude-opus-4-5`, `--verbose`)
+  - Works with both auto-launch mode and all session picker options (new, continue, resume)
+  - Leave blank for default behaviour
+
+### 🔒 Security
+- **Data-only volume mount**: The add-on no longer mounts the Home Assistant `/config` folder
+  - Only the add-on's own `/data` directory is mounted, preventing unintended access to HA configuration files
+  - Working directory changed from `/config` to `/data`
+
+### 🛠️ Technical Details
+- `ttyd` is now installed at build time from the official GitHub release binary (was failing at runtime because `ttyd` is not in Debian apt repositories)
+- `CLAUDE_ARGS` environment variable propagated from `run.sh` into the session picker so all launch paths respect the configured arguments
+
 ## 1.8.0
 
 ### 🔄 Breaking Change - Switched from Alpine to Debian

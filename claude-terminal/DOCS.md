@@ -16,9 +16,26 @@ This add-on provides a web-based terminal with Claude Code CLI pre-installed, al
 
 ## Configuration
 
-No configuration is needed! The add-on uses OAuth authentication, so you'll be prompted to log in to your Anthropic account the first time you use it.
+The add-on uses OAuth authentication — you'll be prompted to log in to your Anthropic account on first use. Credentials persist across restarts in the add-on's `/data` directory.
 
-Your OAuth credentials are stored in the `/config/claude-config` directory and will persist across add-on updates and restarts, so you won't need to log in again.
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `auto_launch_claude` | `true` | Launch Claude automatically when the terminal opens. Set to `false` to show the interactive session picker instead. |
+| `claude_args` | `""` | Extra command-line arguments passed to every `claude` invocation. For example: `--model claude-opus-4-5` or `--verbose`. |
+| `persistent_apt_packages` | `[]` | APT packages to install on every startup. |
+| `persistent_pip_packages` | `[]` | Python pip packages to install on every startup. |
+
+### Example: pin a specific model
+
+```yaml
+claude_args: "--model claude-opus-4-5"
+```
+
+### Security note
+
+The add-on only mounts its own `/data` directory. The Home Assistant `/config` folder is **not** accessible from the terminal.
 
 ## Usage
 
