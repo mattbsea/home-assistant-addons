@@ -247,7 +247,8 @@ get_claude_launch_command() {
 
     if [ "$auto_launch_claude" = "true" ]; then
         # Use tmux for session persistence - attach to existing or create new
-        echo "tmux new-session -A -s claude 'claude \${CLAUDE_ARGS}'"
+        # Embed args directly so tmux receives the expanded value
+        echo "tmux new-session -A -s claude \"claude ${claude_args}\""
     else
         # New behavior: show interactive session picker (also with tmux persistence)
         if [ -f /usr/local/bin/claude-session-picker ]; then
@@ -255,7 +256,7 @@ get_claude_launch_command() {
         else
             # Fallback if session picker is missing
             bashio::log.warning "Session picker not found, falling back to auto-launch"
-            echo "tmux new-session -A -s claude 'claude \${CLAUDE_ARGS}'"
+            echo "tmux new-session -A -s claude \"claude ${claude_args}\""
         fi
     fi
 }
