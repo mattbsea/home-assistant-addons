@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.20.1
+
+### 🐛 Bug Fixes
+- **Fixed non-root user file ownership**: `chown -R claude:claude /data` now runs after all files are created in `init_environment()`, so symlinks, tmux config, and migrated auth files are all owned by the `claude` user
+- **Fixed Claude binary access**: Claude Code is now installed as the `claude` user during the Docker build so all supporting files in `~/.local/` are owned by uid 1000 and accessible at runtime
+
 ## 1.20.0
 
 ### 🔒 Security
