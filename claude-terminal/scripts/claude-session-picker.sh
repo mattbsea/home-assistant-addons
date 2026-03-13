@@ -6,6 +6,9 @@
 
 TMUX_SESSION_NAME="claude"
 
+# Optional extra CLI args passed from HA config (set by run.sh)
+CLAUDE_ARGS="${CLAUDE_ARGS:-}"
+
 show_banner() {
     clear
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -81,7 +84,7 @@ launch_claude_new() {
     fi
 
     sleep 1
-    exec tmux new-session -s "$TMUX_SESSION_NAME" 'claude'
+    exec tmux new-session -s "$TMUX_SESSION_NAME" "claude ${CLAUDE_ARGS}"
 }
 
 launch_claude_continue() {
@@ -92,7 +95,7 @@ launch_claude_continue() {
     fi
 
     sleep 1
-    exec tmux new-session -s "$TMUX_SESSION_NAME" 'claude -c'
+    exec tmux new-session -s "$TMUX_SESSION_NAME" "claude -c ${CLAUDE_ARGS}"
 }
 
 launch_claude_resume() {
@@ -103,7 +106,7 @@ launch_claude_resume() {
     fi
 
     sleep 1
-    exec tmux new-session -s "$TMUX_SESSION_NAME" 'claude -r'
+    exec tmux new-session -s "$TMUX_SESSION_NAME" "claude -r ${CLAUDE_ARGS}"
 }
 
 launch_claude_custom() {

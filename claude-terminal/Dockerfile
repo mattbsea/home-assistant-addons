@@ -50,9 +50,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     && ln -sf /root/.local/bin/claude /usr/local/bin/claude
 
-# Create directory for Claude configuration and set working directory
-RUN mkdir -p /config/claude-config
-WORKDIR /config
+# Set working directory to data (only mounted volume at runtime)
+WORKDIR /data
 
 # Copy startup script and modular scripts
 COPY run.sh /run.sh
