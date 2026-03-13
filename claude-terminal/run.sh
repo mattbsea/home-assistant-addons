@@ -21,8 +21,9 @@ init_environment() {
         exit 1
     fi
 
-    # Set permissions
+    # Set permissions and transfer ownership to the non-root claude user
     chmod 755 "$data_home" "$config_dir" "$cache_dir" "$state_dir" "$claude_config_dir"
+    chown -R claude:claude /data
 
     # Ensure Claude native binary is available at $HOME/.local/bin/claude
     # The native installer places it at /root/.local/bin/claude during Docker build,
@@ -286,9 +287,11 @@ start_web_terminal() {
     # This disables tmux mouse mode since ttyd has better mouse handling for web terminals
     export TTYD=1
 
+    # Drop from root to the claude user for the terminal process
+    # gosu performs a clean privilege drop (no sudo, no setuid shell overhead)
     # Run ttyd with keepalive configuration to prevent WebSocket disconnects
     # See: https://github.com/heytcass/home-assistant-addons/issues/24
-    exec ttyd \
+    exec gosu claude ttyd \
         --port "${port}" \
         --interface 0.0.0.0 \
         --writable \

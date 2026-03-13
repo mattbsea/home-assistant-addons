@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.20.0
+
+### 🔒 Security
+- **Run as non-root user**: The terminal process (ttyd, bash, Claude) now runs as an unprivileged `claude` user (uid/gid 1000) instead of root
+  - `gosu` performs a clean privilege drop after startup tasks (apt installs, dir setup) complete as root
+  - `/data` directory ownership transferred to the `claude` user on startup
+  - Claude binary made world-executable so the non-root user can invoke it
+
 ## 1.19.1
 
 ### 🐛 Bug Fix
