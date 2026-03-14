@@ -55,6 +55,9 @@ bashio::log.info "Portainer MCP URL (add to your AI client):"
 bashio::log.info "  http://<your-ha-ip>:9584/${SECRET_PATH}/sse"
 bashio::log.info "============================================"
 
+# Shell-escape the token so special characters don't break the stdio command string
+PORTAINER_TOKEN_ESCAPED=$(printf '%q' "${PORTAINER_TOKEN}")
+
 bashio::log.info "Starting supergateway on port 9584..."
 bashio::log.info "SSE path:     /${SECRET_PATH}/sse"
 bashio::log.info "Message path: /${SECRET_PATH}/message"
@@ -62,7 +65,7 @@ bashio::log.info "Health check: /health"
 
 # Start supergateway wrapping portainer-mcp
 exec supergateway \
-    --stdio "/usr/local/bin/portainer-mcp -server ${PORTAINER_HOST} -token ${PORTAINER_TOKEN} -tools /data/tools.yaml -disable-version-check" \
+    --stdio "/usr/local/bin/portainer-mcp -server ${PORTAINER_HOST} -token ${PORTAINER_TOKEN_ESCAPED} -tools /data/tools.yaml -disable-version-check" \
     --port 9584 \
     --ssePath "/${SECRET_PATH}/sse" \
     --messagePath "/${SECRET_PATH}/message" \
