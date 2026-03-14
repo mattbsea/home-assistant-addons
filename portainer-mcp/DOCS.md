@@ -37,7 +37,7 @@ The secret URL is generated once on first start and persisted across restarts. C
 ```
 ============================================
 Portainer MCP URL (add to your AI client):
-  http://<your-ha-ip>:9584/private_<32-hex-chars>/sse
+  http://<your-ha-ip>:9584/private_<32-hex-chars>/mcp
 ============================================
 ```
 
@@ -51,7 +51,7 @@ Replace `<your-ha-ip>` with your Home Assistant IP address.
 {
   "mcpServers": {
     "portainer": {
-      "url": "http://192.168.1.10:9584/private_abc123.../sse"
+      "url": "http://192.168.1.10:9584/private_abc123.../mcp"
     }
   }
 }
