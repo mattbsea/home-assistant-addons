@@ -34,7 +34,7 @@ bashio::log.info "============================================"
 
 # Start supergateway wrapping portainer-mcp
 exec supergateway \
-    --stdio "/usr/local/bin/portainer-mcp -server ${PORTAINER_HOST} -token ${PORTAINER_TOKEN} -disable-version-check" \
+    --stdio "/usr/local/bin/portainer-mcp -server ${PORTAINER_HOST} -token ${PORTAINER_TOKEN} -tools /data/tools.yaml -disable-version-check" \
     --port 9584 \
     --ssePath "/${SECRET_PATH}/sse" \
     --messagePath "/${SECRET_PATH}/message" \
