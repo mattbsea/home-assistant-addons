@@ -1,0 +1,12 @@
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+
+args:
+  PORTAINER_MCP_VERSION: "0.7.0"
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: Portainer MCP"
+  org.opencontainers.image.description: "Portainer MCP server with secret-path HTTP access"
+  org.opencontainers.image.source: "https://github.com/portainer/portainer-mcp"
+  org.opencontainers.image.licenses: "zlib"
