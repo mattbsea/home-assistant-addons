@@ -40,7 +40,7 @@ bashio::log.info "supergateway found at $(command -v supergateway)"
 SECRET_FILE="/data/secret_path.txt"
 if [ ! -f "${SECRET_FILE}" ]; then
     bashio::log.info "Generating new secret path..."
-    SECRET=$(cat /dev/urandom | tr -dc 'a-f0-9' | head -c 32)
+    SECRET=$(openssl rand -hex 16)
     echo "${SECRET}" > "${SECRET_FILE}"
     bashio::log.info "Secret path generated and saved to ${SECRET_FILE}"
 else
