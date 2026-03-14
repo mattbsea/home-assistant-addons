@@ -1,3 +1,9 @@
+## 0.1.1 - 2026-03-13
+
+### Fixed
+
+- Point portainer-mcp tools.yaml to `/data/tools.yaml` so it can write to a writable location instead of crashing trying to write to `/usr/local/bin/`
+
 ## 0.1.0 - 2026-03-13
 
 ### Added
