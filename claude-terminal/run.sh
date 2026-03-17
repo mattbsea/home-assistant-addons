@@ -121,6 +121,33 @@ migrate_legacy_auth_files() {
     fi
 }
 
+# Update Claude binary to the latest version
+update_claude() {
+    bashio::log.info "Updating Claude Code to latest version..."
+    if gosu claude bash -c 'curl -fsSL https://claude.ai/install.sh | bash' 2>&1; then
+        bashio::log.info "Claude Code updated successfully"
+    else
+        bashio::log.warning "Claude Code update failed, continuing with existing version"
+    fi
+}
+
+# Install nvm and Node 20
+install_nvm() {
+    local nvm_dir="/home/claude/.nvm"
+    bashio::log.info "Installing nvm and Node.js 20..."
+    if gosu claude bash -c 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 20' 2>&1; then
+        bashio::log.info "nvm and Node.js 20 installed successfully"
+        bashio::log.info "Installing happy-coder..."
+        if gosu claude bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && npx happy-coder' 2>&1; then
+            bashio::log.info "happy-coder installed successfully"
+        else
+            bashio::log.warning "happy-coder installation failed, continuing without it"
+        fi
+    else
+        bashio::log.warning "nvm installation failed, continuing with system Node.js"
+    fi
+}
+
 # Install required tools
 install_tools() {
     bashio::log.info "Installing additional tools..."
@@ -331,6 +358,8 @@ main() {
     run_health_check
 
     init_environment
+    update_claude
+    install_nvm
     install_tools
     setup_session_picker
     install_persistent_packages
