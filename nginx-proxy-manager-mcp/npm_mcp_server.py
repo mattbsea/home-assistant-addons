@@ -11,6 +11,7 @@ import time
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 # ---------------------------------------------------------------------------
 # NPM API Client
@@ -85,6 +86,14 @@ if not all([npm_url, npm_email, npm_password]):
 client = NpmClient(npm_url, npm_email, npm_password)
 mcp = FastMCP("nginx-proxy-manager")
 
+# ---------------------------------------------------------------------------
+# Tool annotations
+# ---------------------------------------------------------------------------
+
+READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True)
+WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
+DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
+
 
 def _json(data) -> str:
     """Serialize API response to indented JSON string."""
@@ -95,19 +104,19 @@ def _json(data) -> str:
 # Proxy Hosts
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_proxy_hosts() -> str:
     """List all proxy hosts configured in Nginx Proxy Manager."""
     return _json(await client.get("/api/nginx/proxy-hosts"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_proxy_host(host_id: int) -> str:
     """Get details of a specific proxy host by ID."""
     return _json(await client.get(f"/api/nginx/proxy-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_proxy_host(
     domain_names: list[str],
     forward_scheme: str,
@@ -153,7 +162,7 @@ async def create_proxy_host(
     return _json(await client.post("/api/nginx/proxy-hosts", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def update_proxy_host(
     host_id: int,
     domain_names: list[str],
@@ -200,19 +209,19 @@ async def update_proxy_host(
     return _json(await client.put(f"/api/nginx/proxy-hosts/{host_id}", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_proxy_host(host_id: int) -> str:
     """Delete a proxy host by ID."""
     return _json(await client.delete(f"/api/nginx/proxy-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def enable_proxy_host(host_id: int) -> str:
     """Enable a disabled proxy host."""
     return _json(await client.post(f"/api/nginx/proxy-hosts/{host_id}/enable"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def disable_proxy_host(host_id: int) -> str:
     """Disable a proxy host."""
     return _json(await client.post(f"/api/nginx/proxy-hosts/{host_id}/disable"))
@@ -222,19 +231,19 @@ async def disable_proxy_host(host_id: int) -> str:
 # Redirection Hosts
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_redirection_hosts() -> str:
     """List all redirection hosts."""
     return _json(await client.get("/api/nginx/redirection-hosts"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_redirection_host(host_id: int) -> str:
     """Get details of a specific redirection host by ID."""
     return _json(await client.get(f"/api/nginx/redirection-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_redirection_host(
     domain_names: list[str],
     forward_http_code: int,
@@ -274,7 +283,7 @@ async def create_redirection_host(
     return _json(await client.post("/api/nginx/redirection-hosts", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def update_redirection_host(
     host_id: int,
     domain_names: list[str],
@@ -315,19 +324,19 @@ async def update_redirection_host(
     return _json(await client.put(f"/api/nginx/redirection-hosts/{host_id}", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_redirection_host(host_id: int) -> str:
     """Delete a redirection host by ID."""
     return _json(await client.delete(f"/api/nginx/redirection-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def enable_redirection_host(host_id: int) -> str:
     """Enable a disabled redirection host."""
     return _json(await client.post(f"/api/nginx/redirection-hosts/{host_id}/enable"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def disable_redirection_host(host_id: int) -> str:
     """Disable a redirection host."""
     return _json(await client.post(f"/api/nginx/redirection-hosts/{host_id}/disable"))
@@ -337,19 +346,19 @@ async def disable_redirection_host(host_id: int) -> str:
 # Streams
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_streams() -> str:
     """List all TCP/UDP stream proxies."""
     return _json(await client.get("/api/nginx/streams"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_stream(stream_id: int) -> str:
     """Get details of a specific stream by ID."""
     return _json(await client.get(f"/api/nginx/streams/{stream_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_stream(
     incoming_port: int,
     forwarding_host: str,
@@ -377,7 +386,7 @@ async def create_stream(
     return _json(await client.post("/api/nginx/streams", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def update_stream(
     stream_id: int,
     incoming_port: int,
@@ -406,19 +415,19 @@ async def update_stream(
     return _json(await client.put(f"/api/nginx/streams/{stream_id}", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_stream(stream_id: int) -> str:
     """Delete a stream proxy by ID."""
     return _json(await client.delete(f"/api/nginx/streams/{stream_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def enable_stream(stream_id: int) -> str:
     """Enable a disabled stream proxy."""
     return _json(await client.post(f"/api/nginx/streams/{stream_id}/enable"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def disable_stream(stream_id: int) -> str:
     """Disable a stream proxy."""
     return _json(await client.post(f"/api/nginx/streams/{stream_id}/disable"))
@@ -428,19 +437,19 @@ async def disable_stream(stream_id: int) -> str:
 # Dead Hosts (404 hosts)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_dead_hosts() -> str:
     """List all dead hosts (custom 404 pages)."""
     return _json(await client.get("/api/nginx/dead-hosts"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_dead_host(host_id: int) -> str:
     """Get details of a specific dead host by ID."""
     return _json(await client.get(f"/api/nginx/dead-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_dead_host(
     domain_names: list[str],
     certificate_id: int = 0,
@@ -465,7 +474,7 @@ async def create_dead_host(
     return _json(await client.post("/api/nginx/dead-hosts", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def update_dead_host(
     host_id: int,
     domain_names: list[str],
@@ -491,19 +500,19 @@ async def update_dead_host(
     return _json(await client.put(f"/api/nginx/dead-hosts/{host_id}", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_dead_host(host_id: int) -> str:
     """Delete a dead host by ID."""
     return _json(await client.delete(f"/api/nginx/dead-hosts/{host_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def enable_dead_host(host_id: int) -> str:
     """Enable a disabled dead host."""
     return _json(await client.post(f"/api/nginx/dead-hosts/{host_id}/enable"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def disable_dead_host(host_id: int) -> str:
     """Disable a dead host."""
     return _json(await client.post(f"/api/nginx/dead-hosts/{host_id}/disable"))
@@ -513,19 +522,19 @@ async def disable_dead_host(host_id: int) -> str:
 # SSL Certificates
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_certificates() -> str:
     """List all SSL certificates."""
     return _json(await client.get("/api/nginx/certificates"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_certificate(cert_id: int) -> str:
     """Get details of a specific SSL certificate by ID."""
     return _json(await client.get(f"/api/nginx/certificates/{cert_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_certificate(
     domain_names: list[str],
     provider: str = "letsencrypt",
@@ -559,13 +568,13 @@ async def create_certificate(
     return _json(await client.post("/api/nginx/certificates", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_certificate(cert_id: int) -> str:
     """Delete an SSL certificate by ID."""
     return _json(await client.delete(f"/api/nginx/certificates/{cert_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def renew_certificate(cert_id: int) -> str:
     """Renew a Let's Encrypt certificate."""
     return _json(await client.post(f"/api/nginx/certificates/{cert_id}/renew"))
@@ -575,19 +584,19 @@ async def renew_certificate(cert_id: int) -> str:
 # Access Lists
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def list_access_lists() -> str:
     """List all access lists."""
     return _json(await client.get("/api/nginx/access-lists"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_access_list(list_id: int) -> str:
     """Get details of a specific access list by ID."""
     return _json(await client.get(f"/api/nginx/access-lists/{list_id}"))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def create_access_list(
     name: str,
     satisfy_any: bool = False,
@@ -615,7 +624,7 @@ async def create_access_list(
     return _json(await client.post("/api/nginx/access-lists", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 async def update_access_list(
     list_id: int,
     name: str,
@@ -644,7 +653,7 @@ async def update_access_list(
     return _json(await client.put(f"/api/nginx/access-lists/{list_id}", json=payload))
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 async def delete_access_list(list_id: int) -> str:
     """Delete an access list by ID."""
     return _json(await client.delete(f"/api/nginx/access-lists/{list_id}"))
@@ -654,7 +663,7 @@ async def delete_access_list(list_id: int) -> str:
 # Settings (read-only)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_settings() -> str:
     """Get all Nginx Proxy Manager settings."""
     return _json(await client.get("/api/settings"))
@@ -664,7 +673,7 @@ async def get_settings() -> str:
 # Audit Log (read-only)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_audit_log() -> str:
     """Get the audit log of all operations."""
     return _json(await client.get("/api/audit-log"))
@@ -674,7 +683,7 @@ async def get_audit_log() -> str:
 # Reports (read-only)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=READ)
 async def get_host_report() -> str:
     """Get a summary report of all hosts."""
     return _json(await client.get("/api/reports/hosts"))
