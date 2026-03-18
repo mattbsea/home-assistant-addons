@@ -26,22 +26,22 @@ The email address of an NPM admin user.
 
 The password for the NPM admin user.
 
-### `port` (optional, default: 9565)
+## Network
 
-The port the MCP HTTP endpoint listens on. Change this if 9565 conflicts with another service.
+The default port is **9565**. You can change it in the **Network** section of the add-on configuration page.
 
-### `secret_path` (required)
+### `secret_path` (optional)
 
-A secret string used in the MCP URL path for security. Choose something random and hard to guess (e.g. `my-secret-path-abc123`). This value persists in the add-on configuration across restarts.
+The secret string used in the MCP URL path for security. If left empty, a 128-bit random secret is automatically generated on first start and persisted across restarts and updates. You can copy the generated value from the logs into this field to make it visible, or set your own custom value.
 
 ## Finding Your MCP URL
 
-After configuring and starting the add-on, check the logs:
+After starting the add-on, check the logs:
 
 ```
 ============================================
 NPM MCP URL (add to your AI client):
-  http://<your-ha-ip>:9565/<secret_path>/mcp
+  http://<your-ha-ip>:9565/private_<32-hex-chars>/mcp
 ============================================
 ```
 
@@ -106,7 +106,7 @@ A `/health` endpoint is available at `http://<ha-ip>:9565/health` for liveness c
 
 ## Troubleshooting
 
-- **Add-on fails to start**: Ensure `npm_url`, `npm_email`, `npm_password`, and `secret_path` are all set
+- **Add-on fails to start**: Ensure `npm_url`, `npm_email`, and `npm_password` are all set
 - **MCP client can't connect**: Verify the port is accessible and the full URL is correct
 - **Authentication errors**: Verify the NPM email and password are correct and the user has admin privileges
 - **Token expired**: The server automatically refreshes JWT tokens; if issues persist, restart the add-on

@@ -7,8 +7,6 @@ bashio::log.info "Reading configuration..."
 NPM_URL=$(bashio::config 'npm_url')
 NPM_EMAIL=$(bashio::config 'npm_email')
 NPM_PASSWORD=$(bashio::config 'npm_password')
-PORT=$(bashio::config 'port')
-SECRET_PATH=$(bashio::config 'secret_path')
 
 # Validate required fields
 if bashio::var.is_empty "${NPM_URL}"; then
@@ -21,10 +19,6 @@ if bashio::var.is_empty "${NPM_EMAIL}"; then
 fi
 if bashio::var.is_empty "${NPM_PASSWORD}"; then
     bashio::log.fatal "npm_password is not set — configure it in the add-on Configuration tab"
-    exit 1
-fi
-if bashio::var.is_empty "${SECRET_PATH}"; then
-    bashio::log.fatal "secret_path is not set — configure it in the add-on Configuration tab"
     exit 1
 fi
 bashio::log.info "Configuration looks good"
@@ -42,6 +36,32 @@ if ! command -v supergateway > /dev/null 2>&1; then
     exit 1
 fi
 bashio::log.info "supergateway found at $(command -v supergateway)"
+
+# Determine secret path: use config option if set, otherwise generate/load from /data
+SECRET_FILE="/data/secret_path.txt"
+SECRET_PATH=""
+
+if bashio::config.has_value 'secret_path'; then
+    SECRET_PATH=$(bashio::config 'secret_path')
+    bashio::log.info "Using secret path from add-on configuration"
+fi
+
+if bashio::var.is_empty "${SECRET_PATH}"; then
+    # Auto-generate and persist
+    if [ ! -f "${SECRET_FILE}" ]; then
+        bashio::log.info "Generating new secret path..."
+        SECRET_PATH="private_$(openssl rand -hex 16)"
+        echo "${SECRET_PATH}" > "${SECRET_FILE}"
+        bashio::log.info "Secret path generated and saved to ${SECRET_FILE}"
+    else
+        SECRET_PATH=$(cat "${SECRET_FILE}")
+        bashio::log.info "Loading existing secret path from ${SECRET_FILE}"
+    fi
+    bashio::log.info "Tip: copy this secret_path into the add-on Options to make it visible:"
+    bashio::log.info "  ${SECRET_PATH}"
+fi
+
+PORT=9565
 
 # Log the URL
 bashio::log.info "============================================"
