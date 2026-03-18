@@ -1,7 +1,7 @@
 ---
 name: "Nginx Proxy Manager MCP"
 description: "Exposes Nginx Proxy Manager to AI clients via MCP with a secret-path HTTP URL"
-version: "0.1.0"
+version: "0.1.1"
 slug: "nginx_proxy_manager_mcp"
 init: false
 
@@ -22,16 +22,18 @@ ports:
 ports_description:
   9565/tcp: "Nginx Proxy Manager MCP HTTP endpoint"
 
+# Volume mapping for persisting secret path across restarts/updates
+map:
+  - data:rw
+
 # Add-on configuration options
 options:
   npm_url: ""
   npm_email: ""
   npm_password: ""
-  port: 9565
   secret_path: ""
 schema:
   npm_url: url
   npm_email: email
   npm_password: password
-  port: port
-  secret_path: str
+  secret_path: str?

@@ -1,3 +1,11 @@
+## 0.1.1 - 2026-03-18
+
+### Fixed
+
+- Remove duplicate port option (now only in Network section)
+- Auto-generate secret path on first start if not set in options
+- Add /data volume for persisting generated secret path
+
 ## 0.1.0 - 2026-03-18
 
 ### Added
