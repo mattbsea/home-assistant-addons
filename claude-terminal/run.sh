@@ -302,6 +302,59 @@ get_claude_launch_command() {
 }
 
 
+# Spawn tmux sessions for each configured remote control directory
+spawn_remote_control_sessions() {
+    if ! bashio::config.has_value 'remote_control_directories'; then
+        bashio::log.info "No remote control directories configured"
+        return 0
+    fi
+
+    local count
+    count=$(bashio::config 'remote_control_directories | length')
+    if [ "$count" -eq 0 ]; then
+        bashio::log.info "No remote control directories configured"
+        return 0
+    fi
+
+    bashio::log.info "Spawning ${count} remote control session(s)..."
+
+    local i
+    for ((i = 0; i < count; i++)); do
+        local directory name permission_mode spawn_mode
+        directory=$(bashio::config "remote_control_directories[${i}].directory")
+        name=$(bashio::config "remote_control_directories[${i}].name")
+        permission_mode=$(bashio::config "remote_control_directories[${i}].permission_mode")
+        spawn_mode=$(bashio::config "remote_control_directories[${i}].spawn_mode")
+
+        # Validate directory exists
+        if [ ! -d "$directory" ]; then
+            bashio::log.warning "Directory does not exist, creating: ${directory}"
+            mkdir -p "$directory"
+            chown claude:claude "$directory"
+        fi
+
+        # Sanitize session name for tmux (replace spaces/dots with dashes)
+        local session_name
+        session_name=$(echo "$name" | tr ' ./' '-' | tr -cd '[:alnum:]-_')
+
+        # Build claude remote-control command
+        local claude_cmd="claude remote-control --name ${session_name} --permission-mode ${permission_mode} --spawn ${spawn_mode}"
+
+        # Start tmux session as the claude user in the specified directory
+        bashio::log.info "  Starting session '${session_name}' in ${directory} (mode: ${permission_mode}, spawn: ${spawn_mode})"
+        gosu claude tmux new-session -d -s "$session_name" -c "$directory" \
+            "cd ${directory} && ${claude_cmd}; exec bash"
+
+        if [ $? -eq 0 ]; then
+            bashio::log.info "  Session '${session_name}' started successfully"
+        else
+            bashio::log.warning "  Failed to start session '${session_name}'"
+        fi
+    done
+
+    bashio::log.info "Remote control sessions spawned. Use 'tmux list-sessions' to view."
+}
+
 # Start main web terminal
 start_web_terminal() {
     local port=7681
@@ -363,6 +416,7 @@ main() {
     install_tools
     setup_session_picker
     install_persistent_packages
+    spawn_remote_control_sessions
     start_web_terminal
 }
 

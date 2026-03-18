@@ -21,11 +21,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     tree \
     tmux \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for running the terminal process
+# Create non-root user for running the terminal process with sudo access
 RUN groupadd --gid 1000 claude \
-    && useradd --uid 1000 --gid claude --shell /bin/bash --create-home claude
+    && useradd --uid 1000 --gid claude --shell /bin/bash --create-home claude \
+    && echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude \
+    && chmod 0440 /etc/sudoers.d/claude
 
 # Install ttyd binary (not in Debian repos, use GitHub release)
 RUN ARCH=$(dpkg --print-architecture) && \
