@@ -313,7 +313,7 @@ get_claude_launch_command() {
     # Create the main session only if it doesn't already exist
     cmds="tmux has-session -t ${main_session_name} 2>/dev/null || tmux new-session -d -s ${main_session_name} '${main_cmd}'"
 
-    # Add remote control sessions
+    # Add remote control directories as windows in the main session
     if bashio::config.has_value 'remote_control_directories'; then
         local count
         count=$(bashio::config 'remote_control_directories | length')
@@ -330,15 +330,18 @@ get_claude_launch_command() {
                 chown claude:claude "$directory"
             fi
 
-            # Derive session name from directory path
-            local session_name
-            session_name=$(echo "$directory" | sed 's|^/||' | tr '/' '-' | tr -cd '[:alnum:]-_')
+            # Derive window name from directory basename
+            local window_name
+            window_name=$(basename "$directory")
 
-            bashio::log.info "  Remote control session '${session_name}' in ${directory}"
-            cmds="${cmds} && { tmux has-session -t ${session_name} 2>/dev/null || tmux new-session -d -s ${session_name} -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'; }"
+            bashio::log.info "  Remote control window '${window_name}' in ${directory}"
+            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'"
         done
 
-        bashio::log.info "Created ${count} remote control session(s). Switch with Ctrl-b s."
+        # Return focus to the first window (main claude session)
+        cmds="${cmds} && tmux select-window -t ${main_session_name}:1"
+
+        bashio::log.info "Created ${count} remote control window(s). Switch with Ctrl-b n/p or click the tab."
     fi
 
     # Attach to the main session (this is what the user sees)
