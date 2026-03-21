@@ -32,6 +32,10 @@ init_environment() {
         bashio::log.info "  - /home/claude -> $data_home (persistent symlink created)"
     fi
 
+    # Re-enter the home directory so the shell holds a valid CWD.
+    # The rm -rf above may have invalidated our working directory.
+    cd "$data_home" || cd /
+
     # Ensure Claude native binary is available at $HOME/.local/bin/claude
     # The native installer placed it in /home/claude/.local/bin/ during build.
     # At runtime HOME=/data/home, so Claude's self-check looks in /data/home/.local/bin/
