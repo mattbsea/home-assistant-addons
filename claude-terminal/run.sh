@@ -340,20 +340,27 @@ get_claude_launch_command() {
             local window_name
             window_name=$(basename "$directory")
 
-            # Build claude command with optional args and prompt
-            local claude_cmd="claude"
-            if [ -n "$rc_args" ]; then
-                claude_cmd="${claude_cmd} ${rc_args}"
-            fi
-            if [ -n "$rc_prompt" ]; then
-                claude_cmd="${claude_cmd} \"${rc_prompt}\""
-            fi
+            # Write a launcher script to avoid nested quoting issues with tmux
+            local script_path="/tmp/rc-${window_name}.sh"
+            {
+                echo "#!/bin/bash"
+                echo "cd '${directory}'"
+                echo "while true; do"
+                if [ -n "$rc_prompt" ]; then
+                    echo "    claude ${rc_args} \"${rc_prompt}\""
+                elif [ -n "$rc_args" ]; then
+                    echo "    claude ${rc_args}"
+                else
+                    echo "    claude"
+                fi
+                echo "    sleep 32"
+                echo "done"
+            } > "$script_path"
+            chmod +x "$script_path"
+            chown claude:claude "$script_path"
 
-            # Wrap in a restart loop with 32s sleep on crash
-            local loop_cmd="while true; do ${claude_cmd}; sleep 32; done"
-
-            bashio::log.info "  Remote control window '${window_name}' in ${directory}"
-            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' '${loop_cmd}'"
+            bashio::log.info "  Remote control window '${window_name}' in ${directory} (script: ${script_path})"
+            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' '${script_path}'"
         done
 
         # Return focus to the first window (main claude session)
