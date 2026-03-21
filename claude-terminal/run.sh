@@ -274,7 +274,9 @@ setup_session_picker() {
 
 # Legacy monitoring functions removed - using simplified /data approach
 
-# Determine Claude launch command based on configuration
+# Build the tmux launch command that creates all sessions and attaches.
+# The main session is created first, then remote control directories are
+# added as additional sessions in the same tmux server.
 get_claude_launch_command() {
     local auto_launch_claude
     local claude_args
@@ -289,74 +291,60 @@ get_claude_launch_command() {
         export CLAUDE_ARGS="$claude_args"
     fi
 
+    # Determine the main session command
+    local main_session_name="claude"
+    local main_cmd
     if [ "$auto_launch_claude" = "true" ]; then
-        # Use tmux for session persistence - attach to existing or create new
-        # Embed args directly so tmux receives the expanded value
-        echo "tmux new-session -A -s claude \"claude ${claude_args}\""
+        main_cmd="claude ${claude_args}"
     else
-        # New behavior: show interactive session picker (also with tmux persistence)
         if [ -f /usr/local/bin/claude-session-picker ]; then
-            echo "tmux new-session -A -s claude-picker '/usr/local/bin/claude-session-picker'"
+            main_session_name="claude-picker"
+            main_cmd="/usr/local/bin/claude-session-picker"
         else
-            # Fallback if session picker is missing
             bashio::log.warning "Session picker not found, falling back to auto-launch"
-            echo "tmux new-session -A -s claude \"claude ${claude_args}\""
+            main_cmd="claude ${claude_args}"
         fi
     fi
-}
 
+    # Build a script that creates the main session, adds remote control
+    # sessions, then attaches to the main session
+    local cmds=""
 
-# Spawn tmux sessions for each configured remote control directory
-spawn_remote_control_sessions() {
-    if ! bashio::config.has_value 'remote_control_directories'; then
-        bashio::log.info "No remote control directories configured"
-        return 0
+    # Create the main session (detached initially so we can add more)
+    cmds="tmux new-session -d -s ${main_session_name} '${main_cmd}'"
+
+    # Add remote control sessions
+    if bashio::config.has_value 'remote_control_directories'; then
+        local count
+        count=$(bashio::config 'remote_control_directories | length')
+
+        local i
+        for ((i = 0; i < count; i++)); do
+            local directory
+            directory=$(bashio::config "remote_control_directories[${i}]")
+
+            # Validate directory exists
+            if [ ! -d "$directory" ]; then
+                bashio::log.warning "Remote control directory does not exist, creating: ${directory}"
+                mkdir -p "$directory"
+                chown claude:claude "$directory"
+            fi
+
+            # Derive session name from directory path
+            local session_name
+            session_name=$(echo "$directory" | sed 's|^/||' | tr '/' '-' | tr -cd '[:alnum:]-_')
+
+            bashio::log.info "  Remote control session '${session_name}' in ${directory}"
+            cmds="${cmds} && tmux new-session -d -s ${session_name} -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'"
+        done
+
+        bashio::log.info "Created ${count} remote control session(s). Switch with Ctrl-b s."
     fi
 
-    local count
-    count=$(bashio::config 'remote_control_directories | length')
-    if [ "$count" -eq 0 ]; then
-        bashio::log.info "No remote control directories configured"
-        return 0
-    fi
+    # Attach to the main session (this is what the user sees)
+    cmds="${cmds} && tmux attach-session -t ${main_session_name}"
 
-    bashio::log.info "Spawning ${count} remote control session(s)..."
-
-    local i
-    for ((i = 0; i < count; i++)); do
-        local directory name permission_mode spawn_mode
-        directory=$(bashio::config "remote_control_directories[${i}].directory")
-        name=$(bashio::config "remote_control_directories[${i}].name")
-        permission_mode=$(bashio::config "remote_control_directories[${i}].permission_mode")
-        spawn_mode=$(bashio::config "remote_control_directories[${i}].spawn_mode")
-
-        # Validate directory exists
-        if [ ! -d "$directory" ]; then
-            bashio::log.warning "Directory does not exist, creating: ${directory}"
-            mkdir -p "$directory"
-            chown claude:claude "$directory"
-        fi
-
-        # Sanitize session name for tmux (replace spaces/dots with dashes)
-        local session_name
-        session_name=$(echo "$name" | tr ' ./' '-' | tr -cd '[:alnum:]-_')
-
-        # Build claude remote-control command
-        local claude_cmd="claude remote-control --name ${session_name} --permission-mode ${permission_mode} --spawn ${spawn_mode}"
-
-        # Start tmux session as the claude user in the specified directory
-        bashio::log.info "  Starting session '${session_name}' in ${directory} (mode: ${permission_mode}, spawn: ${spawn_mode})"
-        gosu claude tmux new-session -d -s "$session_name" -c "$directory" \
-            "cd ${directory} && ${claude_cmd}; exec bash"
-
-        if [ $? -eq 0 ]; then
-            bashio::log.info "  Session '${session_name}' started successfully"
-        else
-            bashio::log.warning "  Failed to start session '${session_name}'"
-        fi
-    done
-
-    bashio::log.info "Remote control sessions spawned. Use 'tmux list-sessions' to view."
+    echo "$cmds"
 }
 
 # Start main web terminal
@@ -420,7 +408,6 @@ main() {
     install_tools
     setup_session_picker
     install_persistent_packages
-    spawn_remote_control_sessions
     start_web_terminal
 }
 

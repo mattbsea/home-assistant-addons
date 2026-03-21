@@ -1,7 +1,7 @@
 ---
 name: "Claude Terminal"
 description: "Terminal interface for Anthropic's Claude Code CLI with persistent auth and packages"
-version: "1.23.1"
+version: "1.24.0"
 slug: "claude_terminal"
 init: false
 
@@ -42,10 +42,7 @@ schema:
   persistent_pip_packages:
     - str
   remote_control_directories:
-    - directory: str
-      name: str
-      permission_mode: "list(acceptEdits|bypassPermissions|default|dontAsk|plan)"
-      spawn_mode: "list(same-dir|worktree|session)"
+    - str
 
 # Volume mappings for file access
 map:
