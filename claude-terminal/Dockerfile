@@ -53,6 +53,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -Lo /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" && \
     chmod +x /usr/local/bin/yq
 
+# Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
+
 # Install Claude Code CLI as the claude user so all install files
 # (~/.local/bin, ~/.local/lib, etc.) are owned by uid 1000 and accessible
 # at runtime without root. A system-wide symlink exposes it on PATH.
