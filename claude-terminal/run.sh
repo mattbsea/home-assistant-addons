@@ -306,12 +306,12 @@ get_claude_launch_command() {
         fi
     fi
 
-    # Build a script that creates the main session, adds remote control
-    # sessions, then attaches to the main session
+    # Build a script that reuses existing sessions on reconnect or creates
+    # new ones on first launch, then attaches to the main session.
     local cmds=""
 
-    # Create the main session (detached initially so we can add more)
-    cmds="tmux new-session -d -s ${main_session_name} '${main_cmd}'"
+    # Create the main session only if it doesn't already exist
+    cmds="tmux has-session -t ${main_session_name} 2>/dev/null || tmux new-session -d -s ${main_session_name} '${main_cmd}'"
 
     # Add remote control sessions
     if bashio::config.has_value 'remote_control_directories'; then
@@ -335,7 +335,7 @@ get_claude_launch_command() {
             session_name=$(echo "$directory" | sed 's|^/||' | tr '/' '-' | tr -cd '[:alnum:]-_')
 
             bashio::log.info "  Remote control session '${session_name}' in ${directory}"
-            cmds="${cmds} && tmux new-session -d -s ${session_name} -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'"
+            cmds="${cmds} && { tmux has-session -t ${session_name} 2>/dev/null || tmux new-session -d -s ${session_name} -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'; }"
         done
 
         bashio::log.info "Created ${count} remote control session(s). Switch with Ctrl-b s."
