@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.2
+
+### 🐛 Bug Fixes
+- **Remote control directories now appear as tmux tabs**: Changed remote control directories from separate tmux sessions to windows within the main session, so they appear as switchable tabs in the status bar (Ctrl-b n/p or click)
+
 ## 1.21.0
 
 ### ✨ New Features
