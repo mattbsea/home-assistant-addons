@@ -310,8 +310,12 @@ get_claude_launch_command() {
     # new ones on first launch, then attaches to the main session.
     local cmds=""
 
-    # Create the main session only if it doesn't already exist
-    cmds="tmux has-session -t ${main_session_name} 2>/dev/null || tmux new-session -d -s ${main_session_name} '${main_cmd}'"
+    # If the session already exists (reconnect), just attach.
+    # Otherwise create it along with any remote control windows.
+    cmds="if tmux has-session -t ${main_session_name} 2>/dev/null; then tmux attach-session -t ${main_session_name}; exit; fi"
+
+    # Create the main session (first launch)
+    cmds="${cmds}; tmux new-session -d -s ${main_session_name} '${main_cmd}'"
 
     # Add remote control directories as windows in the main session
     if bashio::config.has_value 'remote_control_directories'; then
@@ -339,12 +343,12 @@ get_claude_launch_command() {
         done
 
         # Return focus to the first window (main claude session)
-        cmds="${cmds} && tmux select-window -t ${main_session_name}:1"
+        cmds="${cmds} && tmux select-window -t ${main_session_name}:0"
 
         bashio::log.info "Created ${count} remote control window(s). Switch with Ctrl-b n/p or click the tab."
     fi
 
-    # Attach to the main session (this is what the user sees)
+    # Attach to the main session
     cmds="${cmds} && tmux attach-session -t ${main_session_name}"
 
     echo "$cmds"
