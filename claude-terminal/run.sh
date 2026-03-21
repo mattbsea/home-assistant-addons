@@ -329,6 +329,17 @@ get_claude_launch_command() {
             rc_args=$(bashio::config "remote_control_directories[${i}].args" '')
             rc_prompt=$(bashio::config "remote_control_directories[${i}].prompt" '')
 
+            # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
+            rc_args=$(echo "$rc_args" | sed 's/—/--/g')
+
+            # bashio returns "null" for unset optional values
+            if [ "$rc_prompt" = "null" ] || [ -z "$rc_prompt" ]; then
+                rc_prompt=""
+            fi
+            if [ "$rc_args" = "null" ] || [ -z "$rc_args" ]; then
+                rc_args=""
+            fi
+
             # Validate directory exists
             if [ ! -d "$directory" ]; then
                 bashio::log.warning "Remote control directory does not exist, creating: ${directory}"
