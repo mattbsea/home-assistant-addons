@@ -324,8 +324,10 @@ get_claude_launch_command() {
 
         local i
         for ((i = 0; i < count; i++)); do
-            local directory
-            directory=$(bashio::config "remote_control_directories[${i}]")
+            local directory rc_args rc_prompt
+            directory=$(bashio::config "remote_control_directories[${i}].directory")
+            rc_args=$(bashio::config "remote_control_directories[${i}].args" '')
+            rc_prompt=$(bashio::config "remote_control_directories[${i}].prompt" '')
 
             # Validate directory exists
             if [ ! -d "$directory" ]; then
@@ -338,8 +340,20 @@ get_claude_launch_command() {
             local window_name
             window_name=$(basename "$directory")
 
+            # Build claude command with optional args and prompt
+            local claude_cmd="claude"
+            if [ -n "$rc_args" ]; then
+                claude_cmd="${claude_cmd} ${rc_args}"
+            fi
+            if [ -n "$rc_prompt" ]; then
+                claude_cmd="${claude_cmd} \"${rc_prompt}\""
+            fi
+
+            # Wrap in a restart loop with 32s sleep on crash
+            local loop_cmd="while true; do ${claude_cmd}; sleep 32; done"
+
             bashio::log.info "  Remote control window '${window_name}' in ${directory}"
-            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' 'claude --dangerously-skip-permissions -c; exec bash'"
+            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' '${loop_cmd}'"
         done
 
         # Return focus to the first window (main claude session)
