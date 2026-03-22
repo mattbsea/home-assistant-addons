@@ -261,7 +261,6 @@ function handleConnection(ws) {
     // send PTY output before the proxy is ready. We add to clients
     // only after the first message arrives (proving the proxy is up).
     let ready = false;
-    const connectTime = Date.now();
     console.log(`WebSocket client connected (pending ready)`);
 
     createInitialTabs();
@@ -270,13 +269,11 @@ function handleConnection(ws) {
         if (!ready) {
             ready = true;
             clients.add(ws);
-            console.log(`WebSocket client ready (${clients.size} active), t+${Date.now() - connectTime}ms`);
+            console.log(`WebSocket client ready (${clients.size} active)`);
         }
-        const rawStr = raw.toString('utf-8');
-        console.log(`WS recv [t+${Date.now() - connectTime}ms]: ${rawStr.substring(0, 200)}`);
         let msg;
         try {
-            msg = JSON.parse(rawStr);
+            msg = JSON.parse(raw.toString('utf-8'));
         } catch (e) {
             return;
         }
@@ -359,7 +356,7 @@ function handleConnection(ws) {
 
     ws.on('close', (code, reason) => {
         clients.delete(ws);
-        console.log(`WebSocket client disconnected [t+${Date.now() - connectTime}ms]: code=${code}, reason=${reason || 'none'}, wasReady=${ready} (${clients.size} remaining)`);
+        console.log(`WebSocket client disconnected: code=${code} (${clients.size} remaining)`);
     });
 
     ws.on('error', (err) => {
