@@ -27,6 +27,17 @@ init_environment() {
     # Persist /home/claude by symlinking it to /data/home
     # This makes /home/claude survive container restarts as /data is a mounted volume
     if [ ! -L /home/claude ]; then
+        # Preserve build-time files (Claude CLI, nvm) before destroying /home/claude
+        # These are backed up at /opt/claude-cli during docker build
+        if [ -d /opt/claude-cli ] && [ ! -d "$data_home/.local/bin" ]; then
+            cp -a /opt/claude-cli "$data_home/.local"
+            bashio::log.info "  - Claude CLI copied from build to $data_home/.local"
+        fi
+        # Preserve nvm installation from build
+        if [ -d /home/claude/.nvm ] && [ ! -d "$data_home/.nvm" ]; then
+            cp -a /home/claude/.nvm "$data_home/.nvm"
+            bashio::log.info "  - nvm copied from build to $data_home/.nvm"
+        fi
         rm -rf /home/claude
         ln -sf "$data_home" /home/claude
         bashio::log.info "  - /home/claude -> $data_home (persistent symlink created)"
@@ -36,16 +47,15 @@ init_environment() {
     # The rm -rf above may have invalidated our working directory.
     cd "$data_home" || cd /
 
-    # Ensure Claude native binary is available at $HOME/.local/bin/claude
-    # The native installer placed it in /home/claude/.local/bin/ during build.
-    # At runtime HOME=/data/home, so Claude's self-check looks in /data/home/.local/bin/
+    # Ensure Claude native binary is on PATH via /data/home/.local/bin
     local native_bin_dir="$data_home/.local/bin"
     if [ ! -d "$native_bin_dir" ]; then
         mkdir -p "$native_bin_dir"
     fi
-    if [ -f /home/claude/.local/bin/claude ] && [ ! -f "$native_bin_dir/claude" ]; then
-        ln -sf /home/claude/.local/bin/claude "$native_bin_dir/claude"
-        bashio::log.info "  - Claude native binary linked: $native_bin_dir/claude"
+    # Symlink from /usr/local/bin if not already pointing to the right place
+    if [ -f "$native_bin_dir/claude" ]; then
+        ln -sf "$native_bin_dir/claude" /usr/local/bin/claude
+        bashio::log.info "  - Claude binary linked: /usr/local/bin/claude -> $native_bin_dir/claude"
     fi
 
     # Set XDG and application environment variables
@@ -128,20 +138,16 @@ update_claude() {
     fi
 }
 
-# Install nvm and Node 20
-install_nvm() {
+# Verify nvm and Node.js 20 are available (installed at build time)
+verify_node() {
     local nvm_dir="/home/claude/.nvm"
-    bashio::log.info "Installing nvm and Node.js 20..."
-    if gosu claude bash -c 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 20' 2>&1; then
-        bashio::log.info "nvm and Node.js 20 installed successfully"
-        bashio::log.info "Installing happy-coder..."
-        if gosu claude bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && npx happy-coder' 2>&1; then
-            bashio::log.info "happy-coder installed successfully"
-        else
-            bashio::log.warning "happy-coder installation failed, continuing without it"
-        fi
+    if [ -s "$nvm_dir/nvm.sh" ]; then
+        bashio::log.info "nvm found at $nvm_dir"
+        local node_version
+        node_version=$(gosu claude bash -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && node --version' 2>/dev/null || echo "unknown")
+        bashio::log.info "Node.js version: $node_version"
     else
-        bashio::log.warning "nvm installation failed, continuing with system Node.js"
+        bashio::log.warning "nvm not found, falling back to system Node.js"
     fi
 }
 
@@ -393,7 +399,7 @@ main() {
 
     init_environment
     update_claude
-    install_nvm
+    verify_node
     install_tools
     setup_scripts
     install_persistent_packages
