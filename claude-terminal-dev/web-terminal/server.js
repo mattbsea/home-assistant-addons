@@ -53,6 +53,12 @@ function buildSessionEnv(env) {
     const sessionEnv = Object.assign({}, process.env, env || {});
     delete sessionEnv.CLAUDE_TAB_CONFIG;
     delete sessionEnv.WEB_TERMINAL_PORT;
+    // Ensure ~/.local/bin is on PATH for claude binary
+    const home = sessionEnv.HOME || '/home/claude';
+    const localBin = home + '/.local/bin';
+    if (sessionEnv.PATH && !sessionEnv.PATH.includes(localBin)) {
+        sessionEnv.PATH = localBin + ':' + sessionEnv.PATH;
+    }
     return sessionEnv;
 }
 
