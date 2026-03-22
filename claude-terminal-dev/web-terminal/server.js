@@ -7,7 +7,7 @@ const pty = require('node-pty');
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
 const RING_BUFFER_SIZE = 100 * 1024; // 100KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
-const WS_GUID = '258EAFA5-E914-47DA-95CA-5AB5FC11CF97';
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 // Parse tab configuration from environment
 let tabConfig = [];
