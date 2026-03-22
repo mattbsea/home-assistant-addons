@@ -250,20 +250,12 @@ wss.on('connection', (ws) => {
     // Create initial tabs on first connection
     createInitialTabs();
 
-    // Defer sending the session list — HA ingress relay needs time to fully
-    // establish the bidirectional proxy before we start pushing data
-    setTimeout(() => {
-        if (ws.readyState === 1) { // WebSocket.OPEN
-            ws.send(JSON.stringify({
-                type: 'sessions',
-                tabs: getSessionList(),
-                config: tabConfig,
-            }));
-            console.log('Sent initial sessions message');
-        }
-    }, 200);
+    // Do NOT push sessions on connect — wait for client to request via 'list'
+    // HA ingress relay may not be ready to forward server-initiated messages
 
     ws.on('message', (raw) => {
+        console.log(`WS recv: ${raw.toString().substring(0, 100)}`);
+
         let msg;
         try {
             msg = JSON.parse(raw);
