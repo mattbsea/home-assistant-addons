@@ -228,8 +228,9 @@ app.get('/api/config', (req, res) => {
 // HTTP server
 const server = http.createServer(app);
 
-// WebSocket server
-const wss = new WebSocketServer({ server, path: '/ws' });
+// WebSocket server — no path filter, accepts upgrades on any path
+// HA ingress may or may not strip the prefix, so we accept all paths
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
     clients.add(ws);
