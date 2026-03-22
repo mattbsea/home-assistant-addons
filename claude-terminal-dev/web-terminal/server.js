@@ -279,8 +279,7 @@ function handleConnection(ws) {
     ws.on('message', (raw) => {
         if (!ready) {
             ready = true;
-            clients.add(ws);
-            console.log(`WebSocket client ready (${clients.size} active)`);
+            console.log(`WebSocket client ready (NOT yet in broadcast set)`);
         }
         let msg;
         try {
@@ -350,6 +349,14 @@ function handleConnection(ws) {
                         tabId: msg.tabId,
                         data: session.ringBuffer.getContents(),
                     }));
+                }
+                break;
+            }
+
+            case 'subscribe': {
+                if (!clients.has(ws)) {
+                    clients.add(ws);
+                    console.log(`Client subscribed to broadcasts (${clients.size} active)`);
                 }
                 break;
             }

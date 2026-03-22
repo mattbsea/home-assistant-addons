@@ -136,6 +136,12 @@
                         switchTab(msg.tabs[0].tabId);
                     }
                 }
+                // Subscribe to live PTY output AFTER tabs are set up
+                // Delay slightly to let proxy chain settle
+                setTimeout(function() {
+                    send({ type: 'subscribe' });
+                    diag('subscribed', { tabs: msg.tabs ? msg.tabs.length : 0 });
+                }, 500);
                 break;
 
             case 'created':
