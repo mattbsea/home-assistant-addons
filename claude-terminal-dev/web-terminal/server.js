@@ -163,7 +163,9 @@ class WsConnection {
     send(data) {
         if (this.readyState !== 1) return;
         const opcode = typeof data === 'string' ? 0x01 : 0x02;
-        this._writeRaw(wsEncodeFrame(data, opcode));
+        const frame = wsEncodeFrame(data, opcode);
+        console.log(`WS send: opcode=${opcode}, payload=${typeof data === 'string' ? data.substring(0, 120) : data.length + 'B'}, frame=${frame.length}B`);
+        this._writeRaw(frame);
     }
 
     ping(data) {
@@ -396,7 +398,8 @@ const server = http.createServer(app);
 server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     const key = request.headers['sec-websocket-key'];
-    console.log(`WebSocket upgrade: path=${pathname}, origin=${request.headers.origin || 'none'}`);
+    const hdrs = Object.entries(request.headers).map(([k,v]) => `${k}:${v}`).join(', ');
+    console.log(`WebSocket upgrade: path=${pathname}, headers=[${hdrs}]`);
 
     if (!key) {
         socket.destroy();
@@ -442,9 +445,11 @@ function handleConnection(ws) {
             clients.add(ws);
             console.log(`WebSocket client ready (${clients.size} active)`);
         }
+        const rawStr = raw.toString('utf-8');
+        console.log(`WS recv: ${rawStr.substring(0, 200)}`);
         let msg;
         try {
-            msg = JSON.parse(raw.toString('utf-8'));
+            msg = JSON.parse(rawStr);
         } catch (e) {
             return;
         }
