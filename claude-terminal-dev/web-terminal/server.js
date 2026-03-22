@@ -1,13 +1,12 @@
 const express = require('express');
 const http = require('http');
-const crypto = require('crypto');
 const path = require('path');
 const pty = require('node-pty');
+const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
 const RING_BUFFER_SIZE = 100 * 1024; // 100KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
-const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 // Parse tab configuration from environment
 let tabConfig = [];
@@ -15,174 +14,6 @@ try {
     tabConfig = JSON.parse(process.env.CLAUDE_TAB_CONFIG || '[]');
 } catch (e) {
     console.error('Failed to parse CLAUDE_TAB_CONFIG:', e.message);
-}
-
-// --- Raw WebSocket implementation (no ws library) ---
-// This matches libwebsockets/ttyd frame format for HA ingress compatibility
-
-function wsAcceptKey(key) {
-    return crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
-}
-
-// Encode a WebSocket frame (server→client, unmasked)
-function wsEncodeFrame(data, opcode) {
-    const payload = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-    const len = payload.length;
-    let header;
-    if (len < 126) {
-        header = Buffer.alloc(2);
-        header[0] = 0x80 | opcode; // FIN + opcode
-        header[1] = len;
-    } else if (len < 65536) {
-        header = Buffer.alloc(4);
-        header[0] = 0x80 | opcode;
-        header[1] = 126;
-        header.writeUInt16BE(len, 2);
-    } else {
-        header = Buffer.alloc(10);
-        header[0] = 0x80 | opcode;
-        header[1] = 127;
-        // Write as two 32-bit values (JS safe integer range)
-        header.writeUInt32BE(Math.floor(len / 0x100000000), 2);
-        header.writeUInt32BE(len >>> 0, 6);
-    }
-    return Buffer.concat([header, payload]);
-}
-
-// Decode incoming WebSocket frames (client→server, masked)
-function wsDecodeFrame(buffer) {
-    if (buffer.length < 2) return null;
-    const byte0 = buffer[0];
-    const byte1 = buffer[1];
-    const fin = (byte0 >> 7) & 1;
-    const opcode = byte0 & 0x0f;
-    const masked = (byte1 >> 7) & 1;
-    let payloadLen = byte1 & 0x7f;
-    let offset = 2;
-
-    if (payloadLen === 126) {
-        if (buffer.length < 4) return null;
-        payloadLen = buffer.readUInt16BE(2);
-        offset = 4;
-    } else if (payloadLen === 127) {
-        if (buffer.length < 10) return null;
-        payloadLen = buffer.readUInt32BE(2) * 0x100000000 + buffer.readUInt32BE(6);
-        offset = 10;
-    }
-
-    const maskLen = masked ? 4 : 0;
-    const totalLen = offset + maskLen + payloadLen;
-    if (buffer.length < totalLen) return null;
-
-    let payload;
-    if (masked) {
-        const mask = buffer.slice(offset, offset + 4);
-        payload = Buffer.alloc(payloadLen);
-        for (let i = 0; i < payloadLen; i++) {
-            payload[i] = buffer[offset + 4 + i] ^ mask[i % 4];
-        }
-    } else {
-        payload = buffer.slice(offset, offset + payloadLen);
-    }
-
-    return { fin, opcode, payload, totalLen };
-}
-
-// WebSocket connection wrapper
-class WsConnection {
-    constructor(socket) {
-        this.socket = socket;
-        this.readyState = 1; // OPEN
-        this._buffer = Buffer.alloc(0);
-        this._onMessage = null;
-        this._onClose = null;
-        this._onError = null;
-
-        socket.on('data', (chunk) => this._onData(chunk));
-        socket.on('close', () => this._handleClose(1006, ''));
-        socket.on('error', (err) => {
-            if (this._onError) this._onError(err);
-        });
-    }
-
-    _onData(chunk) {
-        this._buffer = Buffer.concat([this._buffer, chunk]);
-        while (this._buffer.length > 0) {
-            const frame = wsDecodeFrame(this._buffer);
-            if (!frame) break;
-            this._buffer = this._buffer.slice(frame.totalLen);
-            this._handleFrame(frame);
-        }
-    }
-
-    _handleFrame(frame) {
-        switch (frame.opcode) {
-            case 0x01: // text
-            case 0x02: // binary
-                if (this._onMessage) {
-                    this._onMessage(frame.payload);
-                }
-                break;
-            case 0x08: // close
-                const code = frame.payload.length >= 2 ? frame.payload.readUInt16BE(0) : 1000;
-                const reason = frame.payload.length > 2 ? frame.payload.slice(2).toString('utf-8') : '';
-                // Send close response
-                this._sendClose(code);
-                this._handleClose(code, reason);
-                break;
-            case 0x09: // ping
-                // Respond with pong
-                this._writeRaw(wsEncodeFrame(frame.payload, 0x0a));
-                break;
-            case 0x0a: // pong
-                break;
-        }
-    }
-
-    _handleClose(code, reason) {
-        if (this.readyState === 3) return; // already closed
-        this.readyState = 3;
-        if (this._onClose) this._onClose(code, reason);
-        try { this.socket.end(); } catch (e) {}
-    }
-
-    _sendClose(code) {
-        try {
-            const buf = Buffer.alloc(2);
-            buf.writeUInt16BE(code, 0);
-            this._writeRaw(wsEncodeFrame(buf, 0x08));
-        } catch (e) {}
-    }
-
-    _writeRaw(data) {
-        if (this.socket.writable) {
-            this.socket.write(data);
-        }
-    }
-
-    send(data) {
-        if (this.readyState !== 1) return;
-        const opcode = typeof data === 'string' ? 0x01 : 0x02;
-        const frame = wsEncodeFrame(data, opcode);
-        console.log(`WS send: opcode=${opcode}, payload=${typeof data === 'string' ? data.substring(0, 120) : data.length + 'B'}, frame=${frame.length}B`);
-        this._writeRaw(frame);
-    }
-
-    ping(data) {
-        if (this.readyState !== 1) return;
-        this._writeRaw(wsEncodeFrame(data || '', 0x09));
-    }
-
-    close(code) {
-        this._sendClose(code || 1000);
-        this._handleClose(code || 1000, '');
-    }
-
-    on(event, handler) {
-        if (event === 'message') this._onMessage = handler;
-        else if (event === 'close') this._onClose = handler;
-        else if (event === 'error') this._onError = handler;
-    }
 }
 
 // --- Ring buffer for session output replay ---
@@ -405,41 +236,22 @@ app.get('/api/diag', (req, res) => {
     });
 });
 
-// --- HTTP server with raw WebSocket upgrade ---
+// --- HTTP server + WebSocket server (ws library) ---
 
 const server = http.createServer(app);
 
+const wss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: false,  // CRITICAL: HA ingress strips Sec-WebSocket-Extensions
+});
+
 server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
-    const key = request.headers['sec-websocket-key'];
-    const hdrs = Object.entries(request.headers).map(([k,v]) => `${k}:${v}`).join(', ');
-    console.log(`WebSocket upgrade: path=${pathname}, headers=[${hdrs}]`);
+    console.log(`WebSocket upgrade: path=${pathname}`);
 
-    if (!key) {
-        socket.destroy();
-        return;
-    }
-
-    // Perform WebSocket handshake manually (matching libwebsockets response format)
-    const accept = wsAcceptKey(key);
-    const headers = [
-        'HTTP/1.1 101 Switching Protocols',
-        'Upgrade: websocket',
-        'Connection: Upgrade',
-        'Sec-WebSocket-Accept: ' + accept,
-        '', ''
-    ].join('\r\n');
-
-    socket.write(headers);
-
-    // Process any head data
-    const ws = new WsConnection(socket);
-    if (head && head.length > 0) {
-        ws._onData(head);
-    }
-
-    // Handle this connection
-    handleConnection(ws);
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        handleConnection(ws);
+    });
 });
 
 function handleConnection(ws) {
@@ -562,7 +374,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`Tab config: ${tabConfig.length} tab(s) configured`);
 });
 
-// Keepalive ping every 30s (matching ttyd --ping-interval 30)
+// Keepalive ping every 30s
 setInterval(() => {
     for (const ws of clients) {
         if (ws.readyState === 1) {
