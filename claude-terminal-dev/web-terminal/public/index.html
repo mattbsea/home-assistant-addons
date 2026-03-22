@@ -64,6 +64,9 @@
             reconnectAttempts = 0;
             connectionStatus.classList.remove('visible');
             console.log('WebSocket connected');
+            // Request session list from server (don't wait for server push -
+            // HA ingress proxy needs time to establish relay before server can send)
+            send({ type: 'list' });
         };
 
         ws.onmessage = function(event) {
