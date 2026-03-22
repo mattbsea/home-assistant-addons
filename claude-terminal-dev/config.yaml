@@ -1,7 +1,7 @@
 ---
 name: "Claude Terminal Dev"
 description: "Development build of Claude Terminal - browser-based tab interface with Claude Code CLI"
-version: "2.0.0-dev.6"
+version: "2.0.0-dev.7"
 slug: "claude_terminal_dev"
 init: false
 
@@ -17,6 +17,7 @@ url: "https://github.com/anthropics/claude-code"
 # Web interface configuration
 ingress: true
 ingress_port: 7682
+ingress_stream: true
 panel_icon: mdi:code-braces-box
 panel_title: "Claude Terminal Dev"
 panel_admin: true

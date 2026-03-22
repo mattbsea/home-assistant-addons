@@ -228,9 +228,20 @@ app.get('/api/config', (req, res) => {
 // HTTP server
 const server = http.createServer(app);
 
-// WebSocket server on /ws path
-// perMessageDeflate MUST be false — HA ingress proxy does not support compressed frames
-const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
+// WebSocket server — noServer mode for manual upgrade handling
+// perMessageDeflate MUST be false — HA ingress proxy cannot forward compressed frames
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+
+// Handle upgrade manually — more compatible with reverse proxies like HA ingress
+server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, 'http://localhost').pathname;
+    console.log(`WebSocket upgrade: path=${pathname}, origin=${request.headers.origin || 'none'}`);
+
+    // Accept upgrade on any path (HA ingress may rewrite paths)
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});
 
 wss.on('connection', (ws) => {
     clients.add(ws);
