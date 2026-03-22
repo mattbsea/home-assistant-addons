@@ -228,8 +228,9 @@ app.get('/api/config', (req, res) => {
 // HTTP server
 const server = http.createServer(app);
 
-// WebSocket server on /ws path — HA ingress requires a subpath for WebSocket upgrades
-const wss = new WebSocketServer({ server, path: '/ws' });
+// WebSocket server on /ws path
+// perMessageDeflate MUST be false — HA ingress proxy does not support compressed frames
+const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
 
 wss.on('connection', (ws) => {
     clients.add(ws);
