@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html><head><title>WS Test</title></head>
+<body>
+<pre id="log"></pre>
+<script>
+var log = document.getElementById('log');
+function L(msg) { log.textContent += msg + '\n'; }
+
+var basePath = location.pathname.replace(/\/wstest\.html$/, '').replace(/\/$/, '');
+var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+var wsUrl = proto + '//' + location.host + basePath + '/ws';
+
+L('Connecting to: ' + wsUrl);
+
+var ws = new WebSocket(wsUrl);
+var t0 = Date.now();
+
+ws.onopen = function() {
+    L('[' + (Date.now()-t0) + 'ms] OPEN');
+    // Send a simple list request
+    ws.send(JSON.stringify({type: 'list'}));
+    L('[' + (Date.now()-t0) + 'ms] SENT list');
+
+    // Keep sending pings every 2 seconds
+    setInterval(function() {
+        if (ws.readyState === 1) {
+            ws.send(JSON.stringify({type: 'list'}));
+            L('[' + (Date.now()-t0) + 'ms] SENT keepalive list');
+        }
+    }, 2000);
+};
+
+ws.onmessage = function(e) {
+    var d;
+    try { d = JSON.parse(e.data); } catch(x) { d = {type:'?'}; }
+    L('[' + (Date.now()-t0) + 'ms] MSG type=' + d.type + ' len=' + e.data.length);
+};
+
+ws.onclose = function(e) {
+    L('[' + (Date.now()-t0) + 'ms] CLOSE code=' + e.code + ' reason=' + e.reason + ' clean=' + e.wasClean);
+};
+
+ws.onerror = function(e) {
+    L('[' + (Date.now()-t0) + 'ms] ERROR');
+};
+</script>
+</body>
+</html>
