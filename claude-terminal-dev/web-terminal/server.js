@@ -253,6 +253,21 @@ wss.on('connection', (ws) => {
     // Do NOT push sessions on connect — wait for client to request via 'list'
     // HA ingress relay may not be ready to forward server-initiated messages
 
+    // DEBUG: Test if connection survives without server→client messages
+    // Send a tiny ping-like message after 1s to test server→client
+    setTimeout(() => {
+        if (ws.readyState === 1) {
+            try {
+                ws.send('{"type":"pong"}');
+                console.log('DEBUG: sent test message');
+            } catch (e) {
+                console.error('DEBUG: send failed:', e.message);
+            }
+        } else {
+            console.log('DEBUG: ws already closed before test send, readyState=' + ws.readyState);
+        }
+    }, 1000);
+
     ws.on('message', (raw) => {
         console.log(`WS recv: ${raw.toString().substring(0, 100)}`);
 
@@ -332,11 +347,8 @@ wss.on('connection', (ws) => {
             }
 
             case 'list': {
-                ws.send(JSON.stringify({
-                    type: 'sessions',
-                    tabs: getSessionList(),
-                    config: tabConfig,
-                }));
+                // DEBUG: temporarily don't respond — test if connection stays open
+                console.log('DEBUG: list requested, NOT responding (test)');
                 break;
             }
         }
