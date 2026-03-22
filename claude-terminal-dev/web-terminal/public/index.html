@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Claude Terminal</title>
+    <link rel="stylesheet" href="/xterm/css/xterm.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+    <div id="tab-bar">
+        <button id="new-tab-btn" title="New tab">
+            +
+            <div id="new-tab-menu">
+                <div class="menu-item" data-action="claude">New Claude Session</div>
+                <div class="menu-item" data-action="continue">Continue Conversation</div>
+                <div class="menu-item" data-action="resume">Resume Conversation</div>
+                <div class="menu-item" data-action="shell">Shell</div>
+            </div>
+        </button>
+    </div>
+    <div id="terminal-container"></div>
+    <div id="connection-status">Reconnecting...</div>
+</div>
+
+<script src="/xterm/lib/xterm.js"></script>
+<script src="/xterm-addon-fit/lib/addon-fit.js"></script>
+<script src="/xterm-addon-web-links/lib/addon-web-links.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    const tabBar = document.getElementById('tab-bar');
+    const newTabBtn = document.getElementById('new-tab-btn');
+    const newTabMenu = document.getElementById('new-tab-menu');
+    const terminalContainer = document.getElementById('terminal-container');
+    const connectionStatus = document.getElementById('connection-status');
+
+    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper }
+    let activeTabId = null;
+    let ws = null;
+    let reconnectAttempts = 0;
+    let tabConfig = [];
+    let claudeArgs = '';
+
+    // Generate a short random ID
+    function genId() {
+        return Math.random().toString(36).substring(2, 10);
+    }
+
+    // WebSocket URL derived from current page location (works through HA ingress)
+    function getWsUrl() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const basePath = location.pathname.replace(/\/$/, '');
+        return proto + '//' + location.host + basePath + '/ws';
+    }
+
+    // Connect WebSocket
+    function connect() {
+        ws = new WebSocket(getWsUrl());
+
+        ws.onopen = function() {
+            reconnectAttempts = 0;
+            connectionStatus.classList.remove('visible');
+            console.log('WebSocket connected');
+        };
+
+        ws.onmessage = function(event) {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch(e) { return; }
+            handleMessage(msg);
+        };
+
+        ws.onclose = function() {
+            console.log('WebSocket disconnected');
+            reconnect();
+        };
+
+        ws.onerror = function() {
+            ws.close();
+        };
+    }
+
+    function reconnect() {
+        reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 10000);
+        connectionStatus.classList.add('visible');
+        connectionStatus.textContent = 'Reconnecting... (attempt ' + reconnectAttempts + ')';
+        setTimeout(connect, delay);
+    }
+
+    function send(msg) {
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify(msg));
+        }
+    }
+
+    // Handle server messages
+    function handleMessage(msg) {
+        switch (msg.type) {
+            case 'sessions':
+                tabConfig = msg.config || [];
+                // Reconstruct tabs from existing server sessions
+                if (msg.tabs && msg.tabs.length > 0) {
+                    for (const tab of msg.tabs) {
+                        if (!tabs.has(tab.tabId)) {
+                            addTab(tab.tabId, tab.label, false);
+                            // Request replay for reconnect
+                            send({ type: 'replay', tabId: tab.tabId });
+                        }
+                    }
+                    // Activate first tab if none active
+                    if (!activeTabId && msg.tabs.length > 0) {
+                        switchTab(msg.tabs[0].tabId);
+                    }
+                }
+                break;
+
+            case 'created':
+                if (!tabs.has(msg.tabId)) {
+                    addTab(msg.tabId, msg.label, true);
+                }
+                break;
+
+            case 'output': {
+                const tab = tabs.get(msg.tabId);
+                if (tab) {
+                    tab.terminal.write(msg.data);
+                }
+                break;
+            }
+
+            case 'replay': {
+                const tab = tabs.get(msg.tabId);
+                if (tab && msg.data) {
+                    tab.terminal.write(msg.data);
+                }
+                break;
+            }
+
+            case 'exited': {
+                const tab = tabs.get(msg.tabId);
+                if (tab) {
+                    if (msg.restart) {
+                        tab.status.textContent = 'Process exited (code ' + msg.exitCode + '). Restarting...';
+                        tab.status.classList.add('visible');
+                        setTimeout(function() {
+                            tab.status.classList.remove('visible');
+                        }, 35000);
+                    } else {
+                        tab.status.textContent = 'Process exited (code ' + msg.exitCode + ')';
+                        tab.status.classList.add('visible');
+                    }
+                }
+                break;
+            }
+
+            case 'respawned': {
+                const tab = tabs.get(msg.tabId);
+                if (tab) {
+                    tab.terminal.clear();
+                    tab.status.classList.remove('visible');
+                }
+                break;
+            }
+
+            case 'closed': {
+                removeTab(msg.tabId);
+                break;
+            }
+        }
+    }
+
+    // Add a tab to the UI
+    function addTab(tabId, label, activate) {
+        // Tab element
+        const tabEl = document.createElement('div');
+        tabEl.className = 'tab';
+        tabEl.dataset.id = tabId;
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'tab-label';
+        labelEl.textContent = label;
+        tabEl.appendChild(labelEl);
+
+        const closeEl = document.createElement('span');
+        closeEl.className = 'tab-close';
+        closeEl.textContent = '\u00d7';
+        closeEl.addEventListener('click', function(e) {
+            e.stopPropagation();
+            closeTab(tabId);
+        });
+        tabEl.appendChild(closeEl);
+
+        tabEl.addEventListener('click', function() {
+            switchTab(tabId);
+        });
+
+        // Insert before the "+" button
+        tabBar.insertBefore(tabEl, newTabBtn);
+
+        // Terminal wrapper
+        const wrapper = document.createElement('div');
+        wrapper.className = 'terminal-wrapper';
+        wrapper.dataset.id = tabId;
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'terminal-status';
+        wrapper.appendChild(statusEl);
+
+        terminalContainer.appendChild(wrapper);
+
+        // Create xterm instance
+        const terminal = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: "'Menlo', 'DejaVu Sans Mono', 'Consolas', monospace",
+            theme: {
+                background: '#1e1e1e',
+                foreground: '#cccccc',
+                cursor: '#ffffff',
+                selectionBackground: '#264f78',
+            },
+            allowProposedApi: true,
+        });
+
+        const fitAddon = new FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon);
+
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+        terminal.loadAddon(webLinksAddon);
+
+        terminal.open(wrapper);
+
+        // Handle input
+        terminal.onData(function(data) {
+            send({ type: 'input', tabId: tabId, data: data });
+        });
+
+        // Handle resize
+        terminal.onResize(function(size) {
+            send({ type: 'resize', tabId: tabId, cols: size.cols, rows: size.rows });
+        });
+
+        tabs.set(tabId, {
+            el: tabEl,
+            terminal: terminal,
+            fitAddon: fitAddon,
+            wrapper: wrapper,
+            status: statusEl,
+            label: label,
+        });
+
+        if (activate) {
+            switchTab(tabId);
+        }
+    }
+
+    // Switch active tab
+    function switchTab(tabId) {
+        if (activeTabId === tabId) return;
+
+        // Deactivate current
+        if (activeTabId) {
+            const current = tabs.get(activeTabId);
+            if (current) {
+                current.el.classList.remove('active');
+                current.wrapper.classList.remove('active');
+            }
+        }
+
+        // Activate new
+        const next = tabs.get(tabId);
+        if (next) {
+            next.el.classList.add('active');
+            next.wrapper.classList.add('active');
+            activeTabId = tabId;
+
+            // Fit after becoming visible
+            requestAnimationFrame(function() {
+                next.fitAddon.fit();
+                next.terminal.focus();
+            });
+
+            // Scroll tab into view
+            next.el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }
+    }
+
+    // Close a tab
+    function closeTab(tabId) {
+        send({ type: 'close', tabId: tabId });
+        removeTab(tabId);
+    }
+
+    function removeTab(tabId) {
+        const tab = tabs.get(tabId);
+        if (!tab) return;
+
+        tab.terminal.dispose();
+        tab.el.remove();
+        tab.wrapper.remove();
+        tabs.delete(tabId);
+
+        // If we closed the active tab, switch to the first remaining
+        if (activeTabId === tabId) {
+            activeTabId = null;
+            const remaining = tabs.keys().next();
+            if (!remaining.done) {
+                switchTab(remaining.value);
+            }
+        }
+    }
+
+    // New tab menu
+    let menuOpen = false;
+
+    newTabBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        menuOpen = !menuOpen;
+        newTabMenu.classList.toggle('open', menuOpen);
+    });
+
+    document.addEventListener('click', function() {
+        menuOpen = false;
+        newTabMenu.classList.remove('open');
+    });
+
+    // Menu item handlers
+    newTabMenu.addEventListener('click', function(e) {
+        const item = e.target.closest('.menu-item');
+        if (!item) return;
+
+        e.stopPropagation();
+        menuOpen = false;
+        newTabMenu.classList.remove('open');
+
+        const action = item.dataset.action;
+        const tabId = genId();
+
+        switch (action) {
+            case 'claude':
+                send({
+                    type: 'create',
+                    tabId: tabId,
+                    command: 'claude',
+                    args: [],
+                    label: 'Claude',
+                });
+                break;
+            case 'continue':
+                send({
+                    type: 'create',
+                    tabId: tabId,
+                    command: 'claude',
+                    args: ['-c'],
+                    label: 'Claude (continue)',
+                });
+                break;
+            case 'resume':
+                send({
+                    type: 'create',
+                    tabId: tabId,
+                    command: 'claude',
+                    args: ['-r'],
+                    label: 'Claude (resume)',
+                });
+                break;
+            case 'shell':
+                send({
+                    type: 'create',
+                    tabId: tabId,
+                    command: '/bin/bash',
+                    args: [],
+                    label: 'Shell',
+                });
+                break;
+        }
+    });
+
+    // Handle window resize
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function() {
+            if (activeTabId) {
+                const tab = tabs.get(activeTabId);
+                if (tab) {
+                    tab.fitAddon.fit();
+                }
+            }
+        }, 100);
+    });
+
+    // Start
+    connect();
+})();
+</script>
+</body>
+</html>
