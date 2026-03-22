@@ -1,12 +1,13 @@
 const express = require('express');
 const http = require('http');
+const crypto = require('crypto');
 const path = require('path');
-const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
 const RING_BUFFER_SIZE = 100 * 1024; // 100KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
+const WS_GUID = '258EAFA5-E914-47DA-95CA-5AB5FC11CF97';
 
 // Parse tab configuration from environment
 let tabConfig = [];
@@ -16,7 +17,174 @@ try {
     console.error('Failed to parse CLAUDE_TAB_CONFIG:', e.message);
 }
 
-// Ring buffer for session output replay on reconnect (uses Buffer for UTF-8 safety)
+// --- Raw WebSocket implementation (no ws library) ---
+// This matches libwebsockets/ttyd frame format for HA ingress compatibility
+
+function wsAcceptKey(key) {
+    return crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
+}
+
+// Encode a WebSocket frame (server→client, unmasked)
+function wsEncodeFrame(data, opcode) {
+    const payload = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
+    const len = payload.length;
+    let header;
+    if (len < 126) {
+        header = Buffer.alloc(2);
+        header[0] = 0x80 | opcode; // FIN + opcode
+        header[1] = len;
+    } else if (len < 65536) {
+        header = Buffer.alloc(4);
+        header[0] = 0x80 | opcode;
+        header[1] = 126;
+        header.writeUInt16BE(len, 2);
+    } else {
+        header = Buffer.alloc(10);
+        header[0] = 0x80 | opcode;
+        header[1] = 127;
+        // Write as two 32-bit values (JS safe integer range)
+        header.writeUInt32BE(Math.floor(len / 0x100000000), 2);
+        header.writeUInt32BE(len >>> 0, 6);
+    }
+    return Buffer.concat([header, payload]);
+}
+
+// Decode incoming WebSocket frames (client→server, masked)
+function wsDecodeFrame(buffer) {
+    if (buffer.length < 2) return null;
+    const byte0 = buffer[0];
+    const byte1 = buffer[1];
+    const fin = (byte0 >> 7) & 1;
+    const opcode = byte0 & 0x0f;
+    const masked = (byte1 >> 7) & 1;
+    let payloadLen = byte1 & 0x7f;
+    let offset = 2;
+
+    if (payloadLen === 126) {
+        if (buffer.length < 4) return null;
+        payloadLen = buffer.readUInt16BE(2);
+        offset = 4;
+    } else if (payloadLen === 127) {
+        if (buffer.length < 10) return null;
+        payloadLen = buffer.readUInt32BE(2) * 0x100000000 + buffer.readUInt32BE(6);
+        offset = 10;
+    }
+
+    const maskLen = masked ? 4 : 0;
+    const totalLen = offset + maskLen + payloadLen;
+    if (buffer.length < totalLen) return null;
+
+    let payload;
+    if (masked) {
+        const mask = buffer.slice(offset, offset + 4);
+        payload = Buffer.alloc(payloadLen);
+        for (let i = 0; i < payloadLen; i++) {
+            payload[i] = buffer[offset + 4 + i] ^ mask[i % 4];
+        }
+    } else {
+        payload = buffer.slice(offset, offset + payloadLen);
+    }
+
+    return { fin, opcode, payload, totalLen };
+}
+
+// WebSocket connection wrapper
+class WsConnection {
+    constructor(socket) {
+        this.socket = socket;
+        this.readyState = 1; // OPEN
+        this._buffer = Buffer.alloc(0);
+        this._onMessage = null;
+        this._onClose = null;
+        this._onError = null;
+
+        socket.on('data', (chunk) => this._onData(chunk));
+        socket.on('close', () => this._handleClose(1006, ''));
+        socket.on('error', (err) => {
+            if (this._onError) this._onError(err);
+        });
+    }
+
+    _onData(chunk) {
+        this._buffer = Buffer.concat([this._buffer, chunk]);
+        while (this._buffer.length > 0) {
+            const frame = wsDecodeFrame(this._buffer);
+            if (!frame) break;
+            this._buffer = this._buffer.slice(frame.totalLen);
+            this._handleFrame(frame);
+        }
+    }
+
+    _handleFrame(frame) {
+        switch (frame.opcode) {
+            case 0x01: // text
+            case 0x02: // binary
+                if (this._onMessage) {
+                    this._onMessage(frame.payload);
+                }
+                break;
+            case 0x08: // close
+                const code = frame.payload.length >= 2 ? frame.payload.readUInt16BE(0) : 1000;
+                const reason = frame.payload.length > 2 ? frame.payload.slice(2).toString('utf-8') : '';
+                // Send close response
+                this._sendClose(code);
+                this._handleClose(code, reason);
+                break;
+            case 0x09: // ping
+                // Respond with pong
+                this._writeRaw(wsEncodeFrame(frame.payload, 0x0a));
+                break;
+            case 0x0a: // pong
+                break;
+        }
+    }
+
+    _handleClose(code, reason) {
+        if (this.readyState === 3) return; // already closed
+        this.readyState = 3;
+        if (this._onClose) this._onClose(code, reason);
+        try { this.socket.end(); } catch (e) {}
+    }
+
+    _sendClose(code) {
+        try {
+            const buf = Buffer.alloc(2);
+            buf.writeUInt16BE(code, 0);
+            this._writeRaw(wsEncodeFrame(buf, 0x08));
+        } catch (e) {}
+    }
+
+    _writeRaw(data) {
+        if (this.socket.writable) {
+            this.socket.write(data);
+        }
+    }
+
+    send(data) {
+        if (this.readyState !== 1) return;
+        const opcode = typeof data === 'string' ? 0x01 : 0x02;
+        this._writeRaw(wsEncodeFrame(data, opcode));
+    }
+
+    ping(data) {
+        if (this.readyState !== 1) return;
+        this._writeRaw(wsEncodeFrame(data || '', 0x09));
+    }
+
+    close(code) {
+        this._sendClose(code || 1000);
+        this._handleClose(code || 1000, '');
+    }
+
+    on(event, handler) {
+        if (event === 'message') this._onMessage = handler;
+        else if (event === 'close') this._onClose = handler;
+        else if (event === 'error') this._onError = handler;
+    }
+}
+
+// --- Ring buffer for session output replay ---
+
 class RingBuffer {
     constructor(maxSize = RING_BUFFER_SIZE) {
         this.chunks = [];
@@ -41,7 +209,8 @@ class RingBuffer {
     }
 }
 
-// Session manager
+// --- Session manager ---
+
 const sessions = new Map();
 let initialTabsCreated = false;
 
@@ -53,7 +222,6 @@ function buildSessionEnv(env) {
     const sessionEnv = Object.assign({}, process.env, env || {});
     delete sessionEnv.CLAUDE_TAB_CONFIG;
     delete sessionEnv.WEB_TERMINAL_PORT;
-    // Ensure ~/.local/bin is on PATH for claude binary
     const home = sessionEnv.HOME || '/home/claude';
     const localBin = home + '/.local/bin';
     if (sessionEnv.PATH && !sessionEnv.PATH.includes(localBin)) {
@@ -157,12 +325,10 @@ function destroySession(tabId) {
     const session = sessions.get(tabId);
     if (!session) return;
 
-    session.restart = false; // prevent auto-restart
+    session.restart = false;
     try {
         session.pty.kill();
-    } catch (e) {
-        // already dead
-    }
+    } catch (e) {}
     sessions.delete(tabId);
     console.log(`Session destroyed: "${session.label}" (tabId: ${tabId})`);
 }
@@ -177,7 +343,6 @@ function getSessionList() {
     }));
 }
 
-// Create initial tabs from config
 function createInitialTabs() {
     if (initialTabsCreated) return;
     initialTabsCreated = true;
@@ -196,61 +361,77 @@ function createInitialTabs() {
     console.log(`Created ${tabConfig.length} initial tab(s)`);
 }
 
-// WebSocket clients
+// --- WebSocket client management ---
+
 const clients = new Set();
 
 function broadcastToClients(message) {
     const data = JSON.stringify(message);
     for (const ws of clients) {
-        if (ws.readyState === 1) { // WebSocket.OPEN
+        if (ws.readyState === 1) {
             ws.send(data);
         }
     }
 }
 
-// Express app
+// --- Express app ---
+
 const app = express();
 
-// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve xterm.js assets from node_modules
 const nodeModulesDir = path.join(__dirname, 'node_modules');
 app.use('/xterm', express.static(path.join(nodeModulesDir, '@xterm/xterm')));
 app.use('/xterm-addon-fit', express.static(path.join(nodeModulesDir, '@xterm/addon-fit')));
 app.use('/xterm-addon-web-links', express.static(path.join(nodeModulesDir, '@xterm/addon-web-links')));
 
-// API endpoint for tab config (used by frontend before WebSocket connects)
 app.get('/api/config', (req, res) => {
     res.json({ tabs: tabConfig });
 });
 
-// HTTP server
+// --- HTTP server with raw WebSocket upgrade ---
+
 const server = http.createServer(app);
 
-// WebSocket server — noServer mode for manual upgrade handling
-// perMessageDeflate MUST be false — HA ingress proxy cannot forward compressed frames
-const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
-
-// Handle upgrade manually — more compatible with reverse proxies like HA ingress
 server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
+    const key = request.headers['sec-websocket-key'];
     console.log(`WebSocket upgrade: path=${pathname}, origin=${request.headers.origin || 'none'}`);
 
-    // Accept upgrade on any path (HA ingress may rewrite paths)
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
+    if (!key) {
+        socket.destroy();
+        return;
+    }
+
+    // Perform WebSocket handshake manually (matching libwebsockets response format)
+    const accept = wsAcceptKey(key);
+    const headers = [
+        'HTTP/1.1 101 Switching Protocols',
+        'Upgrade: WebSocket',
+        'Connection: Upgrade',
+        'Sec-WebSocket-Accept: ' + accept,
+        '', ''
+    ].join('\r\n');
+
+    socket.write(headers);
+
+    // Process any head data
+    const ws = new WsConnection(socket);
+    if (head && head.length > 0) {
+        ws._onData(head);
+    }
+
+    // Handle this connection
+    handleConnection(ws);
 });
 
-wss.on('connection', (ws) => {
+function handleConnection(ws) {
     clients.add(ws);
     console.log(`WebSocket client connected (${clients.size} total)`);
 
-    // Create initial tabs on first connection
     createInitialTabs();
 
-    // Send current session list for reconnect
+    // Send current session list
     ws.send(JSON.stringify({
         type: 'sessions',
         tabs: getSessionList(),
@@ -258,17 +439,15 @@ wss.on('connection', (ws) => {
     }));
 
     ws.on('message', (raw) => {
-
         let msg;
         try {
-            msg = JSON.parse(raw);
+            msg = JSON.parse(raw.toString('utf-8'));
         } catch (e) {
             return;
         }
 
         switch (msg.type) {
             case 'create': {
-                // Validate command against whitelist for client-initiated sessions
                 const cmd = msg.command || '/bin/bash';
                 if (!ALLOWED_COMMANDS.has(cmd)) {
                     console.warn(`Rejected disallowed command: ${cmd}`);
@@ -309,9 +488,7 @@ wss.on('connection', (ws) => {
                     session.rows = msg.rows;
                     try {
                         session.pty.resize(msg.cols, msg.rows);
-                    } catch (e) {
-                        // ignore resize errors
-                    }
+                    } catch (e) {}
                 }
                 break;
             }
@@ -353,13 +530,23 @@ wss.on('connection', (ws) => {
     ws.on('error', (err) => {
         console.error(`WebSocket error: ${err.message}`);
     });
-});
+}
 
-// Start server
+// --- Start server ---
+
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Claude Web Terminal running on port ${PORT}`);
     console.log(`Tab config: ${tabConfig.length} tab(s) configured`);
 });
+
+// Keepalive ping every 30s (matching ttyd --ping-interval 30)
+setInterval(() => {
+    for (const ws of clients) {
+        if (ws.readyState === 1) {
+            ws.ping();
+        }
+    }
+}, 30000);
 
 // Graceful shutdown
 function shutdown() {
