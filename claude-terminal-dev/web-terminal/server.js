@@ -200,9 +200,20 @@ const clients = new Set();
 
 function broadcastToClients(message) {
     const data = JSON.stringify(message);
+    const msgType = message.type || 'unknown';
+    const dataLen = data.length;
     for (const ws of clients) {
         if (ws.readyState === 1) {
-            ws.send(data);
+            console.log(`SEND [${msgType}] ${dataLen} bytes to client (readyState=${ws.readyState})`);
+            try {
+                ws.send(data, (err) => {
+                    if (err) {
+                        console.error(`SEND ERROR [${msgType}]: ${err.message}`);
+                    }
+                });
+            } catch (e) {
+                console.error(`SEND THROW [${msgType}]: ${e.message}`);
+            }
         }
     }
 }
@@ -344,17 +355,23 @@ function handleConnection(ws) {
             }
 
             case 'list': {
-                ws.send(JSON.stringify({
+                const listResp = JSON.stringify({
                     type: 'sessions',
                     tabs: getSessionList(),
                     config: tabConfig,
-                }));
+                });
+                console.log(`SEND [sessions] ${listResp.length} bytes direct`);
+                ws.send(listResp, (err) => {
+                    if (err) console.error(`SEND ERROR [sessions]: ${err.message}`);
+                    else console.log(`SEND [sessions] callback OK`);
+                });
                 break;
             }
         }
     });
 
     ws.on('close', (code, reason) => {
+        console.log(`WS CLOSE: code=${code} reason="${reason}" readyState=${ws.readyState}`);
         clients.delete(ws);
         console.log(`WebSocket client disconnected: code=${code} (${clients.size} remaining)`);
     });
