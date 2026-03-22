@@ -407,7 +407,7 @@ server.on('upgrade', (request, socket, head) => {
     const accept = wsAcceptKey(key);
     const headers = [
         'HTTP/1.1 101 Switching Protocols',
-        'Upgrade: WebSocket',
+        'Upgrade: websocket',
         'Connection: Upgrade',
         'Sec-WebSocket-Accept: ' + accept,
         '', ''
@@ -431,12 +431,10 @@ function handleConnection(ws) {
 
     createInitialTabs();
 
-    // Send current session list
-    ws.send(JSON.stringify({
-        type: 'sessions',
-        tabs: getSessionList(),
-        config: tabConfig,
-    }));
+    // Do NOT send data immediately - wait for client to request it.
+    // HA ingress uses a two-hop proxy (Core -> Supervisor -> addon) that needs
+    // time to establish both relay directions. Sending before the proxy is
+    // ready causes EPIPE. ttyd also waits for client to send first.
 
     ws.on('message', (raw) => {
         let msg;
