@@ -426,17 +426,22 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 function handleConnection(ws) {
-    clients.add(ws);
-    console.log(`WebSocket client connected (${clients.size} total)`);
+    // Do NOT add to clients set yet - the HA ingress two-hop proxy
+    // (Core -> Supervisor -> addon) needs time to establish relay.
+    // Adding to clients immediately would cause broadcastToClients to
+    // send PTY output before the proxy is ready. We add to clients
+    // only after the first message arrives (proving the proxy is up).
+    let ready = false;
+    console.log(`WebSocket client connected (pending ready)`);
 
     createInitialTabs();
 
-    // Do NOT send data immediately - wait for client to request it.
-    // HA ingress uses a two-hop proxy (Core -> Supervisor -> addon) that needs
-    // time to establish both relay directions. Sending before the proxy is
-    // ready causes EPIPE. ttyd also waits for client to send first.
-
     ws.on('message', (raw) => {
+        if (!ready) {
+            ready = true;
+            clients.add(ws);
+            console.log(`WebSocket client ready (${clients.size} active)`);
+        }
         let msg;
         try {
             msg = JSON.parse(raw.toString('utf-8'));
