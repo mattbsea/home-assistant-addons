@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     jq \
     tree \
-    tmux \
     sudo \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for running the terminal process with sudo access
@@ -29,18 +29,6 @@ RUN groupadd --gid 1000 claude \
     && useradd --uid 1000 --gid claude --shell /bin/bash --create-home claude \
     && echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude \
     && chmod 0440 /etc/sudoers.d/claude
-
-# Install ttyd binary (not in Debian repos, use GitHub release)
-RUN ARCH=$(dpkg --print-architecture) && \
-    case "$ARCH" in \
-        amd64)  TTYD_ARCH="x86_64" ;; \
-        arm64)  TTYD_ARCH="aarch64" ;; \
-        armhf)  TTYD_ARCH="armv7l" ;; \
-        *)      TTYD_ARCH="x86_64" ;; \
-    esac && \
-    TTYD_VER=$(curl -fsSL https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') && \
-    curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VER}/ttyd.${TTYD_ARCH}" -o /usr/local/bin/ttyd && \
-    chmod +x /usr/local/bin/ttyd
 
 # Install yq binary (multi-arch)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -55,6 +43,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
+
+# Copy and build the web terminal application (Express + xterm.js + node-pty)
+COPY web-terminal/ /opt/web-terminal/
+RUN cd /opt/web-terminal && npm install --production
 
 # Install Claude Code CLI as the claude user so all install files
 # (~/.local/bin, ~/.local/lib, etc.) are owned by uid 1000 and accessible
