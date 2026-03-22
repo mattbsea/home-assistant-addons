@@ -53,7 +53,7 @@
     function getWsUrl() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const basePath = location.pathname.replace(/\/$/, '');
-        return proto + '//' + location.host + basePath + '/ws';
+        return proto + '//' + location.host + basePath;
     }
 
     // Connect WebSocket
