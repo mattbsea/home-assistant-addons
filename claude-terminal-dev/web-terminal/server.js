@@ -250,12 +250,18 @@ wss.on('connection', (ws) => {
     // Create initial tabs on first connection
     createInitialTabs();
 
-    // Send current session list for reconnect
-    ws.send(JSON.stringify({
-        type: 'sessions',
-        tabs: getSessionList(),
-        config: tabConfig,
-    }));
+    // Defer sending the session list — HA ingress relay needs time to fully
+    // establish the bidirectional proxy before we start pushing data
+    setTimeout(() => {
+        if (ws.readyState === 1) { // WebSocket.OPEN
+            ws.send(JSON.stringify({
+                type: 'sessions',
+                tabs: getSessionList(),
+                config: tabConfig,
+            }));
+            console.log('Sent initial sessions message');
+        }
+    }, 200);
 
     ws.on('message', (raw) => {
         let msg;
@@ -344,9 +350,13 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
         clients.delete(ws);
-        console.log(`WebSocket client disconnected (${clients.size} remaining)`);
+        console.log(`WebSocket client disconnected: code=${code}, reason=${reason || 'none'} (${clients.size} remaining)`);
+    });
+
+    ws.on('error', (err) => {
+        console.error(`WebSocket error: ${err.message}`);
     });
 });
 
