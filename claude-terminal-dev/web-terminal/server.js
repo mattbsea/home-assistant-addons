@@ -250,54 +250,14 @@ wss.on('connection', (ws) => {
     // Create initial tabs on first connection
     createInitialTabs();
 
-    // Do NOT push sessions on connect — wait for client to request via 'list'
-    // HA ingress relay may not be ready to forward server-initiated messages
-
-    // DEBUG: Test different frame types through HA ingress
-    // Test 1: WebSocket ping (at 500ms)
-    setTimeout(() => {
-        if (ws.readyState === 1) {
-            try {
-                ws.ping('hello');
-                console.log('DEBUG: sent ping');
-            } catch (e) {
-                console.error('DEBUG: ping failed:', e.message);
-            }
-        } else {
-            console.log('DEBUG: ws closed before ping, state=' + ws.readyState);
-        }
-    }, 500);
-
-    // Test 2: Binary frame (at 2s)
-    setTimeout(() => {
-        if (ws.readyState === 1) {
-            try {
-                ws.send(Buffer.from('{"type":"pong"}'), { binary: true });
-                console.log('DEBUG: sent binary frame');
-            } catch (e) {
-                console.error('DEBUG: binary send failed:', e.message);
-            }
-        } else {
-            console.log('DEBUG: ws closed before binary, state=' + ws.readyState);
-        }
-    }, 2000);
-
-    // Test 3: Text frame (at 4s)
-    setTimeout(() => {
-        if (ws.readyState === 1) {
-            try {
-                ws.send('{"type":"pong"}');
-                console.log('DEBUG: sent text frame');
-            } catch (e) {
-                console.error('DEBUG: text send failed:', e.message);
-            }
-        } else {
-            console.log('DEBUG: ws closed before text, state=' + ws.readyState);
-        }
-    }, 4000);
+    // Send current session list for reconnect
+    ws.send(JSON.stringify({
+        type: 'sessions',
+        tabs: getSessionList(),
+        config: tabConfig,
+    }));
 
     ws.on('message', (raw) => {
-        console.log(`WS recv: ${raw.toString().substring(0, 100)}`);
 
         let msg;
         try {
@@ -375,8 +335,11 @@ wss.on('connection', (ws) => {
             }
 
             case 'list': {
-                // DEBUG: temporarily don't respond — test if connection stays open
-                console.log('DEBUG: list requested, NOT responding (test)');
+                ws.send(JSON.stringify({
+                    type: 'sessions',
+                    tabs: getSessionList(),
+                    config: tabConfig,
+                }));
                 break;
             }
         }
