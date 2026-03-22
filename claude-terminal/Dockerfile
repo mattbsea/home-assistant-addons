@@ -44,17 +44,30 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
 
+# Install nvm and Node.js 20 as claude user at build time.
+# node-pty must be compiled against the same Node.js version used at runtime.
+USER claude
+RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash \
+    && export NVM_DIR="/home/claude/.nvm" \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install 20
+USER root
+
 # Copy and build the web terminal application (Express + xterm.js + node-pty)
+# Uses nvm's Node 20 so node-pty native addon matches runtime Node version.
 COPY web-terminal/ /opt/web-terminal/
-RUN cd /opt/web-terminal && npm install --production
+RUN bash -c 'source /home/claude/.nvm/nvm.sh && cd /opt/web-terminal && npm install --production'
 
 # Install Claude Code CLI as the claude user so all install files
 # (~/.local/bin, ~/.local/lib, etc.) are owned by uid 1000 and accessible
 # at runtime without root. A system-wide symlink exposes it on PATH.
+# The CLI is also preserved at /opt/claude-cli/ to survive the /home/claude
+# symlink replacement at runtime.
 USER claude
 RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
-RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude
+RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude \
+    && cp -a /home/claude/.local /opt/claude-cli
 
 # Set working directory to /home/claude (persisted to /data/home at runtime)
 WORKDIR /home/claude
