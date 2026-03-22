@@ -329,6 +329,10 @@ get_claude_launch_command() {
             rc_args=$(bashio::config "remote_control_directories[${i}].args" '')
             rc_prompt=$(bashio::config "remote_control_directories[${i}].prompt" '')
 
+            # Trim leading/trailing whitespace from directory and args
+            directory=$(echo "$directory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            rc_args=$(echo "$rc_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
             # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
             rc_args=$(echo "$rc_args" | sed 's/—/--/g')
 
