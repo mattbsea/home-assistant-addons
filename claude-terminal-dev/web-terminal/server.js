@@ -391,6 +391,20 @@ app.get('/api/config', (req, res) => {
     res.json({ tabs: tabConfig });
 });
 
+// Diagnostic endpoint - browser POSTs its state here via fetch (no WS needed)
+app.post('/api/diag', express.json(), (req, res) => {
+    console.log(`BROWSER DIAG: ${JSON.stringify(req.body)}`);
+    res.json({ ok: true });
+});
+
+app.get('/api/diag', (req, res) => {
+    res.json({
+        clients: clients.size,
+        sessions: sessions.size,
+        uptime: process.uptime(),
+    });
+});
+
 // --- HTTP server with raw WebSocket upgrade ---
 
 const server = http.createServer(app);
@@ -435,6 +449,7 @@ function handleConnection(ws) {
     // send PTY output before the proxy is ready. We add to clients
     // only after the first message arrives (proving the proxy is up).
     let ready = false;
+    const connectTime = Date.now();
     console.log(`WebSocket client connected (pending ready)`);
 
     createInitialTabs();
@@ -443,10 +458,10 @@ function handleConnection(ws) {
         if (!ready) {
             ready = true;
             clients.add(ws);
-            console.log(`WebSocket client ready (${clients.size} active)`);
+            console.log(`WebSocket client ready (${clients.size} active), t+${Date.now() - connectTime}ms`);
         }
         const rawStr = raw.toString('utf-8');
-        console.log(`WS recv: ${rawStr.substring(0, 200)}`);
+        console.log(`WS recv [t+${Date.now() - connectTime}ms]: ${rawStr.substring(0, 200)}`);
         let msg;
         try {
             msg = JSON.parse(rawStr);
@@ -532,7 +547,7 @@ function handleConnection(ws) {
 
     ws.on('close', (code, reason) => {
         clients.delete(ws);
-        console.log(`WebSocket client disconnected: code=${code}, reason=${reason || 'none'} (${clients.size} remaining)`);
+        console.log(`WebSocket client disconnected [t+${Date.now() - connectTime}ms]: code=${code}, reason=${reason || 'none'}, wasReady=${ready} (${clients.size} remaining)`);
     });
 
     ws.on('error', (err) => {
