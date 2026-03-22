@@ -56,31 +56,49 @@
         return proto + '//' + location.host + basePath + '/ws';
     }
 
+    // Diagnostic: report client state to server via HTTP POST (works even when WS fails)
+    function diag(event, detail) {
+        var basePath = location.pathname.replace(/\/$/, '');
+        try {
+            fetch(basePath + '/api/diag', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event: event, detail: detail, url: location.href, t: Date.now() }),
+            }).catch(function() {});
+        } catch(e) {}
+    }
+
     // Connect WebSocket
     function connect() {
-        ws = new WebSocket(getWsUrl());
+        var wsUrl = getWsUrl();
+        diag('ws_connecting', { url: wsUrl, attempt: reconnectAttempts });
+        ws = new WebSocket(wsUrl);
 
         ws.onopen = function() {
             reconnectAttempts = 0;
             connectionStatus.classList.remove('visible');
             console.log('WebSocket connected');
+            diag('ws_open', { url: wsUrl });
             // Request session list from server (don't wait for server push -
             // HA ingress proxy needs time to establish relay before server can send)
             send({ type: 'list' });
         };
 
         ws.onmessage = function(event) {
-            let msg;
+            var msg;
             try { msg = JSON.parse(event.data); } catch(e) { return; }
+            diag('ws_message', { type: msg.type, len: event.data.length });
             handleMessage(msg);
         };
 
-        ws.onclose = function() {
+        ws.onclose = function(event) {
             console.log('WebSocket disconnected');
+            diag('ws_close', { code: event.code, reason: event.reason, wasClean: event.wasClean });
             reconnect();
         };
 
-        ws.onerror = function() {
+        ws.onerror = function(event) {
+            diag('ws_error', { type: event.type });
             ws.close();
         };
     }
