@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  web-terminal:
+    build:
+      context: ./claude-terminal-dev
+      args:
+        BUILD_FROM: ghcr.io/home-assistant/amd64-base-debian:bookworm
+    ports:
+      - "7690:7682"
+    environment:
+      - HOME=/tmp/home
+      - WEB_TERMINAL_PORT=7682
+      - CLAUDE_TAB_CONFIG=[{"label":"Shell","command":"/bin/bash","args":[],"cwd":"/tmp/home","autoStart":true}]
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        mkdir -p /tmp/home
+        export NVM_DIR="/home/claude/.nvm"
+        [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+        node /opt/web-terminal/server.js
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7682/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
