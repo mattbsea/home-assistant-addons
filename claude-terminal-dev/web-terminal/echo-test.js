@@ -1,16 +1,23 @@
-// Minimal WebSocket echo server for proxy testing
-// Run: node echo-test.js
-// Connect: wscat -c ws://localhost:7682/ws
-
+// Echo test with Express + static file serving to isolate what breaks WebSocket
+const express = require('express');
 const http = require('http');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7682', 10);
 
-const server = http.createServer((req, res) => {
-    if (req.url === '/' || req.url === '/echotest') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html>
+const app = express();
+
+// Serve static files exactly like the main server
+app.use(express.static(path.join(__dirname, 'public')));
+const nodeModulesDir = path.join(__dirname, 'node_modules');
+app.use('/xterm', express.static(path.join(nodeModulesDir, '@xterm/xterm')));
+app.use('/xterm-addon-fit', express.static(path.join(nodeModulesDir, '@xterm/addon-fit')));
+app.use('/xterm-addon-web-links', express.static(path.join(nodeModulesDir, '@xterm/addon-web-links')));
+
+// Echo test page at /echotest
+app.get('/echotest', (req, res) => {
+    res.send(`<!DOCTYPE html>
 <html><head><title>Echo WS Test</title></head><body>
 <pre id="log"></pre>
 <script>
@@ -34,7 +41,6 @@ ws.onopen = function() {
 
 ws.onmessage = function(e) {
     L('[' + (Date.now()-t0) + 'ms] RECV: ' + e.data);
-    // Keep sending every 2 seconds
     setTimeout(function() {
         if (ws.readyState === 1) {
             ws.send(JSON.stringify({id: ++n, msg: 'ping'}));
@@ -51,11 +57,9 @@ ws.onerror = function() {
     L('[' + (Date.now()-t0) + 'ms] ERROR');
 };
 </script></body></html>`);
-        return;
-    }
-    res.writeHead(404);
-    res.end('Not Found');
 });
+
+const server = http.createServer(app);
 
 const wss = new WebSocketServer({
     noServer: true,
@@ -72,7 +76,6 @@ server.on('upgrade', (request, socket, head) => {
             msgCount++;
             const data = raw.toString('utf-8');
             console.log(`Recv #${msgCount}: ${data}`);
-            // Echo back
             const reply = JSON.stringify({ echo: JSON.parse(data), seq: msgCount, ts: Date.now() });
             ws.send(reply, (err) => {
                 if (err) console.error(`Send error: ${err.message}`);
@@ -91,5 +94,6 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Echo WS test server on port ${PORT}`);
+    console.log(`Echo+Express WS test server on port ${PORT}`);
+    console.log(`Static files: ${path.join(__dirname, 'public')}`);
 });
