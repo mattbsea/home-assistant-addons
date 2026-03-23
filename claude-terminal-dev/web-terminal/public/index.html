@@ -226,76 +226,79 @@
 
         terminal.open(wrapper);
 
-        // Custom link provider that handles URLs spanning soft-wrapped lines.
-        // xterm-addon-web-links only matches within a single buffer row, so long
-        // URLs (like OAuth) that wrap across rows only get partially linked.
-        // This provider joins wrapped rows back into one logical line first.
+        // Custom link provider that handles URLs spanning multiple terminal rows.
+        // Works for both soft-wrapped (isWrapped) and hard-wrapped (app newlines)
+        // URLs like long OAuth authorize links.
         terminal.registerLinkProvider({
             provideLinks: function(y, callback) {
                 var buf = terminal.buffer.active;
 
-                // Find start of logical line (0-indexed buffer row)
-                var start = y - 1;
-                while (start > 0 && buf.getLine(start) && buf.getLine(start).isWrapped) {
-                    start--;
+                function lineText(row) {
+                    var l = buf.getLine(row);
+                    return l ? l.translateToString(true) : '';
                 }
 
-                // Collect all rows of this logical line, tracking per-row lengths
-                var lineData = [];
-                var fullText = '';
-                var i = start;
-                while (i < buf.length) {
-                    var bl = buf.getLine(i);
-                    if (!bl) break;
-                    if (i > start && !bl.isWrapped) break;
-                    var text = bl.translateToString(false);
-                    lineData.push({ row: i, offset: fullText.length, length: text.length });
-                    fullText += text;
-                    i++;
+                // Walk backward from hovered line to find https://
+                // Stop at blank lines or lines containing whitespace (not URL text)
+                var httpRow = -1, httpCol = -1;
+                for (var r = y - 1; r >= 0 && r >= y - 21; r--) {
+                    var t = lineText(r);
+                    var idx = t.search(/https?:\/\//);
+                    if (idx >= 0) { httpRow = r; httpCol = idx; break; }
+                    if (t.length === 0 || /\s/.test(t)) break;
                 }
 
-                // Find URLs in the joined text
-                var re = /https?:\/\/[^\s<>"')\]]+/g;
-                var m;
-                var links = [];
+                if (httpRow < 0) { callback(undefined); return; }
 
-                while ((m = re.exec(fullText)) !== null) {
-                    var urlStart = m.index;
-                    var urlEnd = urlStart + m[0].length - 1;
+                // Extract URL from first line (stop at whitespace if present)
+                var firstPart = lineText(httpRow).substring(httpCol);
+                var wsIdx = firstPart.search(/\s/);
+                var url, lastRow;
 
-                    // Map character offsets back to buffer row/col
-                    var sRow = -1, sCol = 0, eRow = -1, eCol = 0;
-                    for (var j = 0; j < lineData.length; j++) {
-                        var ld = lineData[j];
-                        if (sRow === -1 && urlStart < ld.offset + ld.length) {
-                            sRow = ld.row;
-                            sCol = urlStart - ld.offset;
-                        }
-                        if (urlEnd < ld.offset + ld.length) {
-                            eRow = ld.row;
-                            eCol = urlEnd - ld.offset;
-                            break;
-                        }
-                    }
-
-                    if (sRow === -1 || eRow === -1) continue;
-
-                    // Only return links touching the requested line
-                    if (y - 1 >= sRow && y - 1 <= eRow) {
-                        (function(url) {
-                            links.push({
-                                range: {
-                                    start: { x: sCol + 1, y: sRow + 1 },
-                                    end: { x: eCol + 2, y: eRow + 1 }
-                                },
-                                text: url,
-                                activate: function() { window.open(url, '_blank'); }
-                            });
-                        })(m[0]);
+                if (wsIdx >= 0) {
+                    // URL ends on this line (whitespace found after URL)
+                    url = firstPart.substring(0, wsIdx);
+                    lastRow = httpRow;
+                } else {
+                    // URL reaches end of line — check continuation rows
+                    url = firstPart;
+                    lastRow = httpRow;
+                    for (var r = httpRow + 1; r < buf.length && r <= httpRow + 20; r++) {
+                        var t = lineText(r);
+                        if (t.length === 0 || /\s/.test(t)) break;
+                        url += t;
+                        lastRow = r;
                     }
                 }
 
-                callback(links.length > 0 ? links : undefined);
+                // Trim trailing non-URL punctuation
+                url = url.replace(/[)\].,;:!?'"]+$/, '');
+
+                // Verify hovered line is within the URL range
+                if (y - 1 < httpRow || y - 1 > lastRow) {
+                    callback(undefined); return;
+                }
+
+                // Compute end column on the last row
+                var endCol;
+                if (lastRow === httpRow) {
+                    endCol = httpCol + url.length - 1;
+                } else {
+                    var prior = firstPart.length;
+                    for (var r = httpRow + 1; r < lastRow; r++) {
+                        prior += lineText(r).length;
+                    }
+                    endCol = url.length - prior - 1;
+                }
+
+                callback([{
+                    range: {
+                        start: { x: httpCol + 1, y: httpRow + 1 },
+                        end: { x: endCol + 2, y: lastRow + 1 }
+                    },
+                    text: url,
+                    activate: function() { window.open(url, '_blank'); }
+                }]);
             }
         });
 
