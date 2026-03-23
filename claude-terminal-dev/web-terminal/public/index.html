@@ -317,72 +317,70 @@
     // New tab menu
     let menuOpen = false;
 
-    newTabBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        menuOpen = !menuOpen;
-        if (menuOpen) {
-            var rect = newTabBtn.getBoundingClientRect();
-            newTabMenu.style.top = rect.bottom + 'px';
-            newTabMenu.style.left = rect.left + 'px';
-        }
-        newTabMenu.classList.toggle('open', menuOpen);
-    });
+    function openMenu() {
+        menuOpen = true;
+        var rect = newTabBtn.getBoundingClientRect();
+        newTabMenu.style.top = rect.bottom + 'px';
+        newTabMenu.style.left = rect.left + 'px';
+        newTabMenu.classList.add('open');
+    }
 
-    document.addEventListener('click', function() {
+    function closeMenu() {
         menuOpen = false;
         newTabMenu.classList.remove('open');
+    }
+
+    function createTab(action) {
+        var tabId = genId();
+        switch (action) {
+            case 'claude':
+                send({ type: 'create', tabId: tabId, command: 'claude', args: [], label: 'Claude' });
+                break;
+            case 'continue':
+                send({ type: 'create', tabId: tabId, command: 'claude', args: ['-c'], label: 'Claude (continue)' });
+                break;
+            case 'resume':
+                send({ type: 'create', tabId: tabId, command: 'claude', args: ['-r'], label: 'Claude (resume)' });
+                break;
+            case 'shell':
+                send({ type: 'create', tabId: tabId, command: '/bin/bash', args: [], label: 'Shell' });
+                break;
+        }
+    }
+
+    // Tap "+" to toggle menu; use touchend to avoid mobile click delays
+    newTabBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (menuOpen) { closeMenu(); } else { openMenu(); }
+    });
+    newTabBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // On touch devices, touchend already handled it
+        if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+        if (menuOpen) { closeMenu(); } else { openMenu(); }
+    });
+
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('touchend', function(e) {
+        if (menuOpen && !newTabBtn.contains(e.target)) closeMenu();
     });
 
     // Menu item handlers
     newTabMenu.addEventListener('click', function(e) {
-        const item = e.target.closest('.menu-item');
+        var item = e.target.closest('.menu-item');
         if (!item) return;
-
         e.stopPropagation();
-        menuOpen = false;
-        newTabMenu.classList.remove('open');
-
-        const action = item.dataset.action;
-        const tabId = genId();
-
-        switch (action) {
-            case 'claude':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: [],
-                    label: 'Claude',
-                });
-                break;
-            case 'continue':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: ['-c'],
-                    label: 'Claude (continue)',
-                });
-                break;
-            case 'resume':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: ['-r'],
-                    label: 'Claude (resume)',
-                });
-                break;
-            case 'shell':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: '/bin/bash',
-                    args: [],
-                    label: 'Shell',
-                });
-                break;
-        }
+        closeMenu();
+        createTab(item.dataset.action);
+    });
+    newTabMenu.addEventListener('touchend', function(e) {
+        var item = e.target.closest('.menu-item');
+        if (!item) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+        createTab(item.dataset.action);
     });
 
     // Handle window resize
