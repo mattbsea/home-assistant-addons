@@ -28,7 +28,6 @@
     const terminalContainer = document.getElementById('terminal-container');
     const connectionStatus = document.getElementById('connection-status');
 
-    const STORAGE_KEY = 'claude-terminal-active-tab';
     const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper, label, hasUnread }
     let activeTabId = null;
     let ws = null;
@@ -102,11 +101,9 @@
                             send({ type: 'replay', tabId: tab.tabId });
                         }
                     }
-                    // Activate saved tab or first tab
+                    // Activate server-remembered tab or first tab
                     if (!activeTabId && msg.tabs.length > 0) {
-                        var saved = null;
-                        try { saved = sessionStorage.getItem(STORAGE_KEY); } catch(e) {}
-                        var target = (saved && tabs.has(saved)) ? saved : msg.tabs[0].tabId;
+                        var target = (msg.activeTabId && tabs.has(msg.activeTabId)) ? msg.activeTabId : msg.tabs[0].tabId;
                         switchTab(target);
                     }
                 }
@@ -284,8 +281,8 @@
                 next.labelEl.textContent = next.label;
             }
 
-            // Remember selected tab
-            try { sessionStorage.setItem(STORAGE_KEY, tabId); } catch(e) {}
+            // Tell server which tab is active
+            send({ type: 'select', tabId: tabId });
 
             // Fit after becoming visible
             requestAnimationFrame(function() {
