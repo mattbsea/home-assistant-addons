@@ -122,6 +122,7 @@
                     if (msg.tabId !== activeTabId && !tab.hasUnread) {
                         tab.hasUnread = true;
                         tab.labelEl.textContent = '* ' + tab.label;
+                        tab.el.classList.add('unread');
                     }
                 }
                 break;
@@ -279,6 +280,7 @@
             if (next.hasUnread) {
                 next.hasUnread = false;
                 next.labelEl.textContent = next.label;
+                next.el.classList.remove('unread');
             }
 
             // Tell server which tab is active
