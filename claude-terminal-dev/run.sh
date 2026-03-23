@@ -8,15 +8,15 @@ set -o pipefail
 init_environment() {
     # Use /data exclusively - guaranteed writable by HA Supervisor
     local data_home="/data/home"
-    local config_dir="/data/.config"
-    local cache_dir="/data/.cache"
-    local state_dir="/data/.local/state"
-    local claude_config_dir="/data/.config/claude"
+    local config_dir="/data/home/.config"
+    local cache_dir="/data/home/.cache"
+    local state_dir="/data/home/.local/state"
+    local claude_config_dir="/data/home/.config/claude"
 
     bashio::log.info "Initializing Claude Code environment in /data..."
 
     # Create all required directories
-    if ! mkdir -p "$data_home" "$config_dir/claude" "$cache_dir" "$state_dir" "/data/.local"; then
+    if ! mkdir -p "$data_home" "$config_dir/claude" "$cache_dir" "$state_dir" "$data_home/.local"; then
         bashio::log.error "Failed to create directories in /data"
         exit 1
     fi
@@ -63,11 +63,11 @@ init_environment() {
     export XDG_CONFIG_HOME="$config_dir"
     export XDG_CACHE_HOME="$cache_dir"
     export XDG_STATE_HOME="$state_dir"
-    export XDG_DATA_HOME="/data/.local/share"
+    export XDG_DATA_HOME="$data_home/.local/share"
 
     # Claude-specific environment variables
     export ANTHROPIC_CONFIG_DIR="$claude_config_dir"
-    export ANTHROPIC_HOME="/data"
+    export ANTHROPIC_HOME="$data_home"
 
     # Migrate any existing authentication files from legacy locations
     migrate_legacy_auth_files "$claude_config_dir"
