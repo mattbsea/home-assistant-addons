@@ -88,7 +88,7 @@ function attachPtyHandlers(session, ptyProcess) {
 
 function createSession(tabId, { command, args, cwd, label, restart, restartDelay, env }) {
     const shell = command || '/bin/bash';
-    const shellArgs = args || [];
+    const shellArgs = (args || []).filter(a => a != null);
     const workDir = cwd || process.env.HOME || '/home/claude';
 
     let ptyProcess;

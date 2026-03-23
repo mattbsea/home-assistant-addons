@@ -334,11 +334,11 @@ build_tab_config() {
             # Build args array: split tab_args + append prompt as positional arg
             local args_json="[]"
             if [ -n "$tab_args" ] && [ -n "$tab_prompt" ]; then
-                args_json=$(printf '%s\n%s' "$tab_args" "$tab_prompt" | jq -R -s 'split("\n") | [.[0] | split(" ") | map(select(length > 0))[], .[1]]')
+                args_json=$(jq -n --arg a "$tab_args" --arg p "$tab_prompt" '$a | split(" ") | map(select(length > 0)) + [$p]')
             elif [ -n "$tab_args" ]; then
-                args_json=$(echo "$tab_args" | jq -R 'split(" ") | map(select(length > 0))')
+                args_json=$(jq -n --arg a "$tab_args" '$a | split(" ") | map(select(length > 0))')
             elif [ -n "$tab_prompt" ]; then
-                args_json=$(echo "$tab_prompt" | jq -R '[.]')
+                args_json=$(jq -n --arg p "$tab_prompt" '[$p]')
             fi
 
             bashio::log.info "  Claude tab '${label}' in ${directory}"
