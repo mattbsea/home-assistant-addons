@@ -200,20 +200,9 @@ const clients = new Set();
 
 function broadcastToClients(message) {
     const data = JSON.stringify(message);
-    const msgType = message.type || 'unknown';
-    const dataLen = data.length;
     for (const ws of clients) {
         if (ws.readyState === 1) {
-            console.log(`SEND [${msgType}] ${dataLen} bytes to client (readyState=${ws.readyState})`);
-            try {
-                ws.send(data, (err) => {
-                    if (err) {
-                        console.error(`SEND ERROR [${msgType}]: ${err.message}`);
-                    }
-                });
-            } catch (e) {
-                console.error(`SEND THROW [${msgType}]: ${e.message}`);
-            }
+            ws.send(data);
         }
     }
 }
@@ -233,20 +222,6 @@ app.get('/api/config', (req, res) => {
     res.json({ tabs: tabConfig });
 });
 
-// Diagnostic endpoint - browser POSTs its state here via fetch (no WS needed)
-app.post('/api/diag', express.json(), (req, res) => {
-    console.log(`BROWSER DIAG: ${JSON.stringify(req.body)}`);
-    res.json({ ok: true });
-});
-
-app.get('/api/diag', (req, res) => {
-    res.json({
-        clients: clients.size,
-        sessions: sessions.size,
-        uptime: process.uptime(),
-    });
-});
-
 // --- HTTP server + WebSocket server (ws library) ---
 
 const server = http.createServer(app);
@@ -257,29 +232,24 @@ const wss = new WebSocketServer({
 });
 
 server.on('upgrade', (request, socket, head) => {
-    const pathname = new URL(request.url, 'http://localhost').pathname;
-    console.log(`WebSocket upgrade: path=${pathname}`);
-
     wss.handleUpgrade(request, socket, head, (ws) => {
         handleConnection(ws);
     });
 });
 
 function handleConnection(ws) {
-    // Do NOT add to clients set yet - the HA ingress two-hop proxy
-    // (Core -> Supervisor -> addon) needs time to establish relay.
-    // Adding to clients immediately would cause broadcastToClients to
-    // send PTY output before the proxy is ready. We add to clients
-    // only after the first message arrives (proving the proxy is up).
+    // Do NOT add to clients set yet - the HA ingress proxy chain
+    // needs time to establish relay. We add to clients only after
+    // the first message arrives (proving the proxy is up).
     let ready = false;
-    console.log(`WebSocket client connected (pending ready)`);
 
     createInitialTabs();
 
     ws.on('message', (raw) => {
         if (!ready) {
             ready = true;
-            console.log(`WebSocket client ready (NOT yet in broadcast set)`);
+            clients.add(ws);
+            console.log(`WebSocket client ready (${clients.size} active)`);
         }
         let msg;
         try {
@@ -353,32 +323,18 @@ function handleConnection(ws) {
                 break;
             }
 
-            case 'subscribe': {
-                if (!clients.has(ws)) {
-                    clients.add(ws);
-                    console.log(`Client subscribed to broadcasts (${clients.size} active)`);
-                }
-                break;
-            }
-
             case 'list': {
-                const listResp = JSON.stringify({
+                ws.send(JSON.stringify({
                     type: 'sessions',
                     tabs: getSessionList(),
                     config: tabConfig,
-                });
-                console.log(`SEND [sessions] ${listResp.length} bytes direct`);
-                ws.send(listResp, (err) => {
-                    if (err) console.error(`SEND ERROR [sessions]: ${err.message}`);
-                    else console.log(`SEND [sessions] callback OK`);
-                });
+                }));
                 break;
             }
         }
     });
 
     ws.on('close', (code, reason) => {
-        console.log(`WS CLOSE: code=${code} reason="${reason}" readyState=${ws.readyState}`);
         clients.delete(ws);
         console.log(`WebSocket client disconnected: code=${code} (${clients.size} remaining)`);
     });
