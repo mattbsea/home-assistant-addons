@@ -226,26 +226,31 @@
 
         terminal.open(wrapper);
 
-        // Custom link provider that handles URLs spanning wrapped lines
+        // Custom link provider that handles URLs spanning soft-wrapped lines.
+        // xterm-addon-web-links only matches within a single buffer row, so long
+        // URLs (like OAuth) that wrap across rows only get partially linked.
+        // This provider joins wrapped rows back into one logical line first.
         terminal.registerLinkProvider({
             provideLinks: function(y, callback) {
                 var buf = terminal.buffer.active;
-                var cols = terminal.cols;
 
-                // Find start of logical line (0-indexed)
+                // Find start of logical line (0-indexed buffer row)
                 var start = y - 1;
                 while (start > 0 && buf.getLine(start) && buf.getLine(start).isWrapped) {
                     start--;
                 }
 
-                // Collect all rows of this logical line
-                var i = start;
+                // Collect all rows of this logical line, tracking per-row lengths
+                var lineData = [];
                 var fullText = '';
+                var i = start;
                 while (i < buf.length) {
                     var bl = buf.getLine(i);
                     if (!bl) break;
                     if (i > start && !bl.isWrapped) break;
-                    fullText += bl.translateToString(false);
+                    var text = bl.translateToString(false);
+                    lineData.push({ row: i, offset: fullText.length, length: text.length });
+                    fullText += text;
                     i++;
                 }
 
@@ -255,11 +260,25 @@
                 var links = [];
 
                 while ((m = re.exec(fullText)) !== null) {
-                    var sRow = start + Math.floor(m.index / cols);
-                    var sCol = m.index % cols;
-                    var endOffset = m.index + m[0].length - 1;
-                    var eRow = start + Math.floor(endOffset / cols);
-                    var eCol = endOffset % cols;
+                    var urlStart = m.index;
+                    var urlEnd = urlStart + m[0].length - 1;
+
+                    // Map character offsets back to buffer row/col
+                    var sRow = -1, sCol = 0, eRow = -1, eCol = 0;
+                    for (var j = 0; j < lineData.length; j++) {
+                        var ld = lineData[j];
+                        if (sRow === -1 && urlStart < ld.offset + ld.length) {
+                            sRow = ld.row;
+                            sCol = urlStart - ld.offset;
+                        }
+                        if (urlEnd < ld.offset + ld.length) {
+                            eRow = ld.row;
+                            eCol = urlEnd - ld.offset;
+                            break;
+                        }
+                    }
+
+                    if (sRow === -1 || eRow === -1) continue;
 
                     // Only return links touching the requested line
                     if (y - 1 >= sRow && y - 1 <= eRow) {

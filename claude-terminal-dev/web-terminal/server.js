@@ -212,12 +212,19 @@ function broadcastToClients(message) {
 
 const app = express();
 
+// Prevent browser from caching HTML so deploys take effect immediately
+app.use((req, res, next) => {
+    if (req.path === '/' || req.path.endsWith('.html') || req.path.endsWith('.css') || req.path.endsWith('.js')) {
+        res.set('Cache-Control', 'no-store');
+    }
+    next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const nodeModulesDir = path.join(__dirname, 'node_modules');
 app.use('/xterm', express.static(path.join(nodeModulesDir, '@xterm/xterm')));
 app.use('/xterm-addon-fit', express.static(path.join(nodeModulesDir, '@xterm/addon-fit')));
-app.use('/xterm-addon-web-links', express.static(path.join(nodeModulesDir, '@xterm/addon-web-links')));
 
 app.get('/api/config', (req, res) => {
     res.json({ tabs: tabConfig });
