@@ -293,36 +293,36 @@ build_tab_config() {
         tabs_json="${tabs_json}{\"label\":\"Shell\",\"command\":\"/bin/bash\",\"args\":[],\"cwd\":\"${HOME}\",\"autoStart\":true}"
     fi
 
-    # Add remote control directories
-    if bashio::config.has_value 'remote_control_directories'; then
+    # Add configured Claude tabs
+    if bashio::config.has_value 'claude_tabs'; then
         local count
-        count=$(bashio::config 'remote_control_directories | length')
+        count=$(bashio::config 'claude_tabs | length')
 
         local i
         for ((i = 0; i < count; i++)); do
-            local directory rc_args rc_prompt
-            directory=$(bashio::config "remote_control_directories[${i}].directory")
-            rc_args=$(bashio::config "remote_control_directories[${i}].args" '')
-            rc_prompt=$(bashio::config "remote_control_directories[${i}].prompt" '')
+            local directory tab_args tab_prompt
+            directory=$(bashio::config "claude_tabs[${i}].directory")
+            tab_args=$(bashio::config "claude_tabs[${i}].args" '')
+            tab_prompt=$(bashio::config "claude_tabs[${i}].prompt" '')
 
             # Trim leading/trailing whitespace from directory and args
             directory=$(echo "$directory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            rc_args=$(echo "$rc_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            tab_args=$(echo "$tab_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
             # Normalize em-dashes to double hyphens
-            rc_args=$(echo "$rc_args" | sed 's/—/--/g')
+            tab_args=$(echo "$tab_args" | sed 's/—/--/g')
 
             # Handle bashio "null" for unset optional values
-            if [ "$rc_prompt" = "null" ] || [ -z "$rc_prompt" ]; then
-                rc_prompt=""
+            if [ "$tab_prompt" = "null" ] || [ -z "$tab_prompt" ]; then
+                tab_prompt=""
             fi
-            if [ "$rc_args" = "null" ] || [ -z "$rc_args" ]; then
-                rc_args=""
+            if [ "$tab_args" = "null" ] || [ -z "$tab_args" ]; then
+                tab_args=""
             fi
 
             # Validate directory exists
             if [ ! -d "$directory" ]; then
-                bashio::log.warning "Remote control directory does not exist, creating: ${directory}"
+                bashio::log.warning "Claude tab directory does not exist, creating: ${directory}"
                 mkdir -p "$directory"
                 chown claude:claude "$directory"
             fi
@@ -331,21 +331,21 @@ build_tab_config() {
             local label
             label=$(basename "$directory")
 
-            # Build args array: split rc_args + append prompt as positional arg
+            # Build args array: split tab_args + append prompt as positional arg
             local args_json="[]"
-            if [ -n "$rc_args" ] && [ -n "$rc_prompt" ]; then
-                args_json=$(printf '%s\n%s' "$rc_args" "$rc_prompt" | jq -R -s 'split("\n") | [.[0] | split(" ") | map(select(length > 0))[], .[1]]')
-            elif [ -n "$rc_args" ]; then
-                args_json=$(echo "$rc_args" | jq -R 'split(" ") | map(select(length > 0))')
-            elif [ -n "$rc_prompt" ]; then
-                args_json=$(echo "$rc_prompt" | jq -R '[.]')
+            if [ -n "$tab_args" ] && [ -n "$tab_prompt" ]; then
+                args_json=$(printf '%s\n%s' "$tab_args" "$tab_prompt" | jq -R -s 'split("\n") | [.[0] | split(" ") | map(select(length > 0))[], .[1]]')
+            elif [ -n "$tab_args" ]; then
+                args_json=$(echo "$tab_args" | jq -R 'split(" ") | map(select(length > 0))')
+            elif [ -n "$tab_prompt" ]; then
+                args_json=$(echo "$tab_prompt" | jq -R '[.]')
             fi
 
-            bashio::log.info "  Remote control tab '${label}' in ${directory}"
+            bashio::log.info "  Claude tab '${label}' in ${directory}"
             tabs_json="${tabs_json},{\"label\":\"${label}\",\"command\":\"claude\",\"args\":${args_json},\"cwd\":\"${directory}\",\"autoStart\":true,\"restart\":true,\"restartDelay\":32}"
         done
 
-        bashio::log.info "Configured ${count} remote control tab(s)"
+        bashio::log.info "Configured ${count} claude tab(s)"
     fi
 
     tabs_json="${tabs_json}]"
