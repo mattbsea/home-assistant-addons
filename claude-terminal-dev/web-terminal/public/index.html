@@ -320,6 +320,11 @@
     newTabBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         menuOpen = !menuOpen;
+        if (menuOpen) {
+            var rect = newTabBtn.getBoundingClientRect();
+            newTabMenu.style.top = rect.bottom + 'px';
+            newTabMenu.style.left = rect.left + 'px';
+        }
         newTabMenu.classList.toggle('open', menuOpen);
     });
 
