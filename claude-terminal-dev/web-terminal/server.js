@@ -46,6 +46,7 @@ class RingBuffer {
 
 const sessions = new Map();
 let initialTabsCreated = false;
+let activeTabId = null;
 
 function generateId() {
     return Math.random().toString(36).substring(2, 10);
@@ -323,11 +324,19 @@ function handleConnection(ws) {
                 break;
             }
 
+            case 'select': {
+                if (msg.tabId && sessions.has(msg.tabId)) {
+                    activeTabId = msg.tabId;
+                }
+                break;
+            }
+
             case 'list': {
                 ws.send(JSON.stringify({
                     type: 'sessions',
                     tabs: getSessionList(),
                     config: tabConfig,
+                    activeTabId: activeTabId,
                 }));
                 break;
             }
