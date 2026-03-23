@@ -348,40 +348,31 @@
         }
     }
 
-    // Tap "+" to toggle menu; use touchend to avoid mobile click delays
-    newTabBtn.addEventListener('touchend', function(e) {
+    // Use pointerup for unified mouse+touch handling across all platforms
+    function onBtnActivate(e) {
         e.preventDefault();
         e.stopPropagation();
         if (menuOpen) { closeMenu(); } else { openMenu(); }
-    });
-    newTabBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        // On touch devices, touchend already handled it
-        if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
-        if (menuOpen) { closeMenu(); } else { openMenu(); }
-    });
+    }
+    newTabBtn.addEventListener('pointerup', onBtnActivate);
+    // Fallback for browsers without pointer events
+    newTabBtn.addEventListener('click', function(e) { e.stopPropagation(); });
 
-    document.addEventListener('click', closeMenu);
-    document.addEventListener('touchend', function(e) {
+    // Close menu when tapping elsewhere
+    document.addEventListener('pointerup', function(e) {
         if (menuOpen && !newTabBtn.contains(e.target)) closeMenu();
     });
 
     // Menu item handlers
-    newTabMenu.addEventListener('click', function(e) {
-        var item = e.target.closest('.menu-item');
-        if (!item) return;
-        e.stopPropagation();
-        closeMenu();
-        createTab(item.dataset.action);
-    });
-    newTabMenu.addEventListener('touchend', function(e) {
+    function onMenuActivate(e) {
         var item = e.target.closest('.menu-item');
         if (!item) return;
         e.preventDefault();
         e.stopPropagation();
         closeMenu();
         createTab(item.dataset.action);
-    });
+    }
+    newTabMenu.addEventListener('pointerup', onMenuActivate);
 
     // Handle window resize
     let resizeTimeout;
