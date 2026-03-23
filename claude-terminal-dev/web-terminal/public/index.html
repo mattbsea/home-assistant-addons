@@ -28,12 +28,12 @@
     const terminalContainer = document.getElementById('terminal-container');
     const connectionStatus = document.getElementById('connection-status');
 
-    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper }
+    const STORAGE_KEY = 'claude-terminal-active-tab';
+    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper, label, hasUnread }
     let activeTabId = null;
     let ws = null;
     let reconnectAttempts = 0;
     let tabConfig = [];
-    let claudeArgs = '';
 
     // Generate a short random ID
     function genId() {
@@ -102,9 +102,12 @@
                             send({ type: 'replay', tabId: tab.tabId });
                         }
                     }
-                    // Activate first tab if none active
+                    // Activate saved tab or first tab
                     if (!activeTabId && msg.tabs.length > 0) {
-                        switchTab(msg.tabs[0].tabId);
+                        var saved = null;
+                        try { saved = sessionStorage.getItem(STORAGE_KEY); } catch(e) {}
+                        var target = (saved && tabs.has(saved)) ? saved : msg.tabs[0].tabId;
+                        switchTab(target);
                     }
                 }
                 break;
@@ -119,6 +122,10 @@
                 const tab = tabs.get(msg.tabId);
                 if (tab) {
                     tab.terminal.write(msg.data);
+                    if (msg.tabId !== activeTabId && !tab.hasUnread) {
+                        tab.hasUnread = true;
+                        tab.labelEl.textContent = '* ' + tab.label;
+                    }
                 }
                 break;
             }
@@ -237,11 +244,13 @@
 
         tabs.set(tabId, {
             el: tabEl,
+            labelEl: labelEl,
             terminal: terminal,
             fitAddon: fitAddon,
             wrapper: wrapper,
             status: statusEl,
             label: label,
+            hasUnread: false,
         });
 
         if (activate) {
@@ -268,6 +277,15 @@
             next.el.classList.add('active');
             next.wrapper.classList.add('active');
             activeTabId = tabId;
+
+            // Clear unread indicator
+            if (next.hasUnread) {
+                next.hasUnread = false;
+                next.labelEl.textContent = next.label;
+            }
+
+            // Remember selected tab
+            try { sessionStorage.setItem(STORAGE_KEY, tabId); } catch(e) {}
 
             // Fit after becoming visible
             requestAnimationFrame(function() {
