@@ -8,7 +8,7 @@ const { WebSocketServer } = require('ws');
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7682', 10);
 
 const server = http.createServer((req, res) => {
-    if (req.url === '/echotest') {
+    if (req.url === '/' || req.url === '/echotest') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`<!DOCTYPE html>
 <html><head><title>Echo WS Test</title></head><body>
