@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WS Test with xterm.js load</title>
+    <link rel="stylesheet" href="/xterm/css/xterm.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<pre id="log" style="color:#ccc;background:#1e1e1e;padding:20px;margin:0;height:100vh;overflow:auto;font-size:14px;"></pre>
+
+<script src="/xterm/lib/xterm.js"></script>
+<script src="/xterm-addon-fit/lib/addon-fit.js"></script>
+<script src="/xterm-addon-web-links/lib/addon-web-links.js"></script>
+<script>
+(function() {
+    var log = document.getElementById('log');
+    function L(m) { log.textContent += m + '\n'; log.scrollTop = log.scrollHeight; }
+
+    L('Scripts loaded: Terminal=' + (typeof Terminal) + ' FitAddon=' + (typeof FitAddon));
+
+    var basePath = location.pathname.replace(/\/test-with-xterm\.html$/, '').replace(/\/$/, '');
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var wsUrl = proto + '//' + location.host + basePath + '/ws';
+
+    L('Connecting: ' + wsUrl);
+    var ws = new WebSocket(wsUrl);
+    var t0 = Date.now();
+    var n = 0;
+
+    ws.onopen = function() {
+        L('[' + (Date.now()-t0) + 'ms] OPEN');
+        ws.send(JSON.stringify({id: ++n, msg: 'hello'}));
+        L('[' + (Date.now()-t0) + 'ms] SENT hello');
+    };
+
+    ws.onmessage = function(e) {
+        L('[' + (Date.now()-t0) + 'ms] RECV: ' + e.data);
+        setTimeout(function() {
+            if (ws.readyState === 1) {
+                ws.send(JSON.stringify({id: ++n, msg: 'ping'}));
+                L('[' + (Date.now()-t0) + 'ms] SENT ping #' + n);
+            }
+        }, 2000);
+    };
+
+    ws.onclose = function(e) {
+        L('[' + (Date.now()-t0) + 'ms] CLOSE code=' + e.code + ' reason=' + e.reason + ' clean=' + e.wasClean);
+    };
+
+    ws.onerror = function() {
+        L('[' + (Date.now()-t0) + 'ms] ERROR');
+    };
+})();
+</script>
+</body>
+</html>
