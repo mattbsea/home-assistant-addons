@@ -377,7 +377,7 @@ start_web_terminal() {
         if [ -s "$NVM_DIR/nvm.sh" ]; then
             . "$NVM_DIR/nvm.sh"
         fi
-        node /opt/web-terminal/server.js
+        node /opt/web-terminal/echo-test.js
     '
 }
 
