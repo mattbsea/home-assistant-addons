@@ -128,6 +128,16 @@ migrate_legacy_auth_files() {
     fi
 }
 
+# Install Bun runtime
+install_bun() {
+    bashio::log.info "Installing Bun runtime..."
+    if gosu claude bash -c 'curl -fsSL https://bun.sh/install | bash' 2>&1; then
+        bashio::log.info "Bun installed successfully"
+    else
+        bashio::log.warning "Bun installation failed, continuing without Bun"
+    fi
+}
+
 # Update Claude binary to the latest version
 update_claude() {
     bashio::log.info "Updating Claude Code to latest version..."
@@ -398,6 +408,7 @@ main() {
     run_health_check
 
     init_environment
+    install_bun
     update_claude
     verify_node
     install_tools
