@@ -78,7 +78,7 @@ function attachPtyHandlers(session, ptyProcess) {
             const delay = session.restartDelay;
             console.log(`Restarting tab "${session.label}" in ${delay}s...`);
             const msg = `\r\n\x1b[33mRestarting in ${delay} seconds...\x1b[0m\r\n`;
-            session.ringBuffer.write(msg);
+            session.ringBuffer.append(msg);
             broadcastToClients({ type: 'output', tabId: session.tabId, data: msg });
             setTimeout(() => {
                 if (sessions.has(session.tabId)) {
