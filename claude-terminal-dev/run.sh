@@ -131,7 +131,7 @@ migrate_legacy_auth_files() {
 # Update Claude binary to the latest version
 update_claude() {
     bashio::log.info "Updating Claude Code to latest version..."
-    if gosu claude bash -c 'curl -fsSL https://claude.ai/install.sh | bash' 2>&1; then
+    if gosu claude bash -c 'export PATH="$HOME/.local/bin:$PATH" && curl -fsSL https://claude.ai/install.sh | bash' 2>&1; then
         bashio::log.info "Claude Code updated successfully"
     else
         bashio::log.warning "Claude Code update failed, continuing with existing version"
