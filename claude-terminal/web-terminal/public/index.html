@@ -27,7 +27,7 @@
     const terminalContainer = document.getElementById('terminal-container');
     const connectionStatus = document.getElementById('connection-status');
 
-    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper, label, hasUnread }
+    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper, label, hasUnread, atBottom }
     let activeTabId = null;
     let ws = null;
     let reconnectAttempts = 0;
@@ -117,7 +117,12 @@
             case 'output': {
                 const tab = tabs.get(msg.tabId);
                 if (tab) {
-                    tab.terminal.write(msg.data);
+                    var shouldScroll = tab.isAtBottom();
+                    tab.terminal.write(msg.data, function() {
+                        if (shouldScroll) {
+                            tab.terminal.scrollToBottom();
+                        }
+                    });
                     if (msg.tabId !== activeTabId && !tab.hasUnread) {
                         tab.hasUnread = true;
                         tab.labelEl.textContent = '* ' + tab.label;
@@ -130,7 +135,9 @@
             case 'replay': {
                 const tab = tabs.get(msg.tabId);
                 if (tab && msg.data) {
-                    tab.terminal.write(msg.data);
+                    tab.terminal.write(msg.data, function() {
+                        tab.terminal.scrollToBottom();
+                    });
                 }
                 break;
             }
@@ -303,6 +310,16 @@
             }
         });
 
+        // Track whether the viewport is at the bottom of the scrollback.
+        // When it is, we auto-scroll on new output so the user always
+        // sees the latest data.  When the user scrolls up to review
+        // history we leave the viewport alone.
+        var atBottom = true;
+        terminal.onScroll(function() {
+            var buf = terminal.buffer.active;
+            atBottom = (buf.viewportY >= buf.baseY);
+        });
+
         // Handle input
         terminal.onData(function(data) {
             send({ type: 'input', tabId: tabId, data: data });
@@ -313,7 +330,7 @@
             send({ type: 'resize', tabId: tabId, cols: size.cols, rows: size.rows });
         });
 
-        tabs.set(tabId, {
+        var tabState = {
             el: tabEl,
             labelEl: labelEl,
             terminal: terminal,
@@ -322,7 +339,9 @@
             status: statusEl,
             label: label,
             hasUnread: false,
-        });
+            isAtBottom: function() { return atBottom; },
+        };
+        tabs.set(tabId, tabState);
 
         if (activate) {
             switchTab(tabId);
