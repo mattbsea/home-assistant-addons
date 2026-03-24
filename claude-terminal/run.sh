@@ -8,15 +8,15 @@ set -o pipefail
 init_environment() {
     # Use /data exclusively - guaranteed writable by HA Supervisor
     local data_home="/data/home"
-    local config_dir="/data/.config"
-    local cache_dir="/data/.cache"
-    local state_dir="/data/.local/state"
-    local claude_config_dir="/data/.config/claude"
+    local config_dir="/data/home/.config"
+    local cache_dir="/data/home/.cache"
+    local state_dir="/data/home/.local/state"
+    local claude_config_dir="/data/home/.config/claude"
 
     bashio::log.info "Initializing Claude Code environment in /data..."
 
     # Create all required directories
-    if ! mkdir -p "$data_home" "$config_dir/claude" "$cache_dir" "$state_dir" "/data/.local"; then
+    if ! mkdir -p "$data_home" "$config_dir/claude" "$cache_dir" "$state_dir" "$data_home/.local"; then
         bashio::log.error "Failed to create directories in /data"
         exit 1
     fi
@@ -27,6 +27,17 @@ init_environment() {
     # Persist /home/claude by symlinking it to /data/home
     # This makes /home/claude survive container restarts as /data is a mounted volume
     if [ ! -L /home/claude ]; then
+        # Preserve build-time files (Claude CLI, nvm) before destroying /home/claude
+        # These are backed up at /opt/claude-cli during docker build
+        if [ -d /opt/claude-cli ] && [ ! -d "$data_home/.local/bin" ]; then
+            cp -a /opt/claude-cli "$data_home/.local"
+            bashio::log.info "  - Claude CLI copied from build to $data_home/.local"
+        fi
+        # Preserve nvm installation from build
+        if [ -d /home/claude/.nvm ] && [ ! -d "$data_home/.nvm" ]; then
+            cp -a /home/claude/.nvm "$data_home/.nvm"
+            bashio::log.info "  - nvm copied from build to $data_home/.nvm"
+        fi
         rm -rf /home/claude
         ln -sf "$data_home" /home/claude
         bashio::log.info "  - /home/claude -> $data_home (persistent symlink created)"
@@ -36,16 +47,15 @@ init_environment() {
     # The rm -rf above may have invalidated our working directory.
     cd "$data_home" || cd /
 
-    # Ensure Claude native binary is available at $HOME/.local/bin/claude
-    # The native installer placed it in /home/claude/.local/bin/ during build.
-    # At runtime HOME=/data/home, so Claude's self-check looks in /data/home/.local/bin/
+    # Ensure Claude native binary is on PATH via /data/home/.local/bin
     local native_bin_dir="$data_home/.local/bin"
     if [ ! -d "$native_bin_dir" ]; then
         mkdir -p "$native_bin_dir"
     fi
-    if [ -f /home/claude/.local/bin/claude ] && [ ! -f "$native_bin_dir/claude" ]; then
-        ln -sf /home/claude/.local/bin/claude "$native_bin_dir/claude"
-        bashio::log.info "  - Claude native binary linked: $native_bin_dir/claude"
+    # Symlink from /usr/local/bin if not already pointing to the right place
+    if [ -f "$native_bin_dir/claude" ]; then
+        ln -sf "$native_bin_dir/claude" /usr/local/bin/claude
+        bashio::log.info "  - Claude binary linked: /usr/local/bin/claude -> $native_bin_dir/claude"
     fi
 
     # Set XDG and application environment variables
@@ -53,24 +63,17 @@ init_environment() {
     export XDG_CONFIG_HOME="$config_dir"
     export XDG_CACHE_HOME="$cache_dir"
     export XDG_STATE_HOME="$state_dir"
-    export XDG_DATA_HOME="/data/.local/share"
+    export XDG_DATA_HOME="$data_home/.local/share"
 
     # Claude-specific environment variables
     export ANTHROPIC_CONFIG_DIR="$claude_config_dir"
-    export ANTHROPIC_HOME="/data"
+    export ANTHROPIC_HOME="$data_home"
 
     # Migrate any existing authentication files from legacy locations
     migrate_legacy_auth_files "$claude_config_dir"
 
-    # Install tmux configuration to user home directory
-    if [ -f "/opt/scripts/tmux.conf" ]; then
-        cp /opt/scripts/tmux.conf "$data_home/.tmux.conf"
-        chmod 644 "$data_home/.tmux.conf"
-        bashio::log.info "tmux configuration installed to $data_home/.tmux.conf"
-    fi
-
     # Transfer ownership of all /data files to the non-root claude user.
-    # Done last so every file created above (symlinks, tmux.conf, migrated
+    # Done last so every file created above (symlinks, migrated
     # auth files) is included in the chown.
     chown -R claude:claude /data
 
@@ -91,7 +94,7 @@ migrate_legacy_auth_files() {
     # Check common legacy locations
     local legacy_locations=(
         "/root/.config/anthropic"
-        "/root/.anthropic" 
+        "/root/.anthropic"
         "/config/claude-config"
         "/tmp/claude-config"
     )
@@ -99,19 +102,19 @@ migrate_legacy_auth_files() {
     for legacy_path in "${legacy_locations[@]}"; do
         if [ -d "$legacy_path" ] && [ "$(ls -A "$legacy_path" 2>/dev/null)" ]; then
             bashio::log.info "Migrating auth files from: $legacy_path"
-            
+
             # Copy files to new location
             if cp -r "$legacy_path"/* "$target_dir/" 2>/dev/null; then
                 # Set proper permissions
                 find "$target_dir" -type f -exec chmod 600 {} \;
-                
+
                 # Create compatibility symlink if this is a standard location
                 if [[ "$legacy_path" == "/root/.config/anthropic" ]] || [[ "$legacy_path" == "/root/.anthropic" ]]; then
                     rm -rf "$legacy_path"
                     ln -sf "$target_dir" "$legacy_path"
                     bashio::log.info "Created compatibility symlink: $legacy_path -> $target_dir"
                 fi
-                
+
                 migrated=true
                 bashio::log.info "Migration completed from: $legacy_path"
             else
@@ -128,27 +131,23 @@ migrate_legacy_auth_files() {
 # Update Claude binary to the latest version
 update_claude() {
     bashio::log.info "Updating Claude Code to latest version..."
-    if gosu claude bash -c 'curl -fsSL https://claude.ai/install.sh | bash' 2>&1; then
+    if gosu claude bash -c 'export PATH="$HOME/.local/bin:$PATH" && curl -fsSL https://claude.ai/install.sh | bash' 2>&1; then
         bashio::log.info "Claude Code updated successfully"
     else
         bashio::log.warning "Claude Code update failed, continuing with existing version"
     fi
 }
 
-# Install nvm and Node 20
-install_nvm() {
+# Verify nvm and Node.js 20 are available (installed at build time)
+verify_node() {
     local nvm_dir="/home/claude/.nvm"
-    bashio::log.info "Installing nvm and Node.js 20..."
-    if gosu claude bash -c 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 20' 2>&1; then
-        bashio::log.info "nvm and Node.js 20 installed successfully"
-        bashio::log.info "Installing happy-coder..."
-        if gosu claude bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && npx happy-coder' 2>&1; then
-            bashio::log.info "happy-coder installed successfully"
-        else
-            bashio::log.warning "happy-coder installation failed, continuing without it"
-        fi
+    if [ -s "$nvm_dir/nvm.sh" ]; then
+        bashio::log.info "nvm found at $nvm_dir"
+        local node_version
+        node_version=$(gosu claude bash -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && node --version' 2>/dev/null || echo "unknown")
+        bashio::log.info "Node.js version: $node_version"
     else
-        bashio::log.warning "nvm installation failed, continuing with system Node.js"
+        bashio::log.warning "nvm not found, falling back to system Node.js"
     fi
 }
 
@@ -156,7 +155,7 @@ install_nvm() {
 install_tools() {
     bashio::log.info "Installing additional tools..."
     apt-get update -qq
-    if ! apt-get install -y --no-install-recommends jq curl tmux; then
+    if ! apt-get install -y --no-install-recommends jq curl; then
         bashio::log.error "Failed to install required tools"
         exit 1
     fi
@@ -241,20 +240,8 @@ install_persistent_packages() {
     fi
 }
 
-# Setup session picker script
-setup_session_picker() {
-    # Copy session picker script from built-in location
-    if [ -f "/opt/scripts/claude-session-picker.sh" ]; then
-        if ! cp /opt/scripts/claude-session-picker.sh /usr/local/bin/claude-session-picker; then
-            bashio::log.error "Failed to copy claude-session-picker script"
-            exit 1
-        fi
-        chmod +x /usr/local/bin/claude-session-picker
-        bashio::log.info "Session picker script installed successfully"
-    else
-        bashio::log.warning "Session picker script not found, using auto-launch mode only"
-    fi
-
+# Setup helper scripts
+setup_scripts() {
     # Setup authentication helper if it exists
     if [ -f "/opt/scripts/claude-auth-helper.sh" ]; then
         chmod +x /opt/scripts/claude-auth-helper.sh
@@ -272,161 +259,126 @@ setup_session_picker() {
     fi
 }
 
-# Legacy monitoring functions removed - using simplified /data approach
-
-# Build the tmux launch command that creates all sessions and attaches.
-# The main session is created first, then remote control directories are
-# added as additional sessions in the same tmux server.
-get_claude_launch_command() {
+# Build tab configuration JSON from add-on config and export as env var
+build_tab_config() {
     local auto_launch_claude
     local claude_args
 
-    # Get configuration value, default to true for backward compatibility
     auto_launch_claude=$(bashio::config 'auto_launch_claude' 'true')
-
-    # Get optional extra CLI arguments for claude (may be empty)
     claude_args=$(bashio::config 'claude_args' '')
-    if [ -n "$claude_args" ]; then
-        bashio::log.info "Using additional Claude args: ${claude_args}"
-        export CLAUDE_ARGS="$claude_args"
+
+    # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
+    claude_args=$(echo "$claude_args" | sed 's/—/--/g')
+    # Handle bashio "null" for unset values
+    if [ "$claude_args" = "null" ]; then
+        claude_args=""
     fi
 
-    # Determine the main session command
-    local main_session_name="claude"
-    local main_cmd
+    bashio::log.info "Auto-launch Claude: ${auto_launch_claude}"
+    bashio::log.info "Claude args: ${claude_args:-<none>}"
+
+    # Start building JSON array
+    local tabs_json="["
+
+    # Main tab: Claude or Shell depending on auto_launch_claude
     if [ "$auto_launch_claude" = "true" ]; then
-        main_cmd="claude ${claude_args}"
-    else
-        if [ -f /usr/local/bin/claude-session-picker ]; then
-            main_session_name="claude-picker"
-            main_cmd="/usr/local/bin/claude-session-picker"
-        else
-            bashio::log.warning "Session picker not found, falling back to auto-launch"
-            main_cmd="claude ${claude_args}"
+        # Parse claude_args into a JSON array of arguments
+        local args_json="[]"
+        if [ -n "$claude_args" ]; then
+            # Convert space-separated args to JSON array
+            args_json=$(echo "$claude_args" | jq -R 'split(" ") | map(select(length > 0))')
         fi
+        tabs_json="${tabs_json}{\"label\":\"Claude\",\"command\":\"claude\",\"args\":${args_json},\"cwd\":\"${HOME}\",\"autoStart\":true}"
+    else
+        tabs_json="${tabs_json}{\"label\":\"Shell\",\"command\":\"/bin/bash\",\"args\":[],\"cwd\":\"${HOME}\",\"autoStart\":true}"
     fi
 
-    # Build a script that reuses existing sessions on reconnect or creates
-    # new ones on first launch, then attaches to the main session.
-    local cmds=""
-
-    # If the session already exists (reconnect), just attach.
-    # Otherwise create it along with any remote control windows.
-    cmds="if tmux has-session -t ${main_session_name} 2>/dev/null; then tmux attach-session -t ${main_session_name}; exit; fi"
-
-    # Create the main session (first launch)
-    cmds="${cmds}; tmux new-session -d -s ${main_session_name} '${main_cmd}'"
-
-    # Add remote control directories as windows in the main session
-    if bashio::config.has_value 'remote_control_directories'; then
+    # Add configured Claude tabs
+    if bashio::config.has_value 'claude_tabs'; then
         local count
-        count=$(bashio::config 'remote_control_directories | length')
+        count=$(bashio::config 'claude_tabs | length')
 
         local i
         for ((i = 0; i < count; i++)); do
-            local directory rc_args rc_prompt
-            directory=$(bashio::config "remote_control_directories[${i}].directory")
-            rc_args=$(bashio::config "remote_control_directories[${i}].args" '')
-            rc_prompt=$(bashio::config "remote_control_directories[${i}].prompt" '')
+            local directory tab_args tab_prompt
+            directory=$(bashio::config "claude_tabs[${i}].directory")
+            tab_args=$(bashio::config "claude_tabs[${i}].args" '')
+            tab_prompt=$(bashio::config "claude_tabs[${i}].prompt" '')
 
             # Trim leading/trailing whitespace from directory and args
             directory=$(echo "$directory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            rc_args=$(echo "$rc_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            tab_args=$(echo "$tab_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
-            rc_args=$(echo "$rc_args" | sed 's/—/--/g')
+            # Normalize em-dashes to double hyphens
+            tab_args=$(echo "$tab_args" | sed 's/—/--/g')
 
-            # bashio returns "null" for unset optional values
-            if [ "$rc_prompt" = "null" ] || [ -z "$rc_prompt" ]; then
-                rc_prompt=""
+            # Handle bashio "null" for unset optional values
+            if [ "$tab_prompt" = "null" ] || [ -z "$tab_prompt" ]; then
+                tab_prompt=""
             fi
-            if [ "$rc_args" = "null" ] || [ -z "$rc_args" ]; then
-                rc_args=""
+            if [ "$tab_args" = "null" ] || [ -z "$tab_args" ]; then
+                tab_args=""
             fi
 
             # Validate directory exists
             if [ ! -d "$directory" ]; then
-                bashio::log.warning "Remote control directory does not exist, creating: ${directory}"
+                bashio::log.warning "Claude tab directory does not exist, creating: ${directory}"
                 mkdir -p "$directory"
                 chown claude:claude "$directory"
             fi
 
-            # Derive window name from directory basename
-            local window_name
-            window_name=$(basename "$directory")
+            # Derive tab label from directory basename
+            local label
+            label=$(basename "$directory")
 
-            # Write a launcher script to avoid nested quoting issues with tmux
-            local script_path="/tmp/rc-${window_name}.sh"
-            {
-                echo "#!/bin/bash"
-                echo "cd '${directory}'"
-                echo "while true; do"
-                if [ -n "$rc_prompt" ]; then
-                    echo "    claude ${rc_args} \"${rc_prompt}\""
-                elif [ -n "$rc_args" ]; then
-                    echo "    claude ${rc_args}"
-                else
-                    echo "    claude"
-                fi
-                echo "    sleep 32"
-                echo "done"
-            } > "$script_path"
-            chmod +x "$script_path"
-            chown claude:claude "$script_path"
+            # Build args array: split tab_args + append prompt as positional arg
+            local args_json="[]"
+            if [ -n "$tab_args" ] && [ -n "$tab_prompt" ]; then
+                args_json=$(jq -n --arg a "$tab_args" --arg p "$tab_prompt" '$a | split(" ") | map(select(length > 0)) + [$p]')
+            elif [ -n "$tab_args" ]; then
+                args_json=$(jq -n --arg a "$tab_args" '$a | split(" ") | map(select(length > 0))')
+            elif [ -n "$tab_prompt" ]; then
+                args_json=$(jq -n --arg p "$tab_prompt" '[$p]')
+            fi
 
-            bashio::log.info "  Remote control window '${window_name}' in ${directory} (script: ${script_path})"
-            cmds="${cmds} && tmux new-window -t ${main_session_name} -n '${window_name}' -c '${directory}' '${script_path}'"
+            bashio::log.info "  Claude tab '${label}' in ${directory}"
+            tabs_json="${tabs_json},{\"label\":\"${label}\",\"command\":\"claude\",\"args\":${args_json},\"cwd\":\"${directory}\",\"autoStart\":true,\"restart\":true,\"restartDelay\":32}"
         done
 
-        # Return focus to the first window (main claude session)
-        cmds="${cmds} && tmux select-window -t ${main_session_name}:0"
-
-        bashio::log.info "Created ${count} remote control window(s). Switch with Ctrl-b n/p or click the tab."
+        bashio::log.info "Configured ${count} claude tab(s)"
     fi
 
-    # Attach to the main session
-    cmds="${cmds} && tmux attach-session -t ${main_session_name}"
+    tabs_json="${tabs_json}]"
 
-    echo "$cmds"
+    export CLAUDE_TAB_CONFIG="$tabs_json"
+    bashio::log.info "Tab config: ${tabs_json}"
 }
 
 # Start main web terminal
 start_web_terminal() {
     local port=7681
     bashio::log.info "Starting web terminal on port ${port}..."
-    
+
     # Log environment information for debugging
     bashio::log.info "Environment variables:"
     bashio::log.info "ANTHROPIC_CONFIG_DIR=${ANTHROPIC_CONFIG_DIR}"
     bashio::log.info "HOME=${HOME}"
 
-    # Get the appropriate launch command based on configuration
-    local launch_command
-    launch_command=$(get_claude_launch_command)
-    
-    # Log the configuration being used
-    local auto_launch_claude
-    auto_launch_claude=$(bashio::config 'auto_launch_claude' 'true')
-    bashio::log.info "Auto-launch Claude: ${auto_launch_claude}"
-    bashio::log.info "Claude args: ${CLAUDE_ARGS:-<none>}"
-    
-    # Set TTYD environment variable for tmux configuration
-    # This disables tmux mouse mode since ttyd has better mouse handling for web terminals
-    export TTYD=1
+    # Build the tab configuration from add-on config
+    build_tab_config
 
-    # Drop from root to the claude user for the terminal process
+    export WEB_TERMINAL_PORT="$port"
+
+    # Drop from root to the claude user for the Node.js server process
     # gosu performs a clean privilege drop (no sudo, no setuid shell overhead)
-    # Run ttyd with keepalive configuration to prevent WebSocket disconnects
-    # See: https://github.com/heytcass/home-assistant-addons/issues/24
-    exec gosu claude ttyd \
-        --port "${port}" \
-        --interface 0.0.0.0 \
-        --writable \
-        --ping-interval 30 \
-        --client-option enableReconnect=true \
-        --client-option reconnect=10 \
-        --client-option reconnectInterval=5 \
-        bash -c "$launch_command"
+    # Source nvm to get Node.js 20 on PATH (falls back to system Node.js)
+    exec gosu claude bash -c '
+        export NVM_DIR="$HOME/.nvm"
+        if [ -s "$NVM_DIR/nvm.sh" ]; then
+            . "$NVM_DIR/nvm.sh"
+        fi
+        node /opt/web-terminal/server.js
+    '
 }
 
 # Run health check
@@ -447,9 +399,9 @@ main() {
 
     init_environment
     update_claude
-    install_nvm
+    verify_node
     install_tools
-    setup_session_picker
+    setup_scripts
     install_persistent_packages
     start_web_terminal
 }

@@ -4,45 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Claude Terminal</title>
-    <link rel="stylesheet" href="/xterm/css/xterm.css">
+    <link rel="stylesheet" href="xterm/css/xterm.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app">
     <div id="tab-bar">
-        <button id="new-tab-btn" title="New tab">
-            +
-            <div id="new-tab-menu">
-                <div class="menu-item" data-action="claude">New Claude Session</div>
-                <div class="menu-item" data-action="continue">Continue Conversation</div>
-                <div class="menu-item" data-action="resume">Resume Conversation</div>
-                <div class="menu-item" data-action="shell">Shell</div>
-            </div>
-        </button>
+        <button id="new-tab-btn" title="New shell tab">+</button>
     </div>
     <div id="terminal-container"></div>
     <div id="connection-status">Reconnecting...</div>
 </div>
 
-<script src="/xterm/lib/xterm.js"></script>
-<script src="/xterm-addon-fit/lib/addon-fit.js"></script>
-<script src="/xterm-addon-web-links/lib/addon-web-links.js"></script>
+<script src="xterm/lib/xterm.js"></script>
+<script src="xterm-addon-fit/lib/addon-fit.js"></script>
 <script>
 (function() {
     'use strict';
 
     const tabBar = document.getElementById('tab-bar');
     const newTabBtn = document.getElementById('new-tab-btn');
-    const newTabMenu = document.getElementById('new-tab-menu');
     const terminalContainer = document.getElementById('terminal-container');
     const connectionStatus = document.getElementById('connection-status');
 
-    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper }
+    const tabs = new Map(); // tabId -> { el, terminal, fitAddon, wrapper, label, hasUnread }
     let activeTabId = null;
     let ws = null;
     let reconnectAttempts = 0;
     let tabConfig = [];
-    let claudeArgs = '';
 
     // Generate a short random ID
     function genId() {
@@ -58,22 +47,23 @@
 
     // Connect WebSocket
     function connect() {
-        ws = new WebSocket(getWsUrl());
+        var wsUrl = getWsUrl();
+        ws = new WebSocket(wsUrl);
 
         ws.onopen = function() {
             reconnectAttempts = 0;
             connectionStatus.classList.remove('visible');
             console.log('WebSocket connected');
+            send({ type: 'list' });
         };
 
         ws.onmessage = function(event) {
-            let msg;
+            var msg;
             try { msg = JSON.parse(event.data); } catch(e) { return; }
             handleMessage(msg);
         };
 
         ws.onclose = function() {
-            console.log('WebSocket disconnected');
             reconnect();
         };
 
@@ -110,9 +100,10 @@
                             send({ type: 'replay', tabId: tab.tabId });
                         }
                     }
-                    // Activate first tab if none active
+                    // Activate server-remembered tab or first tab
                     if (!activeTabId && msg.tabs.length > 0) {
-                        switchTab(msg.tabs[0].tabId);
+                        var target = (msg.activeTabId && tabs.has(msg.activeTabId)) ? msg.activeTabId : msg.tabs[0].tabId;
+                        switchTab(target);
                     }
                 }
                 break;
@@ -127,6 +118,11 @@
                 const tab = tabs.get(msg.tabId);
                 if (tab) {
                     tab.terminal.write(msg.data);
+                    if (msg.tabId !== activeTabId && !tab.hasUnread) {
+                        tab.hasUnread = true;
+                        tab.labelEl.textContent = '* ' + tab.label;
+                        tab.el.classList.add('unread');
+                    }
                 }
                 break;
             }
@@ -213,6 +209,7 @@
 
         // Create xterm instance
         const terminal = new Terminal({
+            scrollback: 10000,
             cursorBlink: true,
             fontSize: 14,
             fontFamily: "'Menlo', 'DejaVu Sans Mono', 'Consolas', monospace",
@@ -228,10 +225,83 @@
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
 
-        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-        terminal.loadAddon(webLinksAddon);
-
         terminal.open(wrapper);
+
+        // Custom link provider that handles URLs spanning multiple terminal rows.
+        // Works for both soft-wrapped (isWrapped) and hard-wrapped (app newlines)
+        // URLs like long OAuth authorize links.
+        terminal.registerLinkProvider({
+            provideLinks: function(y, callback) {
+                var buf = terminal.buffer.active;
+
+                function lineText(row) {
+                    var l = buf.getLine(row);
+                    return l ? l.translateToString(true) : '';
+                }
+
+                // Extract non-whitespace prefix from a line
+                function urlPrefix(text) {
+                    var m = text.match(/^[^\s]+/);
+                    return m ? m[0] : '';
+                }
+
+                // Walk backward from hovered line to find https://
+                // Stop at blank lines or lines starting with whitespace
+                var httpRow = -1, httpCol = -1;
+                for (var r = y - 1; r >= 0 && r >= y - 21; r--) {
+                    var t = lineText(r);
+                    var idx = t.search(/https?:\/\//);
+                    if (idx >= 0) { httpRow = r; httpCol = idx; break; }
+                    var prefix = urlPrefix(t);
+                    if (prefix.length === 0) break;
+                }
+
+                if (httpRow < 0) { callback(undefined); return; }
+
+                // Extract URL from first line (stop at whitespace if present)
+                var firstPart = lineText(httpRow).substring(httpCol);
+                var firstUrl = urlPrefix(firstPart);
+                var url = firstUrl;
+                var lastRow = httpRow;
+                var lastLineUrlLen = firstUrl.length;
+
+                // If URL fills to end of line, check continuation rows
+                if (firstUrl.length === firstPart.length) {
+                    for (var r = httpRow + 1; r < buf.length && r <= httpRow + 20; r++) {
+                        var t = lineText(r);
+                        var prefix = urlPrefix(t);
+                        if (prefix.length === 0) break;
+                        url += prefix;
+                        lastRow = r;
+                        lastLineUrlLen = prefix.length;
+                        // If line had more content after URL portion, stop
+                        if (prefix.length < t.length) break;
+                    }
+                }
+
+                // Trim trailing non-URL punctuation
+                var trimmed = url.replace(/[)\].,;:!?'"]+$/, '');
+                lastLineUrlLen -= (url.length - trimmed.length);
+                url = trimmed;
+
+                // Verify hovered line is within the URL range
+                if (y - 1 < httpRow || y - 1 > lastRow) {
+                    callback(undefined); return;
+                }
+
+                // End column is based on how much URL text is on the last row
+                var endCol = (lastRow === httpRow ? httpCol : 0) + lastLineUrlLen - 1;
+
+                callback([{
+                    range: {
+                        start: { x: httpCol + 1, y: httpRow + 1 },
+                        end: { x: endCol + 2, y: lastRow + 1 }
+                    },
+                    text: url,
+                    activate: function() { window.open(url, '_blank'); }
+                }]);
+            }
+        });
 
         // Handle input
         terminal.onData(function(data) {
@@ -245,11 +315,13 @@
 
         tabs.set(tabId, {
             el: tabEl,
+            labelEl: labelEl,
             terminal: terminal,
             fitAddon: fitAddon,
             wrapper: wrapper,
             status: statusEl,
             label: label,
+            hasUnread: false,
         });
 
         if (activate) {
@@ -276,6 +348,16 @@
             next.el.classList.add('active');
             next.wrapper.classList.add('active');
             activeTabId = tabId;
+
+            // Clear unread indicator
+            if (next.hasUnread) {
+                next.hasUnread = false;
+                next.labelEl.textContent = next.label;
+                next.el.classList.remove('unread');
+            }
+
+            // Tell server which tab is active
+            send({ type: 'select', tabId: tabId });
 
             // Fit after becoming visible
             requestAnimationFrame(function() {
@@ -313,70 +395,9 @@
         }
     }
 
-    // New tab menu
-    let menuOpen = false;
-
-    newTabBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        menuOpen = !menuOpen;
-        newTabMenu.classList.toggle('open', menuOpen);
-    });
-
-    document.addEventListener('click', function() {
-        menuOpen = false;
-        newTabMenu.classList.remove('open');
-    });
-
-    // Menu item handlers
-    newTabMenu.addEventListener('click', function(e) {
-        const item = e.target.closest('.menu-item');
-        if (!item) return;
-
-        e.stopPropagation();
-        menuOpen = false;
-        newTabMenu.classList.remove('open');
-
-        const action = item.dataset.action;
-        const tabId = genId();
-
-        switch (action) {
-            case 'claude':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: [],
-                    label: 'Claude',
-                });
-                break;
-            case 'continue':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: ['-c'],
-                    label: 'Claude (continue)',
-                });
-                break;
-            case 'resume':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: 'claude',
-                    args: ['-r'],
-                    label: 'Claude (resume)',
-                });
-                break;
-            case 'shell':
-                send({
-                    type: 'create',
-                    tabId: tabId,
-                    command: '/bin/bash',
-                    args: [],
-                    label: 'Shell',
-                });
-                break;
-        }
+    // New tab: tap "+" to open a bash shell
+    newTabBtn.addEventListener('click', function() {
+        send({ type: 'create', tabId: genId(), command: '/bin/bash', args: [], label: 'Shell' });
     });
 
     // Handle window resize

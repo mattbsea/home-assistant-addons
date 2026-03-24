@@ -1,11 +1,11 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
-const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
+const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
-const RING_BUFFER_SIZE = 100 * 1024; // 100KB per session
+const RING_BUFFER_SIZE = 512 * 1024; // 512KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
 
 // Parse tab configuration from environment
@@ -16,7 +16,8 @@ try {
     console.error('Failed to parse CLAUDE_TAB_CONFIG:', e.message);
 }
 
-// Ring buffer for session output replay on reconnect (uses Buffer for UTF-8 safety)
+// --- Ring buffer for session output replay ---
+
 class RingBuffer {
     constructor(maxSize = RING_BUFFER_SIZE) {
         this.chunks = [];
@@ -41,9 +42,11 @@ class RingBuffer {
     }
 }
 
-// Session manager
+// --- Session manager ---
+
 const sessions = new Map();
 let initialTabsCreated = false;
+let activeTabId = null;
 
 function generateId() {
     return Math.random().toString(36).substring(2, 10);
@@ -53,6 +56,11 @@ function buildSessionEnv(env) {
     const sessionEnv = Object.assign({}, process.env, env || {});
     delete sessionEnv.CLAUDE_TAB_CONFIG;
     delete sessionEnv.WEB_TERMINAL_PORT;
+    const home = sessionEnv.HOME || '/home/claude';
+    const localBin = home + '/.local/bin';
+    if (sessionEnv.PATH && !sessionEnv.PATH.includes(localBin)) {
+        sessionEnv.PATH = localBin + ':' + sessionEnv.PATH;
+    }
     return sessionEnv;
 }
 
@@ -80,7 +88,7 @@ function attachPtyHandlers(session, ptyProcess) {
 
 function createSession(tabId, { command, args, cwd, label, restart, restartDelay, env }) {
     const shell = command || '/bin/bash';
-    const shellArgs = args || [];
+    const shellArgs = (args || []).filter(a => a != null);
     const workDir = cwd || process.env.HOME || '/home/claude';
 
     let ptyProcess;
@@ -151,12 +159,10 @@ function destroySession(tabId) {
     const session = sessions.get(tabId);
     if (!session) return;
 
-    session.restart = false; // prevent auto-restart
+    session.restart = false;
     try {
         session.pty.kill();
-    } catch (e) {
-        // already dead
-    }
+    } catch (e) {}
     sessions.delete(tabId);
     console.log(`Session destroyed: "${session.label}" (tabId: ${tabId})`);
 }
@@ -171,7 +177,6 @@ function getSessionList() {
     }));
 }
 
-// Create initial tabs from config
 function createInitialTabs() {
     if (initialTabsCreated) return;
     initialTabsCreated = true;
@@ -190,66 +195,79 @@ function createInitialTabs() {
     console.log(`Created ${tabConfig.length} initial tab(s)`);
 }
 
-// WebSocket clients
+// --- WebSocket client management ---
+
 const clients = new Set();
 
 function broadcastToClients(message) {
     const data = JSON.stringify(message);
     for (const ws of clients) {
-        if (ws.readyState === 1) { // WebSocket.OPEN
+        if (ws.readyState === 1) {
             ws.send(data);
         }
     }
 }
 
-// Express app
+// --- Express app ---
+
 const app = express();
 
-// Serve static files
+// Prevent browser from caching HTML so deploys take effect immediately
+app.use((req, res, next) => {
+    if (req.path === '/' || req.path.endsWith('.html') || req.path.endsWith('.css') || req.path.endsWith('.js')) {
+        res.set('Cache-Control', 'no-store');
+    }
+    next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve xterm.js assets from node_modules
 const nodeModulesDir = path.join(__dirname, 'node_modules');
 app.use('/xterm', express.static(path.join(nodeModulesDir, '@xterm/xterm')));
 app.use('/xterm-addon-fit', express.static(path.join(nodeModulesDir, '@xterm/addon-fit')));
-app.use('/xterm-addon-web-links', express.static(path.join(nodeModulesDir, '@xterm/addon-web-links')));
 
-// API endpoint for tab config (used by frontend before WebSocket connects)
 app.get('/api/config', (req, res) => {
     res.json({ tabs: tabConfig });
 });
 
-// HTTP server
+// --- HTTP server + WebSocket server (ws library) ---
+
 const server = http.createServer(app);
 
-// WebSocket server
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: false,  // CRITICAL: HA ingress strips Sec-WebSocket-Extensions
+});
 
-wss.on('connection', (ws) => {
-    clients.add(ws);
-    console.log(`WebSocket client connected (${clients.size} total)`);
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        handleConnection(ws);
+    });
+});
 
-    // Create initial tabs on first connection
+function handleConnection(ws) {
+    // Do NOT add to clients set yet - the HA ingress proxy chain
+    // needs time to establish relay. We add to clients only after
+    // the first message arrives (proving the proxy is up).
+    let ready = false;
+
     createInitialTabs();
 
-    // Send current session list for reconnect
-    ws.send(JSON.stringify({
-        type: 'sessions',
-        tabs: getSessionList(),
-        config: tabConfig,
-    }));
-
     ws.on('message', (raw) => {
+        if (!ready) {
+            ready = true;
+            clients.add(ws);
+            console.log(`WebSocket client ready (${clients.size} active)`);
+        }
         let msg;
         try {
-            msg = JSON.parse(raw);
+            msg = JSON.parse(raw.toString('utf-8'));
         } catch (e) {
             return;
         }
 
         switch (msg.type) {
             case 'create': {
-                // Validate command against whitelist for client-initiated sessions
                 const cmd = msg.command || '/bin/bash';
                 if (!ALLOWED_COMMANDS.has(cmd)) {
                     console.warn(`Rejected disallowed command: ${cmd}`);
@@ -290,9 +308,7 @@ wss.on('connection', (ws) => {
                     session.rows = msg.rows;
                     try {
                         session.pty.resize(msg.cols, msg.rows);
-                    } catch (e) {
-                        // ignore resize errors
-                    }
+                    } catch (e) {}
                 }
                 break;
             }
@@ -315,28 +331,50 @@ wss.on('connection', (ws) => {
                 break;
             }
 
+            case 'select': {
+                if (msg.tabId && sessions.has(msg.tabId)) {
+                    activeTabId = msg.tabId;
+                }
+                break;
+            }
+
             case 'list': {
                 ws.send(JSON.stringify({
                     type: 'sessions',
                     tabs: getSessionList(),
                     config: tabConfig,
+                    activeTabId: activeTabId,
                 }));
                 break;
             }
         }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
         clients.delete(ws);
-        console.log(`WebSocket client disconnected (${clients.size} remaining)`);
+        console.log(`WebSocket client disconnected: code=${code} (${clients.size} remaining)`);
     });
-});
 
-// Start server
+    ws.on('error', (err) => {
+        console.error(`WebSocket error: ${err.message}`);
+    });
+}
+
+// --- Start server ---
+
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Claude Web Terminal running on port ${PORT}`);
     console.log(`Tab config: ${tabConfig.length} tab(s) configured`);
 });
+
+// Keepalive ping every 30s
+setInterval(() => {
+    for (const ws of clients) {
+        if (ws.readyState === 1) {
+            ws.ping();
+        }
+    }
+}, 30000);
 
 // Graceful shutdown
 function shutdown() {

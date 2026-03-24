@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     jq \
     tree \
-    tmux \
     sudo \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for running the terminal process with sudo access
@@ -29,18 +29,6 @@ RUN groupadd --gid 1000 claude \
     && useradd --uid 1000 --gid claude --shell /bin/bash --create-home claude \
     && echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude \
     && chmod 0440 /etc/sudoers.d/claude
-
-# Install ttyd binary (not in Debian repos, use GitHub release)
-RUN ARCH=$(dpkg --print-architecture) && \
-    case "$ARCH" in \
-        amd64)  TTYD_ARCH="x86_64" ;; \
-        arm64)  TTYD_ARCH="aarch64" ;; \
-        armhf)  TTYD_ARCH="armv7l" ;; \
-        *)      TTYD_ARCH="x86_64" ;; \
-    esac && \
-    TTYD_VER=$(curl -fsSL https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') && \
-    curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VER}/ttyd.${TTYD_ARCH}" -o /usr/local/bin/ttyd && \
-    chmod +x /usr/local/bin/ttyd
 
 # Install yq binary (multi-arch)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -56,13 +44,30 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
 
+# Install nvm and Node.js 20 as claude user at build time.
+# node-pty must be compiled against the same Node.js version used at runtime.
+USER claude
+RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash \
+    && export NVM_DIR="/home/claude/.nvm" \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install 20
+USER root
+
+# Copy and build the web terminal application (Express + xterm.js + node-pty)
+# Uses nvm's Node 20 so node-pty native addon matches runtime Node version.
+COPY web-terminal/ /opt/web-terminal/
+RUN bash -c 'source /home/claude/.nvm/nvm.sh && cd /opt/web-terminal && npm install --production'
+
 # Install Claude Code CLI as the claude user so all install files
 # (~/.local/bin, ~/.local/lib, etc.) are owned by uid 1000 and accessible
 # at runtime without root. A system-wide symlink exposes it on PATH.
+# The CLI is also preserved at /opt/claude-cli/ to survive the /home/claude
+# symlink replacement at runtime.
 USER claude
 RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
-RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude
+RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude \
+    && cp -a /home/claude/.local /opt/claude-cli
 
 # Set working directory to /home/claude (persisted to /data/home at runtime)
 WORKDIR /home/claude

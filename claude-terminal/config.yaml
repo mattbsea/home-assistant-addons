@@ -1,7 +1,7 @@
 ---
 name: "Claude Terminal"
 description: "Terminal interface for Anthropic's Claude Code CLI with persistent auth and packages"
-version: "1.25.3"
+version: "2.0.0"
 slug: "claude_terminal"
 init: false
 
@@ -17,6 +17,7 @@ url: "https://github.com/anthropics/claude-code"
 # Web interface configuration
 ingress: true
 ingress_port: 7681
+ingress_stream: true
 panel_icon: mdi:code-braces
 panel_title: "Claude Terminal"
 panel_admin: true
@@ -33,7 +34,7 @@ options:
   claude_args: ""
   persistent_apt_packages: []
   persistent_pip_packages: []
-  remote_control_directories: []
+  claude_tabs: []
 schema:
   auto_launch_claude: bool?
   claude_args: str?
@@ -41,7 +42,7 @@ schema:
     - str
   persistent_pip_packages:
     - str
-  remote_control_directories:
+  claude_tabs:
     - directory: str
       args: str?
       prompt: str?
