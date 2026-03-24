@@ -5,7 +5,7 @@ const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
-const RING_BUFFER_SIZE = 100 * 1024; // 100KB per session
+const RING_BUFFER_SIZE = 512 * 1024; // 512KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
 
 // Parse tab configuration from environment
