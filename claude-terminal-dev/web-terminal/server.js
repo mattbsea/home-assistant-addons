@@ -75,13 +75,17 @@ function attachPtyHandlers(session, ptyProcess) {
         broadcastToClients({ type: 'exited', tabId: session.tabId, exitCode, restart: session.restart });
 
         if (session.restart) {
-            console.log(`Restarting tab "${session.label}" in ${session.restartDelay}s...`);
+            const delay = session.restartDelay;
+            console.log(`Restarting tab "${session.label}" in ${delay}s...`);
+            const msg = `\r\n\x1b[33mRestarting in ${delay} seconds...\x1b[0m\r\n`;
+            session.ringBuffer.write(msg);
+            broadcastToClients({ type: 'output', tabId: session.tabId, data: msg });
             setTimeout(() => {
                 if (sessions.has(session.tabId)) {
                     session.ringBuffer.clear();
                     respawnSession(session);
                 }
-            }, session.restartDelay * 1000);
+            }, delay * 1000);
         }
     });
 }
@@ -114,7 +118,7 @@ function createSession(tabId, { command, args, cwd, label, restart, restartDelay
         command: shell,
         args: shellArgs,
         restart: restart || false,
-        restartDelay: restartDelay || 32,
+        restartDelay: restartDelay || 10,
         env: env || {},
         pid: ptyProcess.pid,
         cols: 80,
@@ -189,7 +193,7 @@ function createInitialTabs() {
             cwd: tab.cwd,
             label: tab.label,
             restart: tab.restart || false,
-            restartDelay: tab.restartDelay || 32,
+            restartDelay: tab.restartDelay || 10,
         });
     }
     console.log(`Created ${tabConfig.length} initial tab(s)`);
