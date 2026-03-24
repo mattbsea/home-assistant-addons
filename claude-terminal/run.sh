@@ -342,7 +342,7 @@ build_tab_config() {
             fi
 
             bashio::log.info "  Claude tab '${label}' in ${directory}"
-            tabs_json="${tabs_json},{\"label\":\"${label}\",\"command\":\"claude\",\"args\":${args_json},\"cwd\":\"${directory}\",\"autoStart\":true,\"restart\":true,\"restartDelay\":32}"
+            tabs_json="${tabs_json},{\"label\":\"${label}\",\"command\":\"claude\",\"args\":${args_json},\"cwd\":\"${directory}\",\"autoStart\":true,\"restart\":true,\"restartDelay\":10}"
         done
 
         bashio::log.info "Configured ${count} claude tab(s)"
