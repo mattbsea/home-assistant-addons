@@ -238,58 +238,58 @@
                     return l ? l.translateToString(true) : '';
                 }
 
+                // Extract non-whitespace prefix from a line
+                function urlPrefix(text) {
+                    var m = text.match(/^[^\s]+/);
+                    return m ? m[0] : '';
+                }
+
                 // Walk backward from hovered line to find https://
-                // Stop at blank lines or lines containing whitespace (not URL text)
+                // Stop at blank lines or lines starting with whitespace
                 var httpRow = -1, httpCol = -1;
                 for (var r = y - 1; r >= 0 && r >= y - 21; r--) {
                     var t = lineText(r);
                     var idx = t.search(/https?:\/\//);
                     if (idx >= 0) { httpRow = r; httpCol = idx; break; }
-                    if (t.length === 0 || /\s/.test(t)) break;
+                    var prefix = urlPrefix(t);
+                    if (prefix.length === 0) break;
                 }
 
                 if (httpRow < 0) { callback(undefined); return; }
 
                 // Extract URL from first line (stop at whitespace if present)
                 var firstPart = lineText(httpRow).substring(httpCol);
-                var wsIdx = firstPart.search(/\s/);
-                var url, lastRow;
+                var firstUrl = urlPrefix(firstPart);
+                var url = firstUrl;
+                var lastRow = httpRow;
+                var lastLineUrlLen = firstUrl.length;
 
-                if (wsIdx >= 0) {
-                    // URL ends on this line (whitespace found after URL)
-                    url = firstPart.substring(0, wsIdx);
-                    lastRow = httpRow;
-                } else {
-                    // URL reaches end of line — check continuation rows
-                    url = firstPart;
-                    lastRow = httpRow;
+                // If URL fills to end of line, check continuation rows
+                if (firstUrl.length === firstPart.length) {
                     for (var r = httpRow + 1; r < buf.length && r <= httpRow + 20; r++) {
                         var t = lineText(r);
-                        if (t.length === 0 || /\s/.test(t)) break;
-                        url += t;
+                        var prefix = urlPrefix(t);
+                        if (prefix.length === 0) break;
+                        url += prefix;
                         lastRow = r;
+                        lastLineUrlLen = prefix.length;
+                        // If line had more content after URL portion, stop
+                        if (prefix.length < t.length) break;
                     }
                 }
 
                 // Trim trailing non-URL punctuation
-                url = url.replace(/[)\].,;:!?'"]+$/, '');
+                var trimmed = url.replace(/[)\].,;:!?'"]+$/, '');
+                lastLineUrlLen -= (url.length - trimmed.length);
+                url = trimmed;
 
                 // Verify hovered line is within the URL range
                 if (y - 1 < httpRow || y - 1 > lastRow) {
                     callback(undefined); return;
                 }
 
-                // Compute end column on the last row
-                var endCol;
-                if (lastRow === httpRow) {
-                    endCol = httpCol + url.length - 1;
-                } else {
-                    var prior = firstPart.length;
-                    for (var r = httpRow + 1; r < lastRow; r++) {
-                        prior += lineText(r).length;
-                    }
-                    endCol = url.length - prior - 1;
-                }
+                // End column is based on how much URL text is on the last row
+                var endCol = (lastRow === httpRow ? httpCol : 0) + lastLineUrlLen - 1;
 
                 callback([{
                     range: {
