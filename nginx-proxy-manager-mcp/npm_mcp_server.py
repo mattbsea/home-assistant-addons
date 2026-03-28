@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -70,6 +71,9 @@ class NpmClient:
     async def delete(self, path: str, **kwargs):
         return await self._request("DELETE", path, **kwargs)
 
+    async def aclose(self):
+        await self._http.aclose()
+
 
 # ---------------------------------------------------------------------------
 # Initialise client and MCP server
@@ -84,7 +88,15 @@ if not all([npm_url, npm_email, npm_password]):
     sys.exit(1)
 
 client = NpmClient(npm_url, npm_email, npm_password)
-mcp = FastMCP("nginx-proxy-manager")
+
+
+@asynccontextmanager
+async def lifespan(server):
+    yield
+    await client.aclose()
+
+
+mcp = FastMCP("nginx-proxy-manager", lifespan=lifespan)
 
 # ---------------------------------------------------------------------------
 # Tool annotations
