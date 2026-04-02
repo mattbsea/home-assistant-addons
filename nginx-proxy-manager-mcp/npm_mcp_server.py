@@ -51,7 +51,6 @@ class NpmClient:
         resp = await self._http.request(method, path, headers=headers, **kwargs)
         # Re-auth once on 401
         if resp.status_code == 401:
-            resp.close()
             await self.authenticate()
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = await self._http.request(method, path, headers=headers, **kwargs)
@@ -707,4 +706,4 @@ async def get_host_report() -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    mcp.run(transport="sse")
