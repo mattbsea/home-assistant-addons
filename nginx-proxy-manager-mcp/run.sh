@@ -30,13 +30,6 @@ if [ ! -f "/opt/npm-mcp/server.py" ]; then
 fi
 bashio::log.info "MCP server found"
 
-# Verify supergateway is available
-if ! command -v supergateway > /dev/null 2>&1; then
-    bashio::log.fatal "supergateway not found in PATH"
-    exit 1
-fi
-bashio::log.info "supergateway found at $(command -v supergateway)"
-
 # Determine secret path: use config option if set, otherwise generate/load from /data
 SECRET_FILE="/data/secret_path.txt"
 SECRET_PATH=""
@@ -66,21 +59,19 @@ PORT=9565
 # Log the URL
 bashio::log.info "============================================"
 bashio::log.info "NPM MCP URL (add to your AI client):"
-bashio::log.info "  http://<your-ha-ip>:${PORT}/${SECRET_PATH}/mcp"
+bashio::log.info "  http://<your-ha-ip>:${PORT}/${SECRET_PATH}/sse"
 bashio::log.info "============================================"
 
-# Export config as env vars for the Python MCP server
+# Export NPM credentials
 export NPM_URL NPM_EMAIL NPM_PASSWORD
 
-bashio::log.info "Starting supergateway on port ${PORT}..."
-bashio::log.info "MCP path:     /${SECRET_PATH}/mcp"
-bashio::log.info "Health check: /health"
+# Configure FastMCP via environment variables
+export FASTMCP_SSE_PATH="/${SECRET_PATH}/sse"
+export FASTMCP_MESSAGE_PATH="/${SECRET_PATH}/messages/"
+export FASTMCP_PORT="${PORT}"
+export FASTMCP_HOST="0.0.0.0"
 
-# Start supergateway wrapping the Python MCP server
-# Using streamableHttp transport (stateless, handles reconnections gracefully)
-exec supergateway \
-    --stdio "/opt/npm-mcp/venv/bin/python /opt/npm-mcp/server.py" \
-    --outputTransport streamableHttp \
-    --port "${PORT}" \
-    --streamableHttpPath "/${SECRET_PATH}/mcp" \
-    --healthEndpoint "/health"
+bashio::log.info "Starting MCP server on port ${PORT}..."
+bashio::log.info "SSE endpoint:  /${SECRET_PATH}/sse"
+
+exec /opt/npm-mcp/venv/bin/python /opt/npm-mcp/server.py

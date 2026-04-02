@@ -1,19 +1,12 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# Install Node.js (for supergateway) and Python (for MCP server)
+# Install Python for MCP server
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    nodejs \
-    npm \
     python3 \
     python3-pip \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
-
-# Install supergateway globally (HTTP/SSE bridge for stdio MCP servers)
-RUN npm install -g supergateway
 
 # Create Python venv and install MCP dependencies
 RUN python3 -m venv /opt/npm-mcp/venv

@@ -1,3 +1,28 @@
+## 0.2.1 - 2026-03-31
+
+### Fixed
+
+- Remove incorrect `resp.close()` call from 401 retry path. httpx's AsyncClient
+  already closes every response automatically (via `aread()`) before returning it
+  to application code. Calling the sync `close()` on an async response raises
+  `RuntimeError: Attempted to call an sync close on an async stream`, which would
+  have broken 401 retry handling if a token ever expired unexpectedly.
+
+## 0.2.0 - 2026-03-31
+
+### Fixed
+
+- Memory leak: replaced supergateway (Node.js) with native Python SSE transport
+  - supergateway v3.4.3 accumulated tracking state in Node.js heap for each
+    stateless MCP request, growing to 8GB+ after days of multi-session use
+  - Python's mcp library (FastMCP + uvicorn) handles HTTP natively with no leaks
+- Removed Node.js, npm, and supergateway from the container image (~200MB smaller)
+
+### Changed
+
+- MCP endpoint URL suffix changed from `/mcp` (streamableHttp) to `/sse` (SSE)
+  - Update your Claude Code MCP config: `http://<ha-ip>:9565/<secret_path>/sse`
+
 ## 0.1.1 - 2026-03-18
 
 ### Fixed
