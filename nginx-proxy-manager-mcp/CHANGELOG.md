@@ -1,3 +1,13 @@
+## 0.2.2 - 2026-04-12
+
+### Changed
+
+- Switch from SSE to Streamable HTTP transport (required for Claude Desktop)
+  - SSE is deprecated in the MCP spec; Claude Desktop remote connectors require Streamable HTTP
+  - MCP endpoint changes from `/sse` to `/mcp`
+  - Update your Claude Desktop connector URL: `http://<ha-ip>:9565/<secret_path>/mcp`
+- Upgrade `mcp` package requirement from `>=1.0.0` to `>=1.27.0`
+
 ## 0.2.1 - 2026-03-31
 
 ### Fixed
