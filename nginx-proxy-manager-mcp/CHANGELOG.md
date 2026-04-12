@@ -1,3 +1,13 @@
+## 0.2.3 - 2026-04-12
+
+### Fixed
+
+- Server was binding to `127.0.0.1:8000` instead of `0.0.0.0:9565`, making it
+  unreachable from outside the container. FastMCP 1.27.0 passes `host`/`port`
+  directly into `Settings()`, bypassing env var resolution, so `FASTMCP_HOST`
+  and `FASTMCP_PORT` were never read. Fixed by passing `host`, `port`, and
+  `streamable_http_path` explicitly in the `FastMCP()` constructor.
+
 ## 0.2.2 - 2026-04-12
 
 ### Changed
