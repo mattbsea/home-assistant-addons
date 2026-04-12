@@ -89,6 +89,9 @@ if not all([npm_url, npm_email, npm_password]):
 
 client = NpmClient(npm_url, npm_email, npm_password)
 
+_secret_path = os.environ.get("NPM_MCP_SECRET_PATH", "")
+_mcp_path = f"/{_secret_path}/mcp" if _secret_path else "/mcp"
+
 
 @asynccontextmanager
 async def lifespan(server):
@@ -96,7 +99,13 @@ async def lifespan(server):
     await client.aclose()
 
 
-mcp = FastMCP("nginx-proxy-manager", lifespan=lifespan)
+mcp = FastMCP(
+    "nginx-proxy-manager",
+    lifespan=lifespan,
+    host="0.0.0.0",
+    port=9565,
+    streamable_http_path=_mcp_path,
+)
 
 # ---------------------------------------------------------------------------
 # Tool annotations

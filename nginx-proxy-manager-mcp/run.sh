@@ -62,13 +62,9 @@ bashio::log.info "NPM MCP URL (add to your AI client):"
 bashio::log.info "  http://<your-ha-ip>:${PORT}/${SECRET_PATH}/mcp"
 bashio::log.info "============================================"
 
-# Export NPM credentials
+# Export credentials and secret path for the MCP server
 export NPM_URL NPM_EMAIL NPM_PASSWORD
-
-# Configure FastMCP via environment variables
-export FASTMCP_STREAMABLE_HTTP_PATH="/${SECRET_PATH}/mcp"
-export FASTMCP_PORT="${PORT}"
-export FASTMCP_HOST="0.0.0.0"
+export NPM_MCP_SECRET_PATH="${SECRET_PATH}"
 
 bashio::log.info "Starting MCP server on port ${PORT}..."
 bashio::log.info "MCP endpoint:  /${SECRET_PATH}/mcp"
