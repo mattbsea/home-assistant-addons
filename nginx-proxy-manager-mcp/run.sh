@@ -59,19 +59,18 @@ PORT=9565
 # Log the URL
 bashio::log.info "============================================"
 bashio::log.info "NPM MCP URL (add to your AI client):"
-bashio::log.info "  http://<your-ha-ip>:${PORT}/${SECRET_PATH}/sse"
+bashio::log.info "  http://<your-ha-ip>:${PORT}/${SECRET_PATH}/mcp"
 bashio::log.info "============================================"
 
 # Export NPM credentials
 export NPM_URL NPM_EMAIL NPM_PASSWORD
 
 # Configure FastMCP via environment variables
-export FASTMCP_SSE_PATH="/${SECRET_PATH}/sse"
-export FASTMCP_MESSAGE_PATH="/${SECRET_PATH}/messages/"
+export FASTMCP_STREAMABLE_HTTP_PATH="/${SECRET_PATH}/mcp"
 export FASTMCP_PORT="${PORT}"
 export FASTMCP_HOST="0.0.0.0"
 
 bashio::log.info "Starting MCP server on port ${PORT}..."
-bashio::log.info "SSE endpoint:  /${SECRET_PATH}/sse"
+bashio::log.info "MCP endpoint:  /${SECRET_PATH}/mcp"
 
 exec /opt/npm-mcp/venv/bin/python /opt/npm-mcp/server.py
