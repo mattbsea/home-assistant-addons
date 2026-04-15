@@ -44,17 +44,17 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
 
-# Install nvm and Node.js 20 as claude user at build time.
+# Install nvm and Node.js 24 as claude user at build time.
 # node-pty must be compiled against the same Node.js version used at runtime.
 USER claude
 RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash \
     && export NVM_DIR="/home/claude/.nvm" \
     && . "$NVM_DIR/nvm.sh" \
-    && nvm install 20
+    && nvm install 24
 USER root
 
 # Copy and build the web terminal application (Express + xterm.js + node-pty)
-# Uses nvm's Node 20 so node-pty native addon matches runtime Node version.
+# Uses nvm's Node 24 so node-pty native addon matches runtime Node version.
 COPY web-terminal/ /opt/web-terminal/
 RUN bash -c 'source /home/claude/.nvm/nvm.sh && cd /opt/web-terminal && npm install --production'
 
