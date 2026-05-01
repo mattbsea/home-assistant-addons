@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.5
+
+### ✨ New Features
+- **Mobile copy/paste support**: Floating Paste/Copy buttons now appear on touch devices (phones/tablets), making the terminal usable from mobile browsers and the Home Assistant Companion app
+  - **Paste**: tries the native Clipboard API first; falls back to a textarea modal where you can long-press to paste from the system menu — works even when the ingress iframe blocks clipboard access
+  - **Copy**: copies the current xterm.js selection to the clipboard with `execCommand('copy')` fallback
+  - Buttons are CSS-gated to `(hover: none) and (pointer: coarse)` so desktop users see no change
+- **Bun preinstalled**: The [Bun](https://bun.sh) JavaScript runtime and package manager is now installed system-wide at `/usr/local/bin/bun` on amd64 and aarch64 builds (armv7 is skipped — Bun has no armv7 binaries)
+
 ## 1.24.2
 
 ### 🐛 Bug Fixes
