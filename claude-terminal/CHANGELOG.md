@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.6
+
+### 🐛 Bug Fixes
+- **Mobile toolbar no longer appears on desktops with touchscreens**: Tightened the CSS gate from `(hover: none) and (pointer: coarse)` to `(any-pointer: coarse) and (not (any-pointer: fine))`, so the floating Paste/Copy buttons only show when the device has no mouse at all (real phones/tablets). Touchscreen laptops and 2-in-1s see the desktop UI again.
+
 ## 2.0.5
 
 ### ✨ New Features

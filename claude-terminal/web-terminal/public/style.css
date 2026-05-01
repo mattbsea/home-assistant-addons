@@ -197,7 +197,9 @@ html, body {
     display: none;
 }
 
-@media (hover: none) and (pointer: coarse) {
+/* Show only on devices with a coarse pointer AND no fine pointer at all
+   (i.e. real phones/tablets — excludes touchscreen laptops/desktops with a mouse). */
+@media (any-pointer: coarse) and (not (any-pointer: fine)) {
     #mobile-toolbar {
         display: flex;
         position: fixed;
