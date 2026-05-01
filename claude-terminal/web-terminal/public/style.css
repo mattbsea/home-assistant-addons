@@ -191,3 +191,142 @@ html, body {
 #connection-status.visible {
     display: block;
 }
+
+/* Mobile-only paste/copy toolbar — hidden by default, shown on touch devices */
+#mobile-toolbar {
+    display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    #mobile-toolbar {
+        display: flex;
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        gap: 8px;
+        z-index: 50;
+    }
+    #mobile-toolbar button {
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        border: 1px solid #3c3c3c;
+        background: rgba(40, 40, 40, 0.92);
+        color: #ddd;
+        font-size: 20px;
+        line-height: 1;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        padding: 0;
+    }
+    #mobile-toolbar button:active {
+        background: #007acc;
+        color: #fff;
+    }
+}
+
+/* Paste modal — shown on every device when the Clipboard API is unavailable */
+#paste-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+#paste-modal.visible {
+    display: flex;
+}
+
+.paste-modal-inner {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 480px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.paste-modal-header {
+    color: #ddd;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#paste-modal-input {
+    background: #1e1e1e;
+    color: #ccc;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 8px;
+    font-family: 'Menlo', 'DejaVu Sans Mono', 'Consolas', monospace;
+    font-size: 14px;
+    min-height: 100px;
+    resize: vertical;
+}
+
+#paste-modal-input:focus {
+    outline: 1px solid #007acc;
+    border-color: #007acc;
+}
+
+.paste-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.paste-modal-actions button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 1px solid #3c3c3c;
+    background: #2d2d2d;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.paste-modal-actions button:hover {
+    background: #3a3a3a;
+}
+
+#paste-modal-send {
+    background: #007acc;
+    border-color: #007acc;
+    color: #fff;
+}
+
+#paste-modal-send:hover {
+    background: #1188dd;
+}
+
+/* Toast */
+#toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 16px;
+    font-size: 13px;
+    z-index: 400;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+}
+
+#toast.visible {
+    opacity: 1;
+}

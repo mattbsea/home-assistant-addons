@@ -14,6 +14,21 @@
     </div>
     <div id="terminal-container"></div>
     <div id="connection-status">Reconnecting...</div>
+    <div id="mobile-toolbar" aria-hidden="true">
+        <button id="mobile-paste-btn" type="button" title="Paste">&#128203;</button>
+        <button id="mobile-copy-btn" type="button" title="Copy selection">&#10697;</button>
+    </div>
+    <div id="paste-modal" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="paste-modal-inner">
+            <div class="paste-modal-header">Paste text into terminal</div>
+            <textarea id="paste-modal-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Long-press here, then tap Paste"></textarea>
+            <div class="paste-modal-actions">
+                <button id="paste-modal-cancel" type="button">Cancel</button>
+                <button id="paste-modal-send" type="button">Send</button>
+            </div>
+        </div>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
 </div>
 
 <script src="xterm/lib/xterm.js"></script>
@@ -431,6 +446,121 @@
                 }
             }
         }, 100);
+    });
+
+    // Mobile paste/copy toolbar
+    const mobilePasteBtn = document.getElementById('mobile-paste-btn');
+    const mobileCopyBtn = document.getElementById('mobile-copy-btn');
+    const pasteModal = document.getElementById('paste-modal');
+    const pasteModalInput = document.getElementById('paste-modal-input');
+    const pasteModalSend = document.getElementById('paste-modal-send');
+    const pasteModalCancel = document.getElementById('paste-modal-cancel');
+    const toastEl = document.getElementById('toast');
+    let toastTimeout = null;
+
+    function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('visible');
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(function() {
+            toastEl.classList.remove('visible');
+        }, 1800);
+    }
+
+    function sendInput(text) {
+        if (!text || !activeTabId) return;
+        send({ type: 'input', tabId: activeTabId, data: text });
+    }
+
+    function focusActiveTerminal() {
+        if (!activeTabId) return;
+        const tab = tabs.get(activeTabId);
+        if (tab) tab.terminal.focus();
+    }
+
+    function closePasteModal() {
+        pasteModal.classList.remove('visible');
+        pasteModal.setAttribute('aria-hidden', 'true');
+        pasteModalInput.value = '';
+        focusActiveTerminal();
+    }
+
+    function openPasteModal() {
+        pasteModalInput.value = '';
+        pasteModal.classList.add('visible');
+        pasteModal.setAttribute('aria-hidden', 'false');
+        // Defer focus so the show animation/layout settles before the keyboard pops up
+        setTimeout(function() { pasteModalInput.focus(); }, 50);
+    }
+
+    async function tryClipboardPaste() {
+        try {
+            if (!navigator.clipboard || !navigator.clipboard.readText) return false;
+            const text = await navigator.clipboard.readText();
+            if (text) { sendInput(text); return true; }
+        } catch (_) {}
+        return false;
+    }
+
+    mobilePasteBtn.addEventListener('click', async function() {
+        if (!(await tryClipboardPaste())) {
+            openPasteModal();
+        }
+    });
+
+    pasteModalSend.addEventListener('click', function() {
+        const text = pasteModalInput.value;
+        sendInput(text);
+        closePasteModal();
+    });
+
+    pasteModalCancel.addEventListener('click', closePasteModal);
+
+    pasteModal.addEventListener('click', function(e) {
+        if (e.target === pasteModal) closePasteModal();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && pasteModal.classList.contains('visible')) {
+            closePasteModal();
+        }
+    });
+
+    function legacyCopy(text) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    mobileCopyBtn.addEventListener('click', async function() {
+        if (!activeTabId) return;
+        const tab = tabs.get(activeTabId);
+        if (!tab) return;
+        const sel = tab.terminal.getSelection();
+        if (!sel) {
+            showToast('Long-press in terminal to select text first');
+            return;
+        }
+        let copied = false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(sel);
+                copied = true;
+            }
+        } catch (_) {}
+        if (!copied) copied = legacyCopy(sel);
+        showToast(copied ? 'Copied' : 'Copy failed');
     });
 
     // Start

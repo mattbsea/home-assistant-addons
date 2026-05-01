@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     tree \
     sudo \
+    unzip \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,6 +44,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
+
+# Install bun (fast JavaScript runtime / package manager).
+# Bun publishes prebuilt binaries for amd64 and aarch64 only; armv7 is unsupported,
+# so skip the install there rather than failing the build.
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "armhf" ]; then \
+        echo "Skipping bun install: armv7 is not supported by bun"; \
+    else \
+        curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash; \
+    fi
 
 # Install nvm and Node.js 24 as claude user at build time.
 # node-pty must be compiled against the same Node.js version used at runtime.
