@@ -1,7 +1,7 @@
 ---
 name: "Personal AI Infrastructure"
 description: "Daniel Miessler's PAI — the Pulse dashboard plus a Claude Code terminal"
-version: "1.2.0"
+version: "1.2.1"
 slug: "pai"
 init: false
 
