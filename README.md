@@ -31,6 +31,19 @@ Features:
 
 [Documentation](claude-terminal/DOCS.md)
 
+### Personal AI Infrastructure (PAI)
+
+Runs **Pulse**, the Life Dashboard daemon from [Daniel Miessler's Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure). The add-on clones the PAI repository, installs it, and serves the *PAI Observatory* dashboard directly in your Home Assistant sidebar.
+
+Features:
+- One-click Pulse daemon — no manual install or shell setup
+- *PAI Observatory* dashboard through Home Assistant ingress
+- Persistent storage of the PAI repository and state in `/data`
+- Clean, headless-friendly configuration generated automatically
+- Optional ElevenLabs voice support
+
+[Documentation](pai/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:
