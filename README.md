@@ -33,13 +33,13 @@ Features:
 
 ### Personal AI Infrastructure (PAI)
 
-Runs **Pulse**, the Life Dashboard daemon from [Daniel Miessler's Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure). The add-on clones the PAI repository, installs it, and serves the *PAI Observatory* dashboard directly in your Home Assistant sidebar.
+A Home Assistant add-on for [Daniel Miessler's Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure). It clones the PAI repository, installs it, and runs two parts of it in your browser.
 
 Features:
-- One-click Pulse daemon — no manual install or shell setup
-- *PAI Observatory* dashboard through Home Assistant ingress
+- *PAI Observatory* dashboard through Home Assistant ingress — shown as a sidebar panel, automatically rebuilt to work behind the ingress proxy
+- Password-protected Claude Code web terminal for PAI setup (e.g. the `/interview` wizard)
+- One-click setup — no manual install or shell work
 - Persistent storage of the PAI repository and state in `/data`
-- Clean, headless-friendly configuration generated automatically
 - Optional ElevenLabs voice support
 
 [Documentation](pai/DOCS.md)

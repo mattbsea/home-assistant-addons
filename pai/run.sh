@@ -1,5 +1,9 @@
 #!/usr/bin/with-contenv bashio
-# Personal AI Infrastructure (PAI) — Pulse daemon launcher for Home Assistant.
+# Personal AI Infrastructure (PAI) launcher for Home Assistant.
+#
+# Starts two services:
+#   * Pulse  — the PAI Observatory dashboard, exposed via HA ingress (sidebar)
+#   * ttyd   — a Claude Code web terminal, exposed on port 7681
 #
 # Pulse resolves its own directory as ~/.claude/PAI/PULSE, so the PAI payload
 # is installed into $HOME/.claude rather than executed from the git checkout.
@@ -10,14 +14,18 @@ set -o pipefail
 PAI_REPO_URL="https://github.com/danielmiessler/Personal_AI_Infrastructure.git"
 PAI_CACHE="/data/pai-src"
 
-# HOME must be persistent and writable; Pulse reads ~/.claude/.env from it.
+# HOME must be persistent and writable; Pulse and Claude Code use ~/.claude.
 export HOME="/data/home"
 PAI_CLAUDE="${HOME}/.claude"
 PULSE_DIR="${PAI_CLAUDE}/PAI/PULSE"
+OBS_DIR="${PULSE_DIR}/Observability"
 mkdir -p "${HOME}"
 
 PAI_REF=$(bashio::config 'pai_ref' 'main')
 UPDATE_ON_START=$(bashio::config 'update_on_start' 'true')
+ENABLE_TERMINAL=$(bashio::config 'enable_terminal' 'true')
+TERMINAL_PASSWORD=$(bashio::config 'terminal_password' '')
+[ "${TERMINAL_PASSWORD}" = "null" ] && TERMINAL_PASSWORD=""
 NEED_INSTALL=false
 
 # --- Clone or update the PAI repository -------------------------------------
@@ -120,12 +128,76 @@ if bashio::config.has_value 'extra_env'; then
 fi
 chmod 600 "${ENV_FILE}"
 
+# --- Determine the Home Assistant ingress base path -------------------------
+# The PAI Observatory is a Next.js app with absolute asset/route URLs. To work
+# behind the ingress proxy it must be rebuilt with that proxy path as its
+# base path. The path is read from the Supervisor add-on info API.
+INGRESS_PATH=""
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+    INFO=$(curl -s -m 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        "http://supervisor/addons/self/info" 2>/dev/null || true)
+    INGRESS_PATH=$(printf '%s' "${INFO}" | jq -r '.data.ingress_url // empty' 2>/dev/null || true)
+    INGRESS_PATH="${INGRESS_PATH%/}"
+fi
+if [ -n "${INGRESS_PATH}" ]; then
+    bashio::log.info "Ingress base path: ${INGRESS_PATH}"
+else
+    bashio::log.warning "Ingress base path unavailable; building dashboard without one."
+fi
+
+# --- Build the dashboard for the current ingress base path ------------------
+# The build runs in an isolated directory: installing npm dependencies inside
+# the Observability module directory would shadow Bun's on-the-fly resolution
+# of Pulse's own runtime imports. Only the finished out/ tree is copied back.
+MARKER="${OBS_DIR}/out/.addon-basepath"
+BUILD_DIR="/data/dashboard-build"
+CURRENT_BP=$(cat "${MARKER}" 2>/dev/null || echo "__unset__")
+if [ "${NEED_INSTALL}" = "true" ] || [ "${CURRENT_BP}" != "${INGRESS_PATH}" ] \
+    || [ ! -d "${OBS_DIR}/out" ]; then
+    bashio::log.info "Building the PAI Observatory dashboard — the first build can take several minutes..."
+    rm -rf "${BUILD_DIR}"
+    cp -a "${SRC_CLAUDE}/PAI/PULSE/Observability" "${BUILD_DIR}"
+    if /opt/pai/build-dashboard.sh "${BUILD_DIR}" "${INGRESS_PATH}"; then
+        rm -rf "${OBS_DIR}/out"
+        cp -a "${BUILD_DIR}/out" "${OBS_DIR}/out"
+        printf '%s' "${INGRESS_PATH}" > "${MARKER}"
+        bashio::log.info "Dashboard build complete."
+    else
+        bashio::log.warning "Dashboard build failed; the prebuilt dashboard will be used (ingress styling may be degraded)."
+    fi
+    rm -rf "${BUILD_DIR}"
+else
+    bashio::log.info "Dashboard already built for this ingress path; skipping rebuild."
+fi
+
 # --- Launch Pulse -----------------------------------------------------------
-# PAI_PULSE_BIND_ALL makes Bun.serve listen on 0.0.0.0 so the HA ingress proxy
-# (and the mapped 31337 port) can reach it.
+# PAI_PULSE_BIND_ALL makes Bun.serve listen on 0.0.0.0 so the ingress proxy
+# can reach it.
 export PAI_PULSE_BIND_ALL=1
 export PULSE_PORT=31337
 
 cd "${PULSE_DIR}"
-bashio::log.info "Starting PAI Pulse on port ${PULSE_PORT}..."
-exec bun run pulse.ts
+bashio::log.info "Starting PAI Pulse (dashboard) on port 31337..."
+bun run pulse.ts &
+
+# --- Launch the Claude Code web terminal ------------------------------------
+if [ "${ENABLE_TERMINAL}" = "true" ]; then
+    if [ -z "${TERMINAL_PASSWORD}" ]; then
+        TERMINAL_PASSWORD=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)
+        bashio::log.info "No 'terminal_password' was set — generated one for this session:"
+        bashio::log.info "    username: pai    password: ${TERMINAL_PASSWORD}"
+        bashio::log.info "Set 'terminal_password' in the add-on options for a stable login."
+    fi
+    bashio::log.info "Starting Claude Code web terminal on port 7681..."
+    ttyd --port 7681 --interface 0.0.0.0 --writable \
+        --credential "pai:${TERMINAL_PASSWORD}" \
+        --terminal-type xterm-256color \
+        bash -lc 'cd "${HOME}"; claude || true; exec bash' &
+else
+    bashio::log.info "Web terminal disabled (enable_terminal: false)."
+fi
+
+# If either service stops, exit so the Supervisor restarts the add-on.
+wait -n || true
+bashio::log.warning "A PAI service exited; the add-on will restart."
+exit 1

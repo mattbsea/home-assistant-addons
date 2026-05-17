@@ -1,11 +1,11 @@
 ---
 name: "Personal AI Infrastructure"
-description: "Runs Daniel Miessler's PAI Pulse — the Life Dashboard daemon"
+description: "Daniel Miessler's PAI — the Pulse dashboard plus a Claude Code terminal"
 version: "1.0.0"
 slug: "pai"
 init: false
 
-# Supported architectures (Bun ships binaries for amd64 and aarch64 only)
+# Supported architectures (Bun and the ttyd binary cover amd64 and aarch64)
 arch:
   - aarch64
   - amd64
@@ -13,7 +13,7 @@ arch:
 # External resources
 url: "https://github.com/danielmiessler/Personal_AI_Infrastructure"
 
-# Web interface configuration
+# Web interface: the PAI Observatory dashboard, shown in the HA sidebar
 ingress: true
 ingress_port: 31337
 ingress_stream: true
@@ -21,31 +21,36 @@ panel_icon: mdi:brain
 panel_title: "PAI Pulse"
 panel_admin: true
 
-# Port configuration (direct access; not required when using ingress)
+# Claude Code web terminal (opened via the "Open Web UI" button)
 ports:
-  31337/tcp: 31337
+  7681/tcp: 7681
 ports_description:
-  31337/tcp: "Pulse Life Dashboard (not required for ingress)"
+  7681/tcp: "Claude Code web terminal"
+webui: "http://[HOST]:[PORT:7681]/"
 
 # Add-on configuration options
 options:
   pai_ref: "main"
   update_on_start: true
+  enable_terminal: true
+  terminal_password: ""
   elevenlabs_api_key: ""
   extra_env: []
 schema:
   pai_ref: str?
   update_on_start: bool?
+  enable_terminal: bool?
+  terminal_password: password?
   elevenlabs_api_key: password?
   extra_env:
     - str
 
-# Persistent storage: the PAI repo and Pulse state live in /data
+# Supervisor API access — used to read the ingress base path
+hassio_api: true
+
+# Persistent storage: the PAI repo, the install and Pulse state live in /data
 map:
   - data:rw
 
 # Service startup configuration
 startup: services
-
-# Web UI access URL
-webui: http://[HOST]:[PORT:31337]/
