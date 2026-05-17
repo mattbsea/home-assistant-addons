@@ -1,7 +1,7 @@
 ---
 name: "Personal AI Infrastructure"
 description: "Daniel Miessler's PAI — the Pulse dashboard plus a Claude Code terminal"
-version: "1.0.0"
+version: "1.0.1"
 slug: "pai"
 init: false
 
@@ -23,10 +23,10 @@ panel_admin: true
 
 # Claude Code web terminal (opened via the "Open Web UI" button)
 ports:
-  7681/tcp: 7681
+  7683/tcp: 7683
 ports_description:
-  7681/tcp: "Claude Code web terminal"
-webui: "http://[HOST]:[PORT:7681]/"
+  7683/tcp: "Claude Code web terminal"
+webui: "http://[HOST]:[PORT:7683]/"
 
 # Add-on configuration options
 options:
