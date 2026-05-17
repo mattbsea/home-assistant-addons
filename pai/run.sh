@@ -3,7 +3,7 @@
 #
 # Starts two services:
 #   * Pulse  — the PAI Observatory dashboard, exposed via HA ingress (sidebar)
-#   * ttyd   — a Claude Code web terminal, exposed on port 7681
+#   * ttyd   — a Claude Code web terminal, exposed on port 7683
 #
 # Pulse resolves its own directory as ~/.claude/PAI/PULSE, so the PAI payload
 # is installed into $HOME/.claude rather than executed from the git checkout.
@@ -188,8 +188,8 @@ if [ "${ENABLE_TERMINAL}" = "true" ]; then
         bashio::log.info "    username: pai    password: ${TERMINAL_PASSWORD}"
         bashio::log.info "Set 'terminal_password' in the add-on options for a stable login."
     fi
-    bashio::log.info "Starting Claude Code web terminal on port 7681..."
-    ttyd --port 7681 --interface 0.0.0.0 --writable \
+    bashio::log.info "Starting Claude Code web terminal on port 7683..."
+    ttyd --port 7683 --interface 0.0.0.0 --writable \
         --credential "pai:${TERMINAL_PASSWORD}" \
         --terminal-type xterm-256color \
         bash -lc 'cd "${HOME}"; claude || true; exec bash' &

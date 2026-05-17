@@ -32,7 +32,7 @@ starts both services.
 | What            | How                                    | Notes                         |
 |-----------------|----------------------------------------|-------------------------------|
 | Pulse dashboard | **PAI Pulse** sidebar panel (ingress)  | Admin users only              |
-| Claude terminal | **Open Web UI** button (port `7681`)   | Password protected            |
+| Claude terminal | **Open Web UI** button (port `7683`)   | Password protected            |
 
 ### The dashboard and ingress
 
@@ -69,7 +69,7 @@ and rebuilds the dashboard. Set to `false` to pin the downloaded version.
 
 ### Option: `enable_terminal`
 
-When `true` (default), the Claude Code web terminal runs on port `7681`. Set
+When `true` (default), the Claude Code web terminal runs on port `7683`. Set
 to `false` to run only the dashboard.
 
 ### Option: `terminal_password`
@@ -106,7 +106,7 @@ extra_env:
 
 | Port    | Description                                                  |
 |---------|--------------------------------------------------------------|
-| `7681`  | Claude Code web terminal (basic-auth protected).             |
+| `7683`  | Claude Code web terminal (basic-auth protected).             |
 
 The dashboard is served through ingress and does not use a host port.
 
