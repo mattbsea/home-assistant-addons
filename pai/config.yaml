@@ -1,0 +1,51 @@
+---
+name: "Personal AI Infrastructure"
+description: "Runs Daniel Miessler's PAI Pulse — the Life Dashboard daemon"
+version: "1.0.0"
+slug: "pai"
+init: false
+
+# Supported architectures (Bun ships binaries for amd64 and aarch64 only)
+arch:
+  - aarch64
+  - amd64
+
+# External resources
+url: "https://github.com/danielmiessler/Personal_AI_Infrastructure"
+
+# Web interface configuration
+ingress: true
+ingress_port: 31337
+ingress_stream: true
+panel_icon: mdi:brain
+panel_title: "PAI Pulse"
+panel_admin: true
+
+# Port configuration (direct access; not required when using ingress)
+ports:
+  31337/tcp: 31337
+ports_description:
+  31337/tcp: "Pulse Life Dashboard (not required for ingress)"
+
+# Add-on configuration options
+options:
+  pai_ref: "main"
+  update_on_start: true
+  elevenlabs_api_key: ""
+  extra_env: []
+schema:
+  pai_ref: str?
+  update_on_start: bool?
+  elevenlabs_api_key: password?
+  extra_env:
+    - str
+
+# Persistent storage: the PAI repo and Pulse state live in /data
+map:
+  - data:rw
+
+# Service startup configuration
+startup: services
+
+# Web UI access URL
+webui: http://[HOST]:[PORT:31337]/
