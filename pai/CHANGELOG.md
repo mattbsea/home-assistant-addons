@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+### ✨ New Features
+- **Single tabbed sidebar panel**: The PAI sidebar panel now has **Pulse** and
+  **Claude Code** tabs, so both the dashboard and the terminal are reachable
+  from one place. A small gateway reverse-proxies each tab (HTTP and
+  WebSocket) behind the ingress panel.
+
+### 🔧 Changes
+- The terminal is no longer exposed on a host port; it is reached only
+  through the ingress panel, which Home Assistant authenticates. Removed the
+  `terminal_password` option (the panel is admin-only) and the `7683` port
+  mapping.
+
 ## 1.0.1
 
 ### 🐛 Bug Fixes

@@ -1,7 +1,7 @@
 ---
 name: "Personal AI Infrastructure"
 description: "Daniel Miessler's PAI — the Pulse dashboard plus a Claude Code terminal"
-version: "1.0.1"
+version: "1.1.0"
 slug: "pai"
 init: false
 
@@ -13,34 +13,26 @@ arch:
 # External resources
 url: "https://github.com/danielmiessler/Personal_AI_Infrastructure"
 
-# Web interface: the PAI Observatory dashboard, shown in the HA sidebar
+# Single ingress panel: a tabbed UI fronting the Pulse dashboard and the
+# Claude Code terminal. Shown in the Home Assistant sidebar.
 ingress: true
 ingress_port: 31337
 ingress_stream: true
 panel_icon: mdi:brain
-panel_title: "PAI Pulse"
+panel_title: "PAI"
 panel_admin: true
-
-# Claude Code web terminal (opened via the "Open Web UI" button)
-ports:
-  7683/tcp: 7683
-ports_description:
-  7683/tcp: "Claude Code web terminal"
-webui: "http://[HOST]:[PORT:7683]/"
 
 # Add-on configuration options
 options:
   pai_ref: "main"
   update_on_start: true
   enable_terminal: true
-  terminal_password: ""
   elevenlabs_api_key: ""
   extra_env: []
 schema:
   pai_ref: str?
   update_on_start: bool?
   enable_terminal: bool?
-  terminal_password: password?
   elevenlabs_api_key: password?
   extra_env:
     - str

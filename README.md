@@ -33,11 +33,12 @@ Features:
 
 ### Personal AI Infrastructure (PAI)
 
-A Home Assistant add-on for [Daniel Miessler's Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure). It clones the PAI repository, installs it, and runs two parts of it in your browser.
+A Home Assistant add-on for [Daniel Miessler's Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure). It clones the PAI repository, installs it, and runs it as a single sidebar panel.
 
 Features:
-- *PAI Observatory* dashboard through Home Assistant ingress — shown as a sidebar panel, automatically rebuilt to work behind the ingress proxy
-- Password-protected Claude Code web terminal for PAI setup (e.g. the `/interview` wizard)
+- One **PAI** sidebar panel with **Pulse** and **Claude Code** tabs
+- *PAI Observatory* dashboard, automatically rebuilt to work behind the ingress proxy
+- Claude Code web terminal for PAI setup (e.g. the `/interview` wizard)
 - One-click setup — no manual install or shell work
 - Persistent storage of the PAI repository and state in `/data`
 - Optional ElevenLabs voice support
