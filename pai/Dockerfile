@@ -36,7 +36,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     claude --version
 
 # Add-on scripts.
-COPY run.sh build-dashboard.sh patch-fetch.js /opt/pai/
+COPY run.sh build-dashboard.sh patch-fetch.js gateway.ts /opt/pai/
 RUN chmod +x /opt/pai/run.sh /opt/pai/build-dashboard.sh
 
 CMD ["/opt/pai/run.sh"]
