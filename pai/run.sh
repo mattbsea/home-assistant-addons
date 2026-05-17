@@ -70,11 +70,33 @@ fi
 SRC_CLAUDE=$(cd "${SRC_PULSE}/../.." && pwd)
 bashio::log.info "PAI payload found at: ${SRC_CLAUDE}"
 
-# --- Install / refresh PAI into ~/.claude -----------------------------------
-if [ "${NEED_INSTALL}" = "true" ] || [ ! -f "${PULSE_DIR}/pulse.ts" ]; then
-    bashio::log.info "Installing PAI into ${PAI_CLAUDE}..."
+# --- Install / update PAI in ~/.claude --------------------------------------
+# The first run seeds the full PAI payload. Later updates refresh the
+# framework but never overwrite user-modifiable data, so files created or
+# edited through the Claude Code terminal (or by the /interview wizard)
+# survive both add-on restarts and updates:
+#   * MEMORY, PAI/MEMORY  — durable knowledge and work state
+#   * PAI/USER            — the PAI user customization zone
+#   * settings.json       — the Digital Assistant identity
+#   * .mcp.json, .env     — MCP and environment configuration
+# Anything in $HOME outside ~/.claude is never touched by the add-on.
+PAI_PRESERVE=(
+    --exclude=/MEMORY
+    --exclude=/PAI/MEMORY
+    --exclude=/PAI/USER
+    --exclude=/settings.json
+    --exclude=/.mcp.json
+    --exclude=/.env
+)
+if [ ! -f "${PULSE_DIR}/pulse.ts" ]; then
+    bashio::log.info "Installing PAI into ${PAI_CLAUDE} (first run)..."
     mkdir -p "${PAI_CLAUDE}"
     cp -a "${SRC_CLAUDE}/." "${PAI_CLAUDE}/"
+elif [ "${NEED_INSTALL}" = "true" ]; then
+    bashio::log.info "Updating the PAI framework (user data preserved)..."
+    rsync -a "${PAI_PRESERVE[@]}" "${SRC_CLAUDE}/" "${PAI_CLAUDE}/"
+else
+    bashio::log.info "PAI already installed; framework unchanged."
 fi
 
 # Pulse refers to its own directory as both "PULSE" and "Pulse"; the mixed-case

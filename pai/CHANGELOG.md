@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1
+
+### 🐛 Bug Fixes
+- **User data is preserved across updates**: Previously every start re-copied
+  the upstream PAI files over the install, which could revert files edited
+  through the terminal or the `/interview` wizard. Updates now refresh only
+  the framework and never overwrite user-modifiable data — the `MEMORY` and
+  `PAI/USER` zones, `settings.json` (Digital Assistant identity) and
+  `.mcp.json`. The first install still seeds the full payload, and anything
+  in the home directory outside `~/.claude` was already untouched.
+
 ## 1.2.0
 
 ### ✨ New Features
