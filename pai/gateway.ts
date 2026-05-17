@@ -7,6 +7,12 @@
 //   /            -> the tab shell (this file)
 //   /pulse/...   -> Pulse dashboard      (127.0.0.1:PULSE_PORT, prefix stripped)
 //   /terminal/...-> ttyd Claude terminal (127.0.0.1:TTYD_PORT,  prefix kept)
+//   /gateway/... -> helper endpoints (sign-in link detection, code paste-back)
+//
+// The auth helper exists because copying the Claude Code sign-in URL out of a
+// terminal — or pasting the resulting code back in — is awkward on mobile.
+// The gateway watches the terminal output for the sign-in URL and exposes it,
+// and can inject the pasted code straight into the terminal.
 
 const GATEWAY_PORT = Number(process.env.PAI_GATEWAY_PORT || 31337);
 const PULSE_PORT = Number(process.env.PAI_PULSE_PORT || 31338);
@@ -14,6 +20,24 @@ const TTYD_PORT = Number(process.env.PAI_TTYD_PORT || 7683);
 const TERMINAL_ENABLED = process.env.PAI_TERMINAL_ENABLED !== "false";
 
 const HOP_BY_HOP = ["content-encoding", "content-length", "transfer-encoding"];
+
+// --- Auth helper state ------------------------------------------------------
+let detectedAuthUrl: string | null = null;
+let activeTerminal: WebSocket | null = null;
+
+const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_][0-?]*[ -/]*[@-~]/g;
+const URL_RE = /https?:\/\/[^\s\x00-\x1f"'`\\<>]+/g;
+
+function scanForAuthUrl(buffer: string): void {
+  const clean = buffer.replace(ANSI, "");
+  const matches = clean.match(URL_RE) || [];
+  for (let i = matches.length - 1; i >= 0; i--) {
+    if (/oauth|authoriz/i.test(matches[i])) {
+      detectedAuthUrl = matches[i];
+      return;
+    }
+  }
+}
 
 function shell(): string {
   const tabs = TERMINAL_ENABLED
@@ -36,20 +60,47 @@ function shell(): string {
        color:#9aa4b2;font-size:14px;cursor:pointer;border-bottom:2px solid transparent}
   .tab:hover{color:#e7ebf0}
   .tab.active{color:#fff;border-bottom-color:#3b82f6}
-  #panes{position:absolute;top:42px;left:0;right:0;bottom:0}
+  #auth{display:none;background:#1e2630;border-bottom:1px solid #2c333d;
+        padding:10px 14px;color:#e7ebf0;font-size:13px}
+  #auth.show{display:block}
+  #auth .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0}
+  #auth b{color:#fff}
+  #auth a.btn,#auth button{background:#3b82f6;color:#fff;border:0;border-radius:6px;
+        padding:8px 14px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-block}
+  #auth button.sec{background:#39424f}
+  #auth input{flex:1;min-width:140px;background:#0d1014;border:1px solid #39424f;
+        border-radius:6px;color:#e7ebf0;padding:8px;font-size:13px}
+  #auth .url{width:100%;font-family:monospace;font-size:11px}
+  #auth .msg{color:#7dd3a8;margin-left:4px}
+  #auth .close{position:absolute;right:10px;background:transparent;color:#9aa4b2;padding:2px 8px}
+  #auth .hint{color:#9aa4b2;font-size:12px}
+  #panes{position:absolute;left:0;right:0;bottom:0;top:42px}
   iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:none;background:#111418}
   iframe.show{display:block}
 </style>
 </head>
 <body>
 <div id="bar">${tabs}</div>
+<div id="auth">
+  <button class="close" id="a-close">&times;</button>
+  <div class="row"><b>Claude Code sign-in link detected.</b></div>
+  <div class="row">
+    <a class="btn" id="a-open" target="_blank" rel="noopener">Open sign-in page</a>
+    <button class="sec" id="a-copy">Copy link</button>
+    <span class="msg" id="a-msg"></span>
+  </div>
+  <div class="row"><input class="url" id="a-url" readonly onclick="this.select()"></div>
+  <div class="row hint">After signing in, paste the code from your browser here:</div>
+  <div class="row">
+    <input id="a-code" placeholder="Paste the code, then Send" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <button id="a-send">Send</button>
+  </div>
+</div>
 <div id="panes">
   <iframe id="pulse" class="show" data-src="pulse/"></iframe>
   ${terminalFrame}
 </div>
 <script>
-  // Lazy-load each pane on first activation so the terminal only connects
-  // once the user opens it.
   function activate(name){
     document.querySelectorAll(".tab").forEach(function(t){
       t.classList.toggle("active", t.dataset.pane===name);
@@ -63,7 +114,40 @@ function shell(): string {
   document.querySelectorAll(".tab").forEach(function(t){
     t.addEventListener("click", function(){ activate(t.dataset.pane); });
   });
-  document.getElementById("pulse").src = document.getElementById("pulse").dataset.src;
+  var pulse=document.getElementById("pulse");
+  pulse.src=pulse.dataset.src;
+
+  // --- Auth helper ---
+  var auth=document.getElementById("auth");
+  var aUrl=document.getElementById("a-url"), aOpen=document.getElementById("a-open");
+  var aMsg=document.getElementById("a-msg"), shownUrl=null;
+  function flash(t){ aMsg.textContent=t; setTimeout(function(){ aMsg.textContent=""; },2500); }
+  document.getElementById("a-close").onclick=function(){ auth.classList.remove("show"); };
+  document.getElementById("a-copy").onclick=function(){
+    var v=aUrl.value;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(v).then(function(){flash("Copied");},
+        function(){ aUrl.focus(); aUrl.select(); flash("Select + copy"); });
+    } else { aUrl.focus(); aUrl.select(); flash("Select + copy"); }
+  };
+  document.getElementById("a-send").onclick=function(){
+    var code=document.getElementById("a-code").value.trim();
+    if(!code){ flash("Enter the code first"); return; }
+    fetch("gateway/terminal-input",{method:"POST",body:code+"\\r"})
+      .then(function(r){ return r.ok?r.json():Promise.reject(); })
+      .then(function(){ flash("Sent to terminal"); document.getElementById("a-code").value="";
+                         activate("terminal"); })
+      .catch(function(){ flash("Could not reach the terminal"); });
+  };
+  function poll(){
+    fetch("gateway/auth-url").then(function(r){return r.json();}).then(function(d){
+      if(d.url && d.url!==shownUrl){
+        shownUrl=d.url; aUrl.value=d.url; aOpen.href=d.url;
+        auth.classList.add("show");
+      }
+    }).catch(function(){});
+  }
+  setInterval(poll,2500); poll();
 </script>
 </body>
 </html>`;
@@ -71,12 +155,12 @@ function shell(): string {
 
 const SHELL = shell();
 
-function routeFor(path: string): { port: number; path: string } | null {
+function routeFor(path: string): { port: number; path: string; terminal: boolean } | null {
   if (path === "/terminal" || path.startsWith("/terminal/")) {
-    return TERMINAL_ENABLED ? { port: TTYD_PORT, path } : null;
+    return TERMINAL_ENABLED ? { port: TTYD_PORT, path, terminal: true } : null;
   }
   if (path === "/pulse" || path.startsWith("/pulse/")) {
-    return { port: PULSE_PORT, path: path.slice("/pulse".length) || "/" };
+    return { port: PULSE_PORT, path: path.slice("/pulse".length) || "/", terminal: false };
   }
   return null;
 }
@@ -106,6 +190,8 @@ async function proxyHttp(req: Request, route: { port: number; path: string }): P
   return new Response(resp.body, { status: resp.status, headers: h });
 }
 
+const JSON_HEADERS = { "content-type": "application/json" };
+
 const server = Bun.serve({
   port: GATEWAY_PORT,
   hostname: "0.0.0.0",
@@ -117,10 +203,25 @@ const server = Bun.serve({
       if (!route) return new Response("not found", { status: 404 });
       const proto = req.headers.get("sec-websocket-protocol") || "";
       const ok = server.upgrade(req, {
-        data: { port: route.port, path: route.path, proto },
+        data: { port: route.port, path: route.path, proto, terminal: route.terminal },
         headers: proto ? { "Sec-WebSocket-Protocol": proto.split(",")[0].trim() } : undefined,
       });
       return ok ? undefined : new Response("websocket upgrade failed", { status: 400 });
+    }
+
+    // Auth helper endpoints.
+    if (path === "/gateway/auth-url") {
+      return new Response(JSON.stringify({ url: detectedAuthUrl }), { headers: JSON_HEADERS });
+    }
+    if (path === "/gateway/terminal-input") {
+      if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+      const text = await req.text();
+      if (!activeTerminal || activeTerminal.readyState !== WebSocket.OPEN) {
+        return new Response(JSON.stringify({ ok: false }), { status: 503, headers: JSON_HEADERS });
+      }
+      // ttyd input frame: command byte '0' followed by the payload.
+      activeTerminal.send("0" + text.slice(0, 8192));
+      return new Response(JSON.stringify({ ok: true }), { headers: JSON_HEADERS });
     }
 
     if (path === "/" || path === "/index.html") {
@@ -134,28 +235,46 @@ const server = Bun.serve({
   websocket: {
     idleTimeout: 255,
     open(ws) {
-      const { port, path, proto } = ws.data as { port: number; path: string; proto: string };
-      const protocols = proto ? proto.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      const data = ws.data as any;
+      const { port, path, proto, terminal } = data;
+      const protocols = proto ? proto.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
       const upstream = new WebSocket(`ws://127.0.0.1:${port}${path}`, protocols);
       upstream.binaryType = "arraybuffer";
-      const queue: any[] = [];
-      (ws.data as any).upstream = upstream;
-      (ws.data as any).queue = queue;
+      data.upstream = upstream;
+      data.queue = [];
+      if (terminal) {
+        data.obuf = "";
+        detectedAuthUrl = null;
+        activeTerminal = upstream;
+      }
       upstream.onopen = () => {
-        for (const m of queue) upstream.send(m);
-        queue.length = 0;
+        for (const m of data.queue) upstream.send(m);
+        data.queue = [];
       };
-      upstream.onmessage = (e) => { try { ws.send(e.data); } catch {} };
+      upstream.onmessage = (e) => {
+        if (terminal) {
+          // ttyd OUTPUT frames begin with the command byte '0' (0x30).
+          const d = e.data;
+          if (d instanceof ArrayBuffer && new Uint8Array(d, 0, 1)[0] === 0x30) {
+            data.obuf = (data.obuf + new TextDecoder().decode(new Uint8Array(d, 1))).slice(-16384);
+            scanForAuthUrl(data.obuf);
+          }
+        }
+        try { ws.send(e.data); } catch {}
+      };
       upstream.onclose = () => { try { ws.close(); } catch {} };
       upstream.onerror = () => { try { ws.close(); } catch {} };
     },
     message(ws, msg) {
-      const upstream = (ws.data as any).upstream as WebSocket | undefined;
+      const data = ws.data as any;
+      const upstream = data.upstream as WebSocket | undefined;
       if (upstream && upstream.readyState === WebSocket.OPEN) upstream.send(msg);
-      else (ws.data as any).queue.push(msg);
+      else data.queue.push(msg);
     },
     close(ws) {
-      try { ((ws.data as any).upstream as WebSocket | undefined)?.close(); } catch {}
+      const data = ws.data as any;
+      if (data.terminal && activeTerminal === data.upstream) activeTerminal = null;
+      try { (data.upstream as WebSocket | undefined)?.close(); } catch {}
     },
   },
 });
