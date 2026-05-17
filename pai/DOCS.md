@@ -42,6 +42,18 @@ the two tabs:
 Both tabs are reachable only through the ingress panel, which Home Assistant
 authenticates; the panel is also restricted to admin users.
 
+### Signing in to Claude Code
+
+The first time you run Claude Code it prints an OAuth sign-in URL. Because
+that URL cannot be tapped or copied out of a terminal easily (especially on
+mobile), the gateway detects it and shows a banner at the top of the panel
+with:
+
+- **Open sign-in page** — opens the Claude sign-in URL in a new browser tab.
+- **Copy link** — copies the URL to the clipboard.
+- A **paste-the-code** field — after signing in, paste the code from your
+  browser here and press **Send** to deliver it straight into the terminal.
+
 ## Configuration
 
 ```yaml

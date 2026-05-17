@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+### ✨ New Features
+- **Claude Code sign-in helper**: Signing in to Claude Code from a terminal is
+  awkward on mobile — the OAuth URL cannot be tapped or copied. The gateway
+  now watches the terminal output for the sign-in URL and shows a banner in
+  the panel with a tappable **Open sign-in page** link and a **Copy link**
+  button, plus a field to paste the resulting code straight back into the
+  terminal.
+
 ## 1.1.0
 
 ### ✨ New Features
