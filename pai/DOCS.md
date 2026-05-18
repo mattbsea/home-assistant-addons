@@ -54,6 +54,10 @@ with:
 - A **paste-the-code** field — after signing in, paste the code from your
   browser here and press **Send** to deliver it straight into the terminal.
 
+The terminal runs inside a persistent `tmux` session, so you can switch away
+to a browser to sign in and return without losing the session — reconnecting
+re-attaches to the same Claude Code prompt.
+
 ## Configuration
 
 ```yaml

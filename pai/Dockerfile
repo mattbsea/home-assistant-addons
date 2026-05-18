@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     jq \
     rsync \
+    tmux \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,7 +38,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     claude --version
 
 # Add-on scripts.
-COPY run.sh build-dashboard.sh patch-fetch.js gateway.ts /opt/pai/
+COPY run.sh build-dashboard.sh patch-fetch.js gateway.ts tmux.conf /opt/pai/
 RUN chmod +x /opt/pai/run.sh /opt/pai/build-dashboard.sh
 
 CMD ["/opt/pai/run.sh"]

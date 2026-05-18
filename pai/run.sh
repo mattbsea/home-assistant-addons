@@ -210,9 +210,13 @@ bun run pulse.ts &
 # is the sole externally reachable service.
 if [ "${ENABLE_TERMINAL}" = "true" ]; then
     bashio::log.info "Starting Claude Code terminal (internal port ${TTYD_INT_PORT})..."
+    # Run the terminal inside a persistent tmux session so the Claude Code
+    # process survives the browser disconnecting — e.g. switching apps on
+    # mobile to complete the sign-in flow. Reconnecting re-attaches to the
+    # same session instead of starting a fresh login.
     ttyd --port "${TTYD_INT_PORT}" --interface 127.0.0.1 --base-path /terminal \
         --writable --terminal-type xterm-256color \
-        bash -lc 'cd "${HOME}"; claude || true; exec bash' &
+        tmux -f /opt/pai/tmux.conf new-session -A -s pai 'cd; claude || true; exec bash' &
 else
     bashio::log.info "Claude Code terminal disabled (enable_terminal: false)."
 fi
