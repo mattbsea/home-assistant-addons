@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1
+
+### 🐛 Bug Fixes
+- **Sign-in code is sanitised**: The OAuth code field now strips whitespace
+  before sending. A long code shown wrapped in the browser could pick up a
+  line break when copied on mobile, which corrupted it and made sign-in fail
+  with an `OAuth error: Request failed with status code 400`.
+- The paste box's **Send & press Enter** now also works with an empty box, so
+  it can send a bare Enter — useful for the terminal's "Press Enter to retry"
+  prompt without a keyboard.
+
 ## 1.4.0
 
 ### ✨ New Features
