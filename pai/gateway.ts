@@ -47,6 +47,22 @@ function shell(): string {
   const terminalFrame = TERMINAL_ENABLED
     ? `<iframe id="terminal" data-src="terminal/" allow="clipboard-read; clipboard-write"></iframe>`
     : "";
+  const pasteUi = TERMINAL_ENABLED
+    ? `<button id="pastebtn" title="Paste text into the terminal">Paste</button>
+<div id="pastemodal"><div class="card">
+  <h3>Paste into the terminal</h3>
+  <p class="hint">Paste or type text below, then send it to the Claude Code
+     terminal. Useful on mobile, where pasting into the terminal directly is
+     unreliable.</p>
+  <textarea id="pastetext" placeholder="Paste text here" autocapitalize="off"
+     autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+  <div class="acts">
+    <button class="sec" id="paste-cancel">Cancel</button>
+    <button class="sec" id="paste-send">Send</button>
+    <button class="pri" id="paste-run">Send &amp; press Enter</button>
+  </div>
+</div></div>`
+    : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -73,10 +89,28 @@ function shell(): string {
   #auth .url{width:100%;font-family:monospace;font-size:11px}
   #auth .msg{color:#7dd3a8;margin-left:4px}
   #auth .close{position:absolute;right:10px;background:transparent;color:#9aa4b2;padding:2px 8px}
-  #auth .hint{color:#9aa4b2;font-size:12px}
+  .hint{color:#9aa4b2;font-size:12px}
   #panes{position:absolute;left:0;right:0;bottom:0;top:42px}
   iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:none;background:#111418}
   iframe.show{display:block}
+  #pastebtn{position:fixed;right:14px;bottom:14px;z-index:10;display:none;
+        background:#3b82f6;color:#fff;border:0;border-radius:22px;padding:11px 20px;
+        font-size:14px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+  #pastebtn.show{display:block}
+  #pastemodal{position:fixed;inset:0;z-index:20;display:none;
+        background:rgba(0,0,0,.6);align-items:center;justify-content:center}
+  #pastemodal.show{display:flex}
+  #pastemodal .card{background:#1c2127;border:1px solid #2c333d;border-radius:10px;
+        padding:16px;width:min(92vw,460px)}
+  #pastemodal h3{margin:0 0 6px;color:#fff;font-size:15px}
+  #pastemodal p{margin:0 0 10px}
+  #pastemodal textarea{width:100%;box-sizing:border-box;height:120px;resize:vertical;
+        background:#0d1014;border:1px solid #39424f;border-radius:6px;color:#e7ebf0;
+        padding:9px;font-family:monospace;font-size:13px}
+  #pastemodal .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
+  #pastemodal button{border:0;border-radius:6px;padding:9px 14px;font-size:13px;cursor:pointer}
+  #pastemodal .pri{background:#3b82f6;color:#fff}
+  #pastemodal .sec{background:#39424f;color:#e7ebf0}
 </style>
 </head>
 <body>
@@ -100,6 +134,7 @@ function shell(): string {
   <iframe id="pulse" class="show" data-src="pulse/"></iframe>
   ${terminalFrame}
 </div>
+${pasteUi}
 <script>
   function activate(name){
     document.querySelectorAll(".tab").forEach(function(t){
@@ -110,6 +145,8 @@ function shell(): string {
       if(on && !f.src) f.src = f.dataset.src;
       f.classList.toggle("show", on);
     });
+    var pb=document.getElementById("pastebtn");
+    if(pb) pb.classList.toggle("show", name==="terminal");
   }
   document.querySelectorAll(".tab").forEach(function(t){
     t.addEventListener("click", function(){ activate(t.dataset.pane); });
@@ -148,6 +185,28 @@ function shell(): string {
     }).catch(function(){});
   }
   setInterval(poll,2500); poll();
+
+  // --- Paste-into-terminal helper ---
+  var pasteBtn=document.getElementById("pastebtn");
+  if(pasteBtn){
+    var pasteModal=document.getElementById("pastemodal");
+    var pasteText=document.getElementById("pastetext");
+    pasteBtn.onclick=function(){
+      pasteText.value=""; pasteModal.classList.add("show"); pasteText.focus();
+    };
+    document.getElementById("paste-cancel").onclick=function(){
+      pasteModal.classList.remove("show");
+    };
+    function sendPaste(withEnter){
+      var t=pasteText.value;
+      if(!t){ pasteModal.classList.remove("show"); return; }
+      fetch("gateway/terminal-input",{method:"POST",body: withEnter ? t+"\\r" : t})
+        .then(function(r){ if(!r.ok) throw 0; pasteModal.classList.remove("show"); })
+        .catch(function(){ alert("Could not reach the terminal. Open the Claude Code tab, then try again."); });
+    }
+    document.getElementById("paste-send").onclick=function(){ sendPaste(false); };
+    document.getElementById("paste-run").onclick=function(){ sendPaste(true); };
+  }
 </script>
 </body>
 </html>`;
