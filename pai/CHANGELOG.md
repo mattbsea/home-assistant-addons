@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+### ✨ New Features
+- **Persistent terminal session**: The Claude Code terminal now runs inside a
+  `tmux` session. Previously, switching away from the Home Assistant app —
+  for example to complete the Claude sign-in in a browser — dropped the
+  connection and restarted Claude Code, invalidating the in-progress login.
+  The session now stays alive in the background; reconnecting re-attaches to
+  it, so you can leave to sign in and come back to the same prompt. Mouse
+  scrolling is also enabled for easier use on touch devices.
+
 ## 1.2.1
 
 ### 🐛 Bug Fixes
