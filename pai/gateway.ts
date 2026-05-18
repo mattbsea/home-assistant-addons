@@ -168,7 +168,10 @@ ${pasteUi}
     } else { aUrl.focus(); aUrl.select(); flash("Select + copy"); }
   };
   document.getElementById("a-send").onclick=function(){
-    var code=document.getElementById("a-code").value.trim();
+    // OAuth codes contain no whitespace; strip any introduced by a mobile
+    // copy (line wraps, stray spaces/newlines) which would otherwise corrupt
+    // the code and make the sign-in fail with an OAuth 400 error.
+    var code=document.getElementById("a-code").value.replace(/\\s+/g,"");
     if(!code){ flash("Enter the code first"); return; }
     fetch("gateway/terminal-input",{method:"POST",body:code+"\\r"})
       .then(function(r){ return r.ok?r.json():Promise.reject(); })
@@ -199,7 +202,9 @@ ${pasteUi}
     };
     function sendPaste(withEnter){
       var t=pasteText.value;
-      if(!t){ pasteModal.classList.remove("show"); return; }
+      // Empty text with "Send & press Enter" sends a bare Enter — handy for
+      // the terminal's "Press Enter to retry" prompt without a keyboard.
+      if(!t && !withEnter){ pasteModal.classList.remove("show"); return; }
       fetch("gateway/terminal-input",{method:"POST",body: withEnter ? t+"\\r" : t})
         .then(function(r){ if(!r.ok) throw 0; pasteModal.classList.remove("show"); })
         .catch(function(){ alert("Could not reach the terminal. Open the Claude Code tab, then try again."); });
