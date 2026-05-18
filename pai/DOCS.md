@@ -58,6 +58,13 @@ The terminal runs inside a persistent `tmux` session, so you can switch away
 to a browser to sign in and return without losing the session — reconnecting
 re-attaches to the same Claude Code prompt.
 
+### Pasting into the terminal
+
+Pasting directly into a web terminal is unreliable on mobile. The Claude Code
+tab has a **Paste** button (bottom-right) that opens a box: paste or type text
+into it and choose **Send** (text only) or **Send & press Enter** (to also run
+it). The text is delivered straight into the terminal session.
+
 ## Configuration
 
 ```yaml

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0
+
+### ✨ New Features
+- **Paste into the terminal**: A **Paste** button now appears on the Claude
+  Code tab. It opens a box you can paste or type text into and then send to
+  the terminal — with or without a trailing Enter. Pasting directly into a
+  web terminal is unreliable on mobile; this provides a dependable way to get
+  text in.
+
 ## 1.3.0
 
 ### ✨ New Features
