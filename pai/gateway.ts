@@ -14,8 +14,8 @@
 // The gateway watches the terminal output for the sign-in URL and exposes it,
 // and can inject the pasted code straight into the terminal.
 
-const GATEWAY_PORT = Number(process.env.PAI_GATEWAY_PORT || 31337);
-const PULSE_PORT = Number(process.env.PAI_PULSE_PORT || 31338);
+const GATEWAY_PORT = Number(process.env.PAI_GATEWAY_PORT || 8099);
+const PULSE_PORT = Number(process.env.PAI_PULSE_PORT || 31337);
 const TTYD_PORT = Number(process.env.PAI_TTYD_PORT || 7683);
 const TERMINAL_ENABLED = process.env.PAI_TERMINAL_ENABLED !== "false";
 

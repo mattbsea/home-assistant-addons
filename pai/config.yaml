@@ -1,7 +1,7 @@
 ---
 name: "Personal AI Infrastructure"
 description: "Daniel Miessler's PAI — the Pulse dashboard plus a Claude Code terminal"
-version: "1.4.1"
+version: "1.5.0"
 slug: "pai"
 init: false
 
@@ -16,7 +16,7 @@ url: "https://github.com/danielmiessler/Personal_AI_Infrastructure"
 # Single ingress panel: a tabbed UI fronting the Pulse dashboard and the
 # Claude Code terminal. Shown in the Home Assistant sidebar.
 ingress: true
-ingress_port: 31337
+ingress_port: 8099
 ingress_stream: true
 panel_icon: mdi:brain
 panel_title: "PAI"

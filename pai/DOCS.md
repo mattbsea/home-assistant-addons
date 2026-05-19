@@ -137,8 +137,9 @@ add-on options, so they are not meant to be hand-edited.
 - The add-on writes a minimal `PULSE.toml` on every start. The Telegram and
   iMessage bridges and the author's personal cron jobs are disabled, because
   in a headless container they only produce log noise.
-- Internally Pulse listens on port 31338 and ttyd on 7683; only the gateway
-  on the ingress port is reachable from outside the add-on.
+- Internally Pulse listens on its native port 31337 (so the PAI Claude Code
+  hooks can reach it) and ttyd on 7683; only the gateway, on the ingress
+  port, is reachable from outside the add-on.
 
 ## Limitations
 

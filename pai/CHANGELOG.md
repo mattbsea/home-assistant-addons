@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0
+
+### 🐛 Bug Fixes
+- **Pulse now sees the work done by Claude Code**: Two problems are fixed.
+  - `PAI_DIR` (and `PAI_CONFIG_DIR`, `PROJECTS_DIR`) are now exported with
+    concrete paths and pinned in `settings.json`, so Claude Code, its hooks
+    and Pulse all agree on where PAI data lives.
+  - Pulse is back on its native port `31337`. The PAI Claude Code hooks post
+    observability data to `localhost:31337`; since 1.1.0 the gateway occupied
+    that port, so the hooks could not reach Pulse. The gateway now uses a
+    separate ingress port and Pulse owns `31337` again.
+
 ## 1.4.1
 
 ### 🐛 Bug Fixes
