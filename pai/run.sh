@@ -14,16 +14,25 @@ set -o pipefail
 
 PAI_REPO_URL="https://github.com/danielmiessler/Personal_AI_Infrastructure.git"
 PAI_CACHE="/data/pai-src"
-PULSE_INT_PORT=31338
+# Pulse keeps its native port 31337: the PAI Claude Code hooks post
+# observability data to localhost:31337, so Pulse must answer there. The
+# ingress gateway therefore listens on a separate port.
+PULSE_INT_PORT=31337
 TTYD_INT_PORT=7683
-GATEWAY_PORT=31337
+GATEWAY_PORT=8099
 
 # HOME must be persistent and writable; Pulse and Claude Code use ~/.claude.
 export HOME="/data/home"
 PAI_CLAUDE="${HOME}/.claude"
 PULSE_DIR="${PAI_CLAUDE}/PAI/PULSE"
 OBS_DIR="${PULSE_DIR}/Observability"
-mkdir -p "${HOME}"
+# PAI components — Pulse, the Claude Code hooks and the dashboard — locate the
+# install through PAI_DIR. Export concrete paths so every process agrees on
+# where Claude Code's work is stored.
+export PAI_DIR="${PAI_CLAUDE}/PAI"
+export PAI_CONFIG_DIR="${PAI_DIR}"
+export PROJECTS_DIR="${HOME}/Projects"
+mkdir -p "${HOME}" "${PROJECTS_DIR}"
 
 PAI_REF=$(bashio::config 'pai_ref' 'main')
 UPDATE_ON_START=$(bashio::config 'update_on_start' 'true')
@@ -106,6 +115,22 @@ if [ ! -e "${PAI_CLAUDE}/PAI/Pulse" ]; then
     ln -s PULSE "${PAI_CLAUDE}/PAI/Pulse"
 fi
 
+# Pin the env paths in settings.json to concrete locations. PAI ships these as
+# ${HOME}-relative placeholders that its installer normally rewrites; without
+# that, Claude Code and its hooks may not resolve PAI_DIR, so Pulse never sees
+# the work they record. The rest of settings.json (the DA identity) is kept.
+SETTINGS_JSON="${PAI_CLAUDE}/settings.json"
+if [ -f "${SETTINGS_JSON}" ]; then
+    if patched=$(jq --arg d "${PAI_DIR}" --arg p "${PROJECTS_DIR}" \
+        '.env.PAI_DIR=$d | .env.PAI_CONFIG_DIR=$d | .env.PROJECTS_DIR=$p' \
+        "${SETTINGS_JSON}" 2>/dev/null) && [ -n "${patched}" ]; then
+        printf '%s\n' "${patched}" > "${SETTINGS_JSON}"
+        bashio::log.info "settings.json env paths pinned (PAI_DIR=${PAI_DIR})."
+    else
+        bashio::log.warning "Could not pin settings.json env paths."
+    fi
+fi
+
 # --- Generate a clean, add-on-managed Pulse configuration -------------------
 # The PAI repo ships the author's personal PULSE.toml — a Telegram bot plus
 # per-minute cron jobs that reference machine-specific tools and submodules.
@@ -148,6 +173,9 @@ bashio::log.info "Wrote managed PULSE.toml (voice=${VOICE_ENABLED})."
 # --- Build ~/.claude/.env from add-on options -------------------------------
 ENV_FILE="${PAI_CLAUDE}/.env"
 : > "${ENV_FILE}"
+echo "PAI_DIR=${PAI_DIR}" >> "${ENV_FILE}"
+echo "PAI_CONFIG_DIR=${PAI_CONFIG_DIR}" >> "${ENV_FILE}"
+echo "PROJECTS_DIR=${PROJECTS_DIR}" >> "${ENV_FILE}"
 if bashio::config.has_value 'elevenlabs_api_key'; then
     echo "ELEVENLABS_API_KEY=$(bashio::config 'elevenlabs_api_key')" >> "${ENV_FILE}"
     bashio::log.info "ElevenLabs API key configured."
