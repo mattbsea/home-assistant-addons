@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -71,10 +72,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TeslaUSB Viewer", lifespan=lifespan)
 
 
+# A valid ingress prefix is a plain URL path. Restricting to this charset means the value
+# is safe to reflect into both HTML attributes and the JS string in index.html — no quotes,
+# angle brackets or "</script>" can survive, closing the X-Ingress-Path injection vector.
+_INGRESS_PATH_RE = re.compile(r"/[A-Za-z0-9_\-/]*")
+
+
 @app.middleware("http")
 async def ingress_base(request: Request, call_next):
-    """Expose the HA ingress path prefix so the frontend can build absolute URLs."""
-    request.state.ingress_base = request.headers.get("X-Ingress-Path", "").rstrip("/")
+    """Expose a validated HA ingress path prefix so the frontend can build absolute URLs."""
+    raw = request.headers.get("X-Ingress-Path", "")
+    request.state.ingress_base = raw.rstrip("/") if _INGRESS_PATH_RE.fullmatch(raw) else ""
     return await call_next(request)
 
 

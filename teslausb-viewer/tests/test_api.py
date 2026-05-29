@@ -82,6 +82,11 @@ def run():
         check("ingress base injected", 'window.INGRESS_BASE = "/api/hassio_ingress/TOKEN"' in r.text)
         check("assets use base", "/api/hassio_ingress/TOKEN/static/app.js" in r.text)
 
+        # Malicious X-Ingress-Path must be rejected (no script/quote injection).
+        r = c.get("/", headers={"X-Ingress-Path": '/x"></script><script>alert(1)</script>'})
+        check("malicious ingress header neutralised",
+              "alert(1)" not in r.text and 'window.INGRESS_BASE = ""' in r.text)
+
     # MQTT publisher must construct on paho 2.x and survive a missing broker.
     from dataclasses import replace
     from app.config import get_settings
