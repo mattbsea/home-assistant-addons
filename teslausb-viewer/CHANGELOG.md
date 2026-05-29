@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### 🔒 Security
+- Strictly validate the `X-Ingress-Path` header before reflecting it into the page,
+  preventing a header-based XSS injection vector.
+
 ## 0.1.0
 
 Initial release — vertical slice.
