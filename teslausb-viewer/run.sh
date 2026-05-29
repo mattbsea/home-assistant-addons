@@ -16,9 +16,16 @@ mkdir -p "${CACHE_DIR}"
 
 # --- Resolve the rclone configuration ---------------------------------------
 # Precedence: pasted option -> existing /data/rclone.conf -> guided S3 fields.
-if bashio::config.has_value 'rclone_conf'; then
+#
+# NOTE: read the multiline `rclone_conf` straight from options.json with python, NOT
+# `bashio::config`. bashio's reader mangles/aborts on multiline string values, which sent
+# the add-on into a startup crash loop the moment a config was pasted.
+OPTIONS_JSON="/data/options.json"
+RCLONE_CONF_VALUE="$(python3 -c "import json; print(json.load(open('${OPTIONS_JSON}')).get('rclone_conf') or '', end='')" 2>/dev/null)"
+
+if [ -n "${RCLONE_CONF_VALUE}" ]; then
     bashio::log.info "Writing rclone.conf from add-on configuration"
-    bashio::config 'rclone_conf' > "${RCLONE_CONF}"
+    printf '%s' "${RCLONE_CONF_VALUE}" > "${RCLONE_CONF}"
 elif [ -f "${RCLONE_CONF}" ]; then
     bashio::log.info "Using existing rclone.conf at ${RCLONE_CONF}"
 elif bashio::config.has_value 's3_access_key_id'; then

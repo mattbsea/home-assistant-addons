@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4
+
+### 🐛 Bug Fixes
+- Actually fix the configured-backend startup crash loop: the root cause was
+  `bashio::config` mangling/aborting on the **multiline** `rclone_conf` string. Read that
+  value directly from `options.json` with python instead. (0.1.3 removed `set -e` but the
+  multiline read was the real culprit.)
+
 ## 0.1.3
 
 ### 🐛 Bug Fixes
