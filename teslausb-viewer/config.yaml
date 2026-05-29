@@ -1,0 +1,61 @@
+---
+name: "TeslaUSB Viewer"
+description: "Browse and watch TeslaUSB dashcam/Sentry videos from your cloud backend, with stats in Home Assistant"
+version: "0.1.0"
+slug: "teslausb_viewer"
+init: false
+
+# Supported architectures (v1 targets amd64; transcoding fallback is amd64-feasible)
+arch:
+  - amd64
+
+# External resources
+url: "https://github.com/marcone/teslausb"
+
+# Web interface configuration (ingress only — no required exposed port)
+ingress: true
+ingress_port: 8099
+ingress_stream: true   # stream responses through the proxy (video Range/seek passthrough)
+panel_icon: mdi:car-connected
+panel_title: "TeslaUSB Viewer"
+
+# Service startup configuration
+startup: services
+
+# Volume mappings — rclone.conf, index.db, and the per-event video cache live under /data
+map:
+  - data:rw
+
+# Supervisor API access (used for bashio::info.timezone). Entities go out over MQTT,
+# so the Home Assistant core API is not needed.
+hassio_api: true
+
+# Auto-discover an MQTT broker for statistics entities, but still run without one
+services:
+  - mqtt:want
+
+# Add-on configuration options
+options:
+  rclone_conf: ""
+  remote_name: ""
+  remote_path: ""
+  refresh_interval_minutes: 30
+  cache_size_mb: 2048
+  publish_mqtt: true
+  s3_endpoint: ""
+  s3_access_key_id: ""
+  s3_secret_access_key: ""
+  s3_bucket: ""
+  s3_region: ""
+schema:
+  rclone_conf: str?
+  remote_name: str?
+  remote_path: str?
+  refresh_interval_minutes: int(5,1440)
+  cache_size_mb: int(256,51200)
+  publish_mqtt: bool?
+  s3_endpoint: str?
+  s3_access_key_id: str?
+  s3_secret_access_key: password?
+  s3_bucket: str?
+  s3_region: str?

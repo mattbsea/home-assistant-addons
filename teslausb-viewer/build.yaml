@@ -1,0 +1,8 @@
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: TeslaUSB Viewer"
+  org.opencontainers.image.description: "Browse and watch TeslaUSB dashcam/Sentry videos from your cloud backend"
+  org.opencontainers.image.source: "https://github.com/marcone/teslausb"
+  org.opencontainers.image.licenses: "MIT"
