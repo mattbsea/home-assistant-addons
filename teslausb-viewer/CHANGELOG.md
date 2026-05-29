@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+### 🐛 Bug Fixes
+- Startup crashed (add-on went to "error") once a backend was configured: `set -e` plus
+  `set -o pipefail` aborted `run.sh` on a benign non-zero inside a bashio helper. Removed
+  the fragile shell options, fixed a latent `[ a ] || [ b ] && c` exit-code bug in the
+  guided-S3 branch, and added per-step startup logging.
+
 ## 0.1.2
 
 ### 🐛 Bug Fixes

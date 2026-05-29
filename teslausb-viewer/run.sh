@@ -1,6 +1,7 @@
 #!/usr/bin/with-contenv bashio
-set -e
-set -o pipefail
+# NB: deliberately no `set -e`/`set -o pipefail`. bashio helpers run internal pipelines
+# whose benign non-zero stages would abort the whole startup under those options. Each
+# step below handles its own errors; the app degrades gracefully if the backend is absent.
 
 APP_DIR="/opt/teslausb-viewer"
 DATA_DIR="/data"
@@ -23,15 +24,17 @@ elif [ -f "${RCLONE_CONF}" ]; then
 elif bashio::config.has_value 's3_access_key_id'; then
     bashio::log.info "Synthesising rclone.conf from guided S3 fields"
     REMOTE="$(bashio::config 'remote_name')"
-    [ -z "${REMOTE}" ] || [ "${REMOTE}" = "null" ] && REMOTE="s3"
+    if [ -z "${REMOTE}" ] || [ "${REMOTE}" = "null" ]; then
+        REMOTE="s3"
+    fi
     {
         echo "[${REMOTE}]"
         echo "type = s3"
         echo "provider = Other"
         echo "access_key_id = $(bashio::config 's3_access_key_id')"
         echo "secret_access_key = $(bashio::config 's3_secret_access_key')"
-        bashio::config.has_value 's3_endpoint' && echo "endpoint = $(bashio::config 's3_endpoint')"
-        bashio::config.has_value 's3_region' && echo "region = $(bashio::config 's3_region')"
+        if bashio::config.has_value 's3_endpoint'; then echo "endpoint = $(bashio::config 's3_endpoint')"; fi
+        if bashio::config.has_value 's3_region'; then echo "region = $(bashio::config 's3_region')"; fi
     } > "${RCLONE_CONF}"
 else
     bashio::log.warning "No backend configured yet — paste your rclone.conf in the add-on"
@@ -41,19 +44,9 @@ fi
 # Lock down credentials and hand /data to the unprivileged user.
 if [ -f "${RCLONE_CONF}" ]; then
     chmod 600 "${RCLONE_CONF}"
+    bashio::log.info "rclone.conf ready ($(wc -l < "${RCLONE_CONF}") lines)"
 fi
-chown -R viewer:viewer "${DATA_DIR}"
-
-# --- Probe backend reachability (non-fatal) ---------------------------------
-if [ -f "${RCLONE_CONF}" ]; then
-    REMOTE_NAME="$(bashio::config 'remote_name')"
-    REMOTE_PATH="$(bashio::config 'remote_path')"
-    if /opt/scripts/rclone-check.sh "${RCLONE_CONF}" "${REMOTE_NAME}" "${REMOTE_PATH}"; then
-        bashio::log.info "Backend reachable"
-    else
-        bashio::log.warning "Backend not reachable yet — check credentials/remote_path; the UI will still load"
-    fi
-fi
+chown -R viewer:viewer "${DATA_DIR}" || bashio::log.warning "Could not chown ${DATA_DIR}"
 
 # --- Application configuration via environment ------------------------------
 export TUV_DATA_DIR="${DATA_DIR}"
@@ -64,9 +57,20 @@ export TUV_REMOTE_PATH="$(bashio::config 'remote_path')"
 export TUV_REFRESH_MINUTES="$(bashio::config 'refresh_interval_minutes')"
 export TUV_CACHE_SIZE_MB="$(bashio::config 'cache_size_mb')"
 export TUV_PORT="${PORT}"
+
 # Match "today" calculations to Home Assistant's configured timezone.
-if bashio::info.timezone >/dev/null 2>&1; then
-    export TZ="$(bashio::info.timezone)"
+TZ_VALUE="$(bashio::info.timezone 2>/dev/null)"
+if [ -n "${TZ_VALUE}" ] && [ "${TZ_VALUE}" != "null" ]; then
+    export TZ="${TZ_VALUE}"
+fi
+
+# --- Probe backend reachability (non-fatal) ---------------------------------
+if [ -f "${RCLONE_CONF}" ]; then
+    if /opt/scripts/rclone-check.sh "${RCLONE_CONF}" "${TUV_REMOTE_NAME}" "${TUV_REMOTE_PATH}"; then
+        bashio::log.info "Backend reachable: ${TUV_REMOTE_NAME}:${TUV_REMOTE_PATH}"
+    else
+        bashio::log.warning "Backend not reachable yet — check credentials/remote_path; the UI will still load"
+    fi
 fi
 
 # --- MQTT (optional) --------------------------------------------------------
