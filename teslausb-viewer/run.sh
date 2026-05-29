@@ -23,11 +23,12 @@ mkdir -p "${CACHE_DIR}"
 OPTIONS_JSON="/data/options.json"
 RCLONE_CONF_VALUE="$(python3 -c "import json; print(json.load(open('${OPTIONS_JSON}')).get('rclone_conf') or '', end='')" 2>/dev/null)"
 
+# Guided S3 fields are checked before an existing file so that filling them in always
+# takes effect (otherwise a previously auto-written rclone.conf would shadow them). A
+# pasted rclone_conf still wins over everything; a hand-dropped file is the last resort.
 if [ -n "${RCLONE_CONF_VALUE}" ]; then
-    bashio::log.info "Writing rclone.conf from add-on configuration"
+    bashio::log.info "Writing rclone.conf from pasted configuration"
     printf '%s' "${RCLONE_CONF_VALUE}" > "${RCLONE_CONF}"
-elif [ -f "${RCLONE_CONF}" ]; then
-    bashio::log.info "Using existing rclone.conf at ${RCLONE_CONF}"
 elif bashio::config.has_value 's3_access_key_id'; then
     bashio::log.info "Synthesising rclone.conf from guided S3 fields"
     REMOTE="$(bashio::config 'remote_name')"
@@ -43,9 +44,12 @@ elif bashio::config.has_value 's3_access_key_id'; then
         if bashio::config.has_value 's3_endpoint'; then echo "endpoint = $(bashio::config 's3_endpoint')"; fi
         if bashio::config.has_value 's3_region'; then echo "region = $(bashio::config 's3_region')"; fi
     } > "${RCLONE_CONF}"
+elif [ -f "${RCLONE_CONF}" ]; then
+    bashio::log.info "Using existing rclone.conf at ${RCLONE_CONF}"
 else
-    bashio::log.warning "No backend configured yet — paste your rclone.conf in the add-on"
-    bashio::log.warning "Configuration tab, or drop a file at ${RCLONE_CONF}. The UI will still load."
+    bashio::log.warning "No backend configured yet — fill the guided S3 fields, paste an"
+    bashio::log.warning "rclone.conf (use the config tab's YAML mode for multi-line), or drop"
+    bashio::log.warning "a file at ${RCLONE_CONF}. The UI will still load."
 fi
 
 # Lock down credentials and hand /data to the unprivileged user.
@@ -60,7 +64,15 @@ export TUV_DATA_DIR="${DATA_DIR}"
 export TUV_RCLONE_CONF="${RCLONE_CONF}"
 export TUV_CACHE_DIR="${CACHE_DIR}"
 export TUV_REMOTE_NAME="$(bashio::config 'remote_name')"
-export TUV_REMOTE_PATH="$(bashio::config 'remote_path')"
+# remote_path points at the folder holding SavedClips/. For the guided S3 path, fall back
+# to the bucket name when remote_path isn't set explicitly.
+REMOTE_PATH_VAL="$(bashio::config 'remote_path')"
+if [ -z "${REMOTE_PATH_VAL}" ] || [ "${REMOTE_PATH_VAL}" = "null" ]; then
+    if bashio::config.has_value 's3_bucket'; then
+        REMOTE_PATH_VAL="$(bashio::config 's3_bucket')"
+    fi
+fi
+export TUV_REMOTE_PATH="${REMOTE_PATH_VAL}"
 export TUV_REFRESH_MINUTES="$(bashio::config 'refresh_interval_minutes')"
 export TUV_CACHE_SIZE_MB="$(bashio::config 'cache_size_mb')"
 export TUV_PORT="${PORT}"

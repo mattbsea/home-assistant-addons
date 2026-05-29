@@ -28,31 +28,42 @@ on the Home Assistant host and served from there with seek support.
 | `publish_mqtt` | Publish statistics to Home Assistant via MQTT discovery (needs the Mosquitto broker + MQTT integration). |
 | `s3_endpoint` / `s3_access_key_id` / `s3_secret_access_key` / `s3_bucket` / `s3_region` | Optional guided fields for S3-compatible backends, used **only** when `rclone_conf` is empty. |
 
-### Supplying `rclone.conf`
+### Supplying credentials
 
-The add-on options field is awkward for a long multi-line secret, so there are three ways,
-in order of precedence:
+> **Home Assistant has no multi-line / textarea option type** — every string option in the
+> Configuration tab is a single-line input. So pick the method that fits your backend:
 
-1. **Paste it** into the `rclone_conf` option.
-2. **Drop a file** at `/addon_config`/`/data/rclone.conf` using the Samba or SSH add-on (used
-   if `rclone_conf` is left empty).
-3. **Guided S3 fields** (used if both of the above are empty).
+**Recommended for S3 / MinIO / B2 — the guided fields (all single-line):**
 
-The file is stored at `/data/rclone.conf` with `600` permissions.
+| Field | Example |
+| --- | --- |
+| `s3_endpoint` | `https://s3.example.org` |
+| `s3_access_key_id` | `YOUR_ACCESS_KEY` |
+| `s3_secret_access_key` | `YOUR_SECRET_KEY` (masked) |
+| `s3_bucket` | `teslausb` (used as the path if `remote_path` is empty) |
+| `remote_name` | `minio` (optional; defaults to `s3`) |
 
-#### Example for MinIO / S3-compatible
+No `rclone.conf` needed — the add-on synthesises one at startup.
 
-```ini
-[minio]
-type = s3
-provider = Minio
-access_key_id = YOUR_ACCESS_KEY
-secret_access_key = YOUR_SECRET_KEY
-endpoint = https://s3.example.org
-region = us-east-1
+**For OAuth backends (Google Drive, Dropbox, OneDrive) or any existing remote — paste your
+`rclone.conf`:** because it's multi-line, use the Configuration tab's **"Edit in YAML"
+toggle** (top-right ⋮ menu) and paste under `rclone_conf: |`. For example:
+
+```yaml
+rclone_conf: |
+  [gdrive]
+  type = drive
+  scope = drive
+  token = {"access_token":"...","refresh_token":"...","expiry":"..."}
+remote_name: gdrive
+remote_path: TeslaCam
 ```
 
-With `remote_name: minio` and `remote_path: teslacam` (the bucket/path holding `SavedClips/`).
+**Or drop a file** at `/data/rclone.conf` (e.g. via the Samba/SSH add-on) and leave the
+options empty.
+
+**Precedence:** pasted `rclone_conf` → guided S3 fields → existing `/data/rclone.conf`. The
+effective config is written to `/data/rclone.conf` with `600` permissions on every start.
 
 ## Statistics entities
 

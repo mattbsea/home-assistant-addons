@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5
+
+### ✨ Improvements
+- Make the guided single-line S3 fields (`s3_endpoint`/`s3_access_key_id`/
+  `s3_secret_access_key`/`s3_bucket`) a first-class way to configure the backend — they now
+  take precedence over a stale auto-written `rclone.conf`, and `s3_bucket` is used as the
+  remote path when `remote_path` is empty. Home Assistant options can't render a multi-line
+  textarea, so this is the clean single-line path for S3/MinIO; paste `rclone.conf` via the
+  config tab's YAML mode for OAuth backends. DOCS updated.
+
 ## 0.1.4
 
 ### 🐛 Bug Fixes
