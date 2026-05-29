@@ -8,7 +8,8 @@ ARG RCLONE_VERSION=v1.69.1
 #   python3 venv  -> the FastAPI app
 #   ffmpeg        -> reserved for the future HEVC->H.264 transcoding fallback (seam only in v1)
 #   gosu          -> drop root to the unprivileged app user at startup
-#   curl/ca-certs -> fetch the pinned rclone package
+#   curl/ca-certs -> fetch the pinned rclone package AND required by bashio at runtime
+#                    (bashio talks to the Supervisor API over curl — do NOT remove it)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         python3-pip \
@@ -21,8 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.deb" \
     && apt-get install -y --no-install-recommends /tmp/rclone.deb \
     && rm -f /tmp/rclone.deb \
-    && apt-get purge -y curl \
-    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Unprivileged user that owns /data and runs the web app

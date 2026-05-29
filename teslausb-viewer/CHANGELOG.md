@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+### 🐛 Bug Fixes
+- Keep `curl` in the image — bashio uses it to read the Supervisor API, so removing it
+  broke all add-on configuration reading (the backend never appeared configured).
+
 ## 0.1.1
 
 ### 🔒 Security
