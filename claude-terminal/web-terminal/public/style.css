@@ -202,10 +202,13 @@ html, body {
 @media (any-pointer: coarse) and (not (any-pointer: fine)) {
     #mobile-toolbar {
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         position: fixed;
         right: 12px;
         bottom: 12px;
         gap: 8px;
+        max-width: calc(100vw - 24px);
         z-index: 50;
     }
     #mobile-toolbar button {
@@ -222,6 +225,13 @@ html, body {
         -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
         cursor: pointer;
         padding: 0;
+    }
+    /* Esc/arrow keys: slightly smaller so the "Esc" label fits the circle */
+    #mobile-toolbar button.mobile-key {
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        font-size: 16px;
     }
     #mobile-toolbar button:active {
         background: #007acc;

@@ -382,12 +382,18 @@ start_web_terminal() {
     # Drop from root to the claude user for the Node.js server process
     # gosu performs a clean privilege drop (no sudo, no setuid shell overhead)
     # Source nvm to get Node.js 20 on PATH (falls back to system Node.js)
+    #
+    # Launch the server under ssh-agent so that a single agent is started for
+    # the add-on. ssh-agent exports SSH_AUTH_SOCK/SSH_AGENT_PID into the node
+    # process, and every PTY session inherits process.env (see buildSessionEnv
+    # in server.js), so all terminal tabs share the same agent. The agent is
+    # torn down automatically when the server process exits.
     exec gosu claude bash -c '
         export NVM_DIR="$HOME/.nvm"
         if [ -s "$NVM_DIR/nvm.sh" ]; then
             . "$NVM_DIR/nvm.sh"
         fi
-        node /opt/web-terminal/server.js
+        exec ssh-agent node /opt/web-terminal/server.js
     '
 }
 

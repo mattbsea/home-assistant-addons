@@ -15,6 +15,11 @@
     <div id="terminal-container"></div>
     <div id="connection-status">Reconnecting...</div>
     <div id="mobile-toolbar" aria-hidden="true">
+        <button class="mobile-key" type="button" title="Escape" data-seq="&#x1b;">Esc</button>
+        <button class="mobile-key" type="button" title="Left" data-seq="&#x1b;[D">&#8592;</button>
+        <button class="mobile-key" type="button" title="Up" data-seq="&#x1b;[A">&#8593;</button>
+        <button class="mobile-key" type="button" title="Down" data-seq="&#x1b;[B">&#8595;</button>
+        <button class="mobile-key" type="button" title="Right" data-seq="&#x1b;[C">&#8594;</button>
         <button id="mobile-paste-btn" type="button" title="Paste">&#128203;</button>
         <button id="mobile-copy-btn" type="button" title="Copy selection">&#10697;</button>
     </div>
@@ -561,6 +566,16 @@
         } catch (_) {}
         if (!copied) copied = legacyCopy(sel);
         showToast(copied ? 'Copied' : 'Copy failed');
+    });
+
+    // Mobile special keys (Escape + arrows) — send raw ANSI sequences to the PTY.
+    // Sequences live in each button's data-seq attribute. We don't refocus the
+    // terminal afterwards so the soft keyboard stays put.
+    document.querySelectorAll('#mobile-toolbar .mobile-key').forEach(function(btn) {
+        const seq = btn.getAttribute('data-seq');
+        btn.addEventListener('click', function() {
+            sendInput(seq);
+        });
     });
 
     // Start

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.7
+
+### ✨ New Features
+- **SSH agent always available**: The terminal server now runs under `ssh-agent`, so a single agent is started for the add-on and every terminal tab (Claude or shell) inherits `SSH_AUTH_SOCK`. Run `ssh-add` once and your key is available across all tabs and across tab restarts — useful for `git` over SSH and remote logins. The agent is torn down automatically when the add-on stops.
+- **Escape & arrow keys on mobile**: The mobile toolbar now includes Esc and ←/↑/↓/→ buttons alongside Paste/Copy, so phones and tablets (whose soft keyboards usually lack these) can navigate the shell, edit command-line history, and dismiss prompts. Like the Paste/Copy buttons, they only appear on touch devices with no mouse.
+
 ## 2.0.6
 
 ### 🐛 Bug Fixes
