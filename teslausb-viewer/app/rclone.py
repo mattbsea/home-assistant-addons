@@ -59,9 +59,17 @@ async def lsjson(
     *,
     dirs_only: bool = False,
     files_only: bool = False,
+    recursive: bool = False,
 ) -> list[dict]:
-    """List a remote directory as structured entries (name, IsDir, Size, ModTime)."""
+    """List a remote directory as structured entries (Name, Path, IsDir, Size, ModTime).
+
+    With recursive=True, each entry's "Path" is its path relative to `subpath` (including
+    any sub-directories), while "Name" stays the basename — used to flatten nested layouts
+    such as RecentClips/<date>/<clip>.mp4 back to per-minute groups.
+    """
     args = ["lsjson", _target(settings, subpath)]
+    if recursive:
+        args.append("-R")
     if dirs_only:
         args.append("--dirs-only")
     if files_only:
@@ -87,6 +95,20 @@ async def copy_to(settings: Settings, subpath: str, dest_dir: str, *, includes: 
     for pattern in includes:
         args += ["--include", pattern]
     await _run(settings, args, timeout=600.0)
+
+
+async def copy_files(settings: Settings, items: list[tuple[str, str]], dest_dir: str) -> None:
+    """Copy specific files into dest_dir, flattened to a chosen basename.
+
+    `items` is a list of (remote_subpath, dest_basename). Used when an event's clips don't
+    share a single copyable folder — e.g. RecentClips minute-groups whose clips are siblings
+    of other minutes' clips (and may sit under a date sub-folder). `copyto` per file keeps
+    each clip at dest_dir/<basename> so the cache lookup stays basename-only.
+    """
+    async def _one(subpath: str, name: str) -> None:
+        await _run(settings, ["copyto", _target(settings, subpath), f"{dest_dir}/{name}"], timeout=600.0)
+
+    await asyncio.gather(*(_one(sub, name) for sub, name in items))
 
 
 async def about(settings: Settings) -> dict | None:

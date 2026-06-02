@@ -52,26 +52,36 @@ class CacheManager:
             return {"state": "ready", "ready": len(list(d.glob("*.mp4")))}
         return {"state": "idle", "ready": 0}
 
-    async def prepare(self, event_id: str, total_files: int) -> dict:
-        """Idempotently ensure an event's clips are cached. Returns current status."""
+    async def prepare(self, event_id: str, files: list[dict]) -> dict:
+        """Idempotently ensure an event's clips are cached. Returns current status.
+
+        `files` is the event's file rows (each with a remote `path` and `filename`).
+        """
         async with self._lock:
             st = self.status(event_id)
             if st["state"] in ("ready", "preparing"):
                 return st
-            self._status[event_id] = {"state": "preparing", "ready": 0, "total": total_files}
-            self._tasks[event_id] = asyncio.create_task(self._copy(event_id, total_files))
+            self._status[event_id] = {"state": "preparing", "ready": 0, "total": len(files)}
+            self._tasks[event_id] = asyncio.create_task(self._copy(event_id, files))
             return self._status[event_id]
 
-    async def _copy(self, event_id: str, total_files: int) -> None:
+    async def _copy(self, event_id: str, files: list[dict]) -> None:
         dest = self.event_dir(event_id)
         dest.mkdir(parents=True, exist_ok=True)
         try:
-            await rclone.copy_to(
-                self.settings, event_id, str(dest),
-                includes=["*.mp4", "thumb.png"],
-            )
+            items = [(f["path"], f["filename"]) for f in files if f.get("path")]
+            if items:
+                # Fetch each clip by its exact remote path, flattened to dest/<basename>.
+                # Works for both folder-shaped events and scattered RecentClips minutes.
+                await rclone.copy_files(self.settings, items, str(dest))
+            else:
+                # Legacy index rows written before clip paths were recorded: copy the
+                # event folder wholesale (correct for SavedClips/SentryClips events).
+                await rclone.copy_to(
+                    self.settings, event_id, str(dest), includes=["*.mp4", "thumb.png"],
+                )
             ready = len(list(dest.glob("*.mp4")))
-            self._status[event_id] = {"state": "ready", "ready": ready, "total": total_files}
+            self._status[event_id] = {"state": "ready", "ready": ready, "total": len(files)}
             self._atime[event_id] = time.time()
             log.info("Cached event %s (%d clips)", event_id, ready)
         except rclone.RcloneError as exc:

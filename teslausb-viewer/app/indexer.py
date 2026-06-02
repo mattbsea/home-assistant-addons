@@ -33,20 +33,30 @@ SCAN_FOLDERS = ("SavedClips", "SentryClips", "RecentClips")
 EVENT_FOLDERS = ("SavedClips", "SentryClips")
 
 
-def _build_files(entries: list[dict]) -> list:
+def _build_files(entries: list[dict], parent: str) -> list:
+    """Turn rclone lsjson entries into CameraFiles, recording each clip's full remote path.
+
+    `parent` is the subpath that was listed; an entry's "Path" is relative to it (and, for
+    a recursive listing, includes any sub-directory). The clip's remote subpath is therefore
+    `parent/<entry Path>`, while its basename ("Name") is what CLIP_RE matches and what the
+    local cache file is named.
+    """
     from .models import CameraFile
 
     files = []
     for e in entries:
-        m = CLIP_RE.match(e.get("Name", ""))
+        name = e.get("Name", "")
+        m = CLIP_RE.match(name)
         if not m:
             continue
+        rel = e.get("Path") or name
         files.append(
             CameraFile(
                 camera=m.group("camera"),
                 minute_ts=m.group("minute"),
-                filename=e["Name"],
+                filename=name,
                 size=int(e.get("Size", 0) or 0),
+                path=f"{parent}/{rel}".strip("/"),
             )
         )
     return files
@@ -134,7 +144,7 @@ class Indexer:
             folder=folder,
             event_ts=ts.isoformat() if ts else name,
             thumb_present="thumb.png" in names,
-            files=_build_files(files_entries),
+            files=_build_files(files_entries, subpath),
         )
         if "event.json" in names:
             try:
@@ -148,13 +158,17 @@ class Indexer:
         self.db.upsert_event(event, first_seen=now, now=now)
 
     async def _scan_recent(self, folder: str) -> int:
-        """RecentClips: flat rolling buffer of clips grouped into synthetic per-minute events."""
+        """RecentClips: rolling buffer of clips grouped into synthetic per-minute events.
+
+        Listed recursively so it works whether clips sit flat in RecentClips/ (stock TeslaUSB)
+        or under a date sub-folder like RecentClips/<date>/ (some rclone archive layouts).
+        """
         try:
-            entries = await rclone.lsjson(self.settings, folder, files_only=True)
+            entries = await rclone.lsjson(self.settings, folder, files_only=True, recursive=True)
         except rclone.RcloneError as exc:
             log.warning("Could not list %s: %s", folder, exc.stderr.strip()[:200])
             return 0
-        files = _build_files(entries)
+        files = _build_files(entries, folder)
         by_minute: dict[str, list] = {}
         for f in files:
             by_minute.setdefault(f.minute_ts, []).append(f)

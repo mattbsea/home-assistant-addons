@@ -29,16 +29,33 @@ def main(argv):
         return 0 if os.path.isdir(resolve(rest[0])) else 3
 
     if cmd == "lsjson":
-        d = resolve(rest[0])
+        recursive = "-R" in rest
         dirs_only, files_only = "--dirs-only" in rest, "--files-only" in rest
+        pathargs = [a for a in rest if not a.startswith("-")]
+        d = resolve(pathargs[0])
         out = []
-        if os.path.isdir(d):
+        if os.path.isdir(d) and recursive:
+            for root, dirnames, fnames in os.walk(d):
+                rel_root = os.path.relpath(root, d)
+
+                def _rel(name):
+                    return name if rel_root == "." else os.path.normpath(os.path.join(rel_root, name))
+
+                if not files_only:
+                    for name in sorted(dirnames):
+                        out.append({"Name": name, "Path": _rel(name), "IsDir": True, "Size": -1})
+                if not dirs_only:
+                    for name in sorted(fnames):
+                        full = os.path.join(root, name)
+                        out.append({"Name": name, "Path": _rel(name), "IsDir": False,
+                                    "Size": os.path.getsize(full)})
+        elif os.path.isdir(d):
             for name in sorted(os.listdir(d)):
                 full = os.path.join(d, name)
                 is_dir = os.path.isdir(full)
                 if (dirs_only and not is_dir) or (files_only and is_dir):
                     continue
-                out.append({"Name": name, "IsDir": is_dir,
+                out.append({"Name": name, "Path": name, "IsDir": is_dir,
                             "Size": -1 if is_dir else os.path.getsize(full)})
         sys.stdout.write(json.dumps(out))
         return 0
@@ -49,6 +66,15 @@ def main(argv):
             sys.stderr.write("directory not found")
             return 3
         sys.stdout.buffer.write(open(p, "rb").read())
+        return 0
+
+    if cmd == "copyto":
+        src, dest = resolve(rest[0]), rest[1]
+        if not os.path.isfile(src):
+            sys.stderr.write("directory not found")
+            return 3
+        os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+        shutil.copy(src, dest)
         return 0
 
     if cmd == "copy":

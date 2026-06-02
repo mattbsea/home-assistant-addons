@@ -127,8 +127,7 @@ async def prepare(event_id: str, request: Request) -> JSONResponse:
     row = await asyncio.to_thread(st.db.get_event, event_id)
     if not row:
         raise HTTPException(404, "event not found")
-    total = len(row.get("files", []))
-    status = await st.cache.prepare(event_id, total)
+    status = await st.cache.prepare(event_id, row.get("files", []))
     return JSONResponse(status)
 
 

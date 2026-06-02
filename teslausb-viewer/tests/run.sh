@@ -28,6 +28,14 @@ printf '{"reason":"user_interaction_honk","city":"Seattle","est_lat":47.6,"est_l
 printf 'PNGDATA' > "$EV/thumb.png"
 head -c 4096 /dev/urandom > "$EV/2024-01-15_10-30-22-front.mp4"
 head -c 4096 /dev/urandom > "$EV/2024-01-15_10-30-22-back.mp4"
+
+# Sample RecentClips clips nested under a date sub-folder (non-flat layout) to prove the
+# indexer descends into it and playback fetches by the clip's real path.
+REC="$BACKEND/teslacam/RecentClips/2024-01-15"
+mkdir -p "$REC"
+head -c 2048 /dev/urandom > "$REC/2024-01-15_10-31-00-front.mp4"
+head -c 2048 /dev/urandom > "$REC/2024-01-15_10-31-00-back.mp4"
+
 printf '[test]\ntype = s3\n' > "$DATA/rclone.conf"
 
 PATH="$BIN:$PATH" PYTHONPATH="$ADDON_DIR" \

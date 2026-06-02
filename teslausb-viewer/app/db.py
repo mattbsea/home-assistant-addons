@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS files (
     minute_ts TEXT NOT NULL,
     filename  TEXT NOT NULL,
     size      INTEGER NOT NULL DEFAULT 0,
+    path      TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (event_id, filename)
 );
 CREATE INDEX IF NOT EXISTS idx_files_event ON files(event_id);
@@ -55,7 +56,14 @@ class Database:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after the original schema, for DBs created by older versions."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(files)")}
+        if "path" not in cols:
+            self._conn.execute("ALTER TABLE files ADD COLUMN path TEXT NOT NULL DEFAULT ''")
 
     def close(self) -> None:
         with self._lock:
@@ -100,9 +108,9 @@ class Database:
             )
             self._conn.execute("DELETE FROM files WHERE event_id=?", (event.event_id,))
             self._conn.executemany(
-                "INSERT OR REPLACE INTO files (event_id, camera, minute_ts, filename, size)"
-                " VALUES (?,?,?,?,?)",
-                [(event.event_id, f.camera, f.minute_ts, f.filename, f.size) for f in event.files],
+                "INSERT OR REPLACE INTO files (event_id, camera, minute_ts, filename, size, path)"
+                " VALUES (?,?,?,?,?,?)",
+                [(event.event_id, f.camera, f.minute_ts, f.filename, f.size, f.path) for f in event.files],
             )
             self._conn.commit()
 
@@ -176,7 +184,7 @@ class Database:
             if not row:
                 return None
             files = self._conn.execute(
-                "SELECT camera, minute_ts, filename, size FROM files WHERE event_id=?"
+                "SELECT camera, minute_ts, filename, size, path FROM files WHERE event_id=?"
                 " ORDER BY minute_ts, camera",
                 (event_id,),
             ).fetchall()
@@ -218,7 +226,7 @@ class Database:
         )
         ev.files = [
             CameraFile(camera=f["camera"], minute_ts=f["minute_ts"],
-                       filename=f["filename"], size=f["size"])
+                       filename=f["filename"], size=f["size"], path=f.get("path", ""))
             for f in row.get("files", [])
         ]
         return ev

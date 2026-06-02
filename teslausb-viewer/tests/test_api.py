@@ -74,6 +74,24 @@ def run():
         r = c.get("/api/events?folder=SavedClips&date_from=2024-02-01T00:00:00&date_to=2024-02-01T23:59:59")
         check("date filter excludes other day", r.json()["total"] == 0, str(r.json()["total"]))
 
+        # RecentClips clips live under a date sub-folder; they must still index and play.
+        rec = c.get("/api/events?folder=RecentClips").json()
+        check("recent listed", rec["total"] >= 1, str(rec["total"]))
+        rec_id = "RecentClips/2024-01-15_10-31-00"
+        rd = c.get(f"/api/events/{rec_id}/detail").json()
+        check("recent cameras", rd.get("cameras") == ["front", "back"], str(rd.get("cameras")))
+        c.post(f"/api/events/{rec_id}/prepare")
+        rst = {}
+        for _ in range(50):
+            rst = c.get(f"/api/events/{rec_id}/status").json()
+            if rst["state"] in ("ready", "error"):
+                break
+            time.sleep(0.1)
+        check("recent prepare ready", rst.get("state") == "ready", str(rst))
+        r = c.get(f"/api/events/{rec_id}/video/front/2024-01-15_10-31-00")
+        check("recent video 200 (fetched from date subfolder)", r.status_code == 200, str(r.status_code))
+        check("recent video length 2048", len(r.content) == 2048, str(len(r.content)))
+
         s = c.get("/api/stats").json()
         check("stats savedclips_count", s["savedclips_count"] >= 1, str(s.get("savedclips_count")))
         check("stats backend bytes from about", s["backend_used_bytes"] == 400, str(s.get("backend_used_bytes")))

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.7
+
+### 🐛 Bug Fixes
+- Make RecentClips work end-to-end when clips are nested under a date sub-folder
+  (`RecentClips/<date>/<clip>.mp4`) rather than flat. The indexer now lists RecentClips
+  **recursively**, and each clip's real remote path is recorded so playback fetches the
+  exact file (flattened into the per-event cache) — previously the rolling-buffer scan
+  only looked one level deep and the synthetic per-minute "folder" didn't exist on the
+  backend, so nested RecentClips both failed to list and couldn't be played. Works for
+  flat and nested layouts. Adds a `path` column to the file index (auto-migrated).
+
 ## 0.1.6
 
 ### ✨ Improvements
