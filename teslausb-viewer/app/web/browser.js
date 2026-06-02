@@ -70,8 +70,7 @@
       if (!append && data.events.length === 0) {
         view.innerHTML = `<div class="empty">
           <p>No events found in <strong>${state.folder}</strong>.</p>
-          <p class="hint">If you just installed the add-on, hit <strong>↻ Refresh</strong> to scan your backend.
-          Phase 1 indexes SavedClips.</p></div>`;
+          <p class="hint">If you just installed the add-on, hit <strong>↻ Refresh</strong> to scan your backend.</p></div>`;
         return;
       }
       data.events.forEach((ev) => grid.appendChild(card(ev)));

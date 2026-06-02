@@ -3,8 +3,8 @@
 Cost control is the whole point: enumerating event folders (`lsjson --dirs-only`) is cheap,
 but listing every file in every event on every refresh is not. Archived Saved/Sentry events
 are append-only, so we list a folder's files only the first time we see it. RecentClips is a
-rolling buffer, so it is re-listed and pruned each pass. Phase 1 scans SavedClips only;
-SentryClips/RecentClips are flipped on in later phases via SCAN_FOLDERS.
+rolling buffer, so it is re-listed and pruned each pass. All three folders
+(SavedClips, SentryClips, RecentClips) are scanned — see SCAN_FOLDERS.
 """
 
 from __future__ import annotations
@@ -27,8 +27,9 @@ from .models import (
 
 log = logging.getLogger("teslausb_viewer.indexer")
 
-# Phase 1: SavedClips only. Later phases append "SentryClips", "RecentClips".
-SCAN_FOLDERS = ("SavedClips",)
+# Scan all three TeslaUSB folders. SavedClips/SentryClips are append-only event dirs
+# (listed once); RecentClips is a rolling buffer (re-listed and pruned each pass).
+SCAN_FOLDERS = ("SavedClips", "SentryClips", "RecentClips")
 EVENT_FOLDERS = ("SavedClips", "SentryClips")
 
 

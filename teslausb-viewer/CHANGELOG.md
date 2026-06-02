@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.6
+
+### ✨ Improvements
+- Index **SentryClips** and **RecentClips** in addition to SavedClips. The read path (API,
+  DB, UI tabs) already supported all three; the indexer was gated to SavedClips only, so
+  backends with only Sentry/Recent footage showed an empty viewer. SavedClips/SentryClips
+  are listed once (append-only); RecentClips is re-listed and pruned each pass as a rolling
+  buffer. Note: enabling RecentClips means the viewer indexes the entire rolling buffer.
+
 ## 0.1.5
 
 ### ✨ Improvements
