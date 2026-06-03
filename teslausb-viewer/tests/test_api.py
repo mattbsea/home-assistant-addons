@@ -92,6 +92,14 @@ def run():
         check("recent video 200 (fetched from date subfolder)", r.status_code == 200, str(r.status_code))
         check("recent video length 2048", len(r.content) == 2048, str(len(r.content)))
 
+        # RecentClips has no Tesla thumb.png, so the thumbnailer should have generated one
+        # (front-camera frame via ffmpeg) during the /api/refresh above — served from cache.
+        check("recent thumb_present false", rec["events"][0]["thumb_present"] is False,
+              str(rec["events"][0]["thumb_present"]))
+        rt = c.get(f"/api/events/{rec_id}/thumb")
+        check("recent generated thumb 200", rt.status_code == 200, str(rt.status_code))
+        check("recent thumb is PNG", rt.content[:4] == b"\x89PNG", str(rt.content[:8]))
+
         s = c.get("/api/stats").json()
         check("stats savedclips_count", s["savedclips_count"] >= 1, str(s.get("savedclips_count")))
         check("stats backend bytes from about", s["backend_used_bytes"] == 400, str(s.get("backend_used_bytes")))

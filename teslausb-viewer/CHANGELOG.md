@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.8
+
+### ✨ Improvements
+- Generate poster-frame thumbnails for events with no Tesla `thumb.png` (i.e. RecentClips).
+  At scan time the app grabs one frame (~1s in) from the event's front-camera clip with
+  `ffmpeg`, scales it down, and stores it in the same thumb cache the `/thumb` endpoint
+  already serves — so the grid shows real previews instead of the 📹 placeholder. Eager
+  (generated during the scan) and idempotent (skips events already thumbed); work is bounded
+  per pass and logged. The browser grid now eagerly loads every card's thumbnail (preload),
+  falling back to the placeholder only when none exists yet. Generated thumbnails for events
+  that roll out of the index (RecentClips buffer) are pruned automatically.
+
 ## 0.1.7
 
 ### 🐛 Bug Fixes

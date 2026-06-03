@@ -37,16 +37,21 @@
     el.className = "card";
     el.href = "#/event/" + encodeURIComponent(ev.event_id);
     const thumbSrc = window.TUV.url("/api/events/" + encodeURIComponent(ev.event_id) + "/thumb");
-    const thumb = ev.thumb_present
-      ? `<img loading="lazy" src="${esc(thumbSrc)}" alt="">`
-      : `<div class="thumb-placeholder">📹</div>`;
     const meta = [reasonLabel(ev.reason), ev.city].filter(Boolean).join(" · ");
+    // Always try the thumbnail (Tesla-supplied or ffmpeg-generated); fall back to a
+    // placeholder if the server has none yet. Eager (no lazy) so the grid preloads.
     el.innerHTML = `
-      <div class="card-thumb">${thumb}<span class="badge">${esc(ev.minute_count)}m · ${esc(ev.file_count)} clips</span></div>
+      <div class="card-thumb"><img src="${esc(thumbSrc)}" alt=""><span class="badge">${esc(ev.minute_count)}m · ${esc(ev.file_count)} clips</span></div>
       <div class="card-body">
         <div class="card-time">${esc(fmtTimestamp(ev.event_ts))}</div>
         <div class="card-meta">${meta ? esc(meta) : "&nbsp;"}</div>
       </div>`;
+    el.querySelector("img").addEventListener("error", function () {
+      const ph = document.createElement("div");
+      ph.className = "thumb-placeholder";
+      ph.textContent = "📹";
+      this.replaceWith(ph);
+    });
     return el;
   }
 

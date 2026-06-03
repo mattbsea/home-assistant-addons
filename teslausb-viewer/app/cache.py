@@ -101,7 +101,8 @@ class CacheManager:
 
     async def _evict_if_needed(self) -> None:
         cap = self.settings.cache_size_mb * 1024 * 1024
-        dirs = [d for d in self.root.iterdir() if d.is_dir() and d.name != THUMB_DIR_NAME]
+        reserved = {THUMB_DIR_NAME, self.thumb_src_dir().name}
+        dirs = [d for d in self.root.iterdir() if d.is_dir() and d.name not in reserved]
         sizes = {d: _dir_size(d) for d in dirs}
         total = sum(sizes.values())
         if total <= cap:
@@ -123,9 +124,40 @@ class CacheManager:
             log.info("Evicted cached event %s (%d bytes)", eid, freed)
 
     # --- thumbnails ---------------------------------------------------------
+    def key(self, event_id: str) -> str:
+        """Cache-safe key for an event id (shared with the thumbnailer)."""
+        return _key(event_id)
+
+    def thumb_path(self, event_id: str) -> Path:
+        """On-disk location of an event's thumbnail (Tesla-fetched or ffmpeg-generated)."""
+        return self.root / THUMB_DIR_NAME / f"{_key(event_id)}.png"
+
+    def has_thumb(self, event_id: str) -> bool:
+        return self.thumb_path(event_id).is_file()
+
+    def thumb_src_dir(self) -> Path:
+        """Disk-backed scratch dir for clips pulled to extract a frame (never /tmp/tmpfs)."""
+        return self.root / ".thumb_src"
+
+    def prune_thumbs(self, valid_keys: set[str]) -> None:
+        """Delete cached thumbnails whose event key is no longer present in the index."""
+        thumbs = self.root / THUMB_DIR_NAME
+        if not thumbs.is_dir():
+            return
+        for png in thumbs.glob("*.png"):
+            if png.stem not in valid_keys:
+                try:
+                    png.unlink()
+                except OSError:
+                    pass
+
     async def get_thumb(self, event_id: str) -> bytes | None:
-        """Return thumb.png bytes, fetching+caching on first request. None if absent."""
-        cached = self.root / THUMB_DIR_NAME / f"{_key(event_id)}.png"
+        """Return thumbnail bytes, fetching+caching the Tesla thumb on first request. None if absent.
+
+        A previously generated frame (thumbnailer) lives at the same path, so it is served
+        here too without a backend round-trip.
+        """
+        cached = self.thumb_path(event_id)
         if cached.is_file():
             return cached.read_bytes()
         try:

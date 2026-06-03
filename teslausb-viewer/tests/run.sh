@@ -16,10 +16,11 @@ BIN="$WORK/bin"
 uv venv "$VENV" >/dev/null
 VIRTUAL_ENV="$VENV" uv pip install --quiet -r "$ADDON_DIR/requirements.txt" httpx >/dev/null
 
-# Fake rclone first on PATH.
+# Fake rclone + ffmpeg first on PATH.
 mkdir -p "$BIN"
 cp "$ADDON_DIR/tests/fake_rclone.py" "$BIN/rclone"
-chmod +x "$BIN/rclone"
+cp "$ADDON_DIR/tests/fake_ffmpeg.py" "$BIN/ffmpeg"
+chmod +x "$BIN/rclone" "$BIN/ffmpeg"
 
 # Sample SavedClips event (front + back cameras, one minute).
 EV="$BACKEND/teslacam/SavedClips/2024-01-15_10-30-22"

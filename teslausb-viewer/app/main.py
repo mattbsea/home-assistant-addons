@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from . import stats
+from . import stats, thumbnailer
 from .api import router
 from .cache import CacheManager
 from .config import get_settings
@@ -26,8 +26,12 @@ WEB_DIR = Path(__file__).parent / "web"
 
 
 async def refresh_and_publish(app: FastAPI) -> dict:
-    """Run one index scan, then push fresh statistics to MQTT. The single refresh path."""
+    """Run one index scan, generate missing thumbnails, then push stats. The single refresh path."""
     result = await app.state.indexer.scan()
+    try:
+        await thumbnailer.backfill(app.state.settings, app.state.db, app.state.cache)
+    except Exception:  # noqa: BLE001 — thumbnail generation must never break a scan
+        log.exception("Thumbnail backfill failed")
     try:
         values = await stats.compute(app.state.settings, app.state.db)
         app.state.mqtt.publish_states(values)

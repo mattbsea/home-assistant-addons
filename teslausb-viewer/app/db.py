@@ -70,6 +70,19 @@ class Database:
             self._conn.close()
 
     # --- writes (scan task) -------------------------------------------------
+    def all_event_ids(self) -> set[str]:
+        with self._lock:
+            rows = self._conn.execute("SELECT event_id FROM events").fetchall()
+        return {r["event_id"] for r in rows}
+
+    def event_ids_without_thumb(self) -> list[str]:
+        """Events with no Tesla thumb.png — candidates for a generated frame thumbnail."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT event_id FROM events WHERE thumb_present=0 ORDER BY event_ts DESC"
+            ).fetchall()
+        return [r["event_id"] for r in rows]
+
     def known_event_ids(self, folder: str) -> set[str]:
         with self._lock:
             rows = self._conn.execute(
