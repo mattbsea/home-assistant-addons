@@ -11,11 +11,17 @@
 
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+  /* App fills the viewport: a fixed top bar, then the view fills the rest.
+     No page-level scrollbars anywhere. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* --- top bar --- */
@@ -51,7 +57,14 @@ body {
 }
 
 /* --- event grid --- */
-main { padding: 16px; }
+main {
+  padding: 16px;
+  flex: 1 1 auto;
+  min-height: 0;          /* let the view shrink so the player can fit exactly */
+  overflow: auto;         /* the event grid scrolls internally if it overflows… */
+  scrollbar-width: none;  /* …but the scrollbar chrome is hidden (Firefox) */
+}
+main::-webkit-scrollbar { display: none; } /* …and WebKit/Blink */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -92,22 +105,35 @@ main { padding: 16px; }
 }
 
 /* --- player --- */
-.player { padding: 4px; }
-.player-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.player {
+  padding: 4px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;          /* fills the view; the cam grid takes the slack */
+}
+.player-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex: 0 0 auto; }
 .player-head .back { color: var(--accent); text-decoration: none; font-weight: 600; }
 .player-title { color: var(--muted); }
 
+/* Fixed two-row layout — top: pillars flank the front; bottom: repeaters flank
+   the rear. Slots for cameras the event lacks stay blank (see .cam-tile.empty). */
 .cam-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "lp f  rp"
+    "l  r  rr";
+  flex: 1 1 auto;
+  min-height: 0;          /* grid fills the player's remaining height */
 }
-.cam-grid.cams-1 { grid-template-columns: 1fr; }
-.cam-grid.cams-3, .cam-grid.cams-5, .cam-grid.cams-6 { grid-template-columns: repeat(3, 1fr); }
 .cam-tile {
   position: relative; background: #000; border-radius: 8px;
-  overflow: hidden; aspect-ratio: 4 / 3;
+  overflow: hidden; min-height: 0; min-width: 0;
 }
+.cam-tile.empty { background: transparent; } /* blank slot — a gap, not a black box */
 .cam-tile video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .cam-label {
   position: absolute; top: 6px; left: 6px;
@@ -124,7 +150,7 @@ main { padding: 16px; }
 
 .transport {
   display: flex; align-items: center; gap: 12px;
-  margin-top: 12px; padding: 10px 12px;
+  margin-top: 8px; padding: 10px 12px; flex: 0 0 auto;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
 }
 .transport button {
@@ -138,7 +164,7 @@ main { padding: 16px; }
   border: 1px solid var(--border); border-radius: 8px; padding: 6px;
 }
 
-.minutes { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.minutes { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex: 0 0 auto; flex-wrap: wrap; }
 .minutes-label { color: var(--muted); font-size: .85rem; }
 .minutes button {
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
@@ -166,6 +192,6 @@ main { padding: 16px; }
 .status-bar.error { color: #ff8a8a; }
 
 @media (max-width: 640px) {
-  .cam-grid, .cam-grid.cams-3, .cam-grid.cams-5, .cam-grid.cams-6 { grid-template-columns: 1fr; }
+  /* Keep the fixed 3×2 camera layout on phones; only the top-bar actions reflow. */
   .actions { width: 100%; }
 }

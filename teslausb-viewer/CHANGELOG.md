@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.10
+
+### ✨ Improvements
+- **Fixed camera layout.** The player now lays cameras out in a stable 3×2 grid —
+  top row `Left Pillar · Front · Right Pillar`, bottom row `Left · Rear · Right` —
+  instead of packing them in backend order. Cameras an event doesn't have (e.g. the
+  pillar cameras on older hardware) leave their slot blank so the front stays centred.
+- **Fits the screen — no scrollbars.** The whole UI now fills the viewport: the player
+  scales its camera grid to the available height (no page scroll), and the event grid
+  hides its scrollbar chrome while staying swipe/scrollable.
+- **New "All" tab** alongside Saved / Sentry / Recent, showing events from every folder
+  in one date-sorted grid (the API already supported an unfiltered listing).
+
 ## 0.1.9
 
 ### 🐛 Bug Fixes

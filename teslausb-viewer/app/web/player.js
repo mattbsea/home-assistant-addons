@@ -9,6 +9,14 @@
     left_repeater: "Left", right_repeater: "Right",
     left_pillar: "Left Pillar", right_pillar: "Right Pillar",
   };
+  // Fixed 3×2 layout: pillars flank the front up top, repeaters flank the rear below.
+  // Cameras absent from an event leave their slot blank (front stays centred) — the
+  // grid-area names below are matched in style.css's .cam-grid template.
+  const CAM_SLOTS = ["left_pillar", "front", "right_pillar", "left_repeater", "back", "right_repeater"];
+  const CAM_AREA = {
+    left_pillar: "lp", front: "f", right_pillar: "rp",
+    left_repeater: "l", back: "r", right_repeater: "rr",
+  };
 
   let detail = null;
   let minuteIndex = 0;
@@ -78,7 +86,7 @@
           <a class="back" href="#/">← Back</a>
           <span class="player-title">${escAttr(detail.event_ts)}${detail.city ? " · " + escAttr(detail.city) : ""}</span>
         </div>
-        <div class="cam-grid cams-${detail.cameras.length}" id="cam-grid"></div>
+        <div class="cam-grid" id="cam-grid"></div>
         <div class="transport">
           <button id="play-btn" title="Play/Pause">▶</button>
           <input type="range" id="seek" min="0" max="1000" value="0" step="1">
@@ -94,9 +102,15 @@
 
     const grid = document.getElementById("cam-grid");
     videos = {};
-    detail.cameras.forEach((cam) => {
+    CAM_SLOTS.forEach((cam) => {
       const tile = document.createElement("div");
       tile.className = "cam-tile";
+      tile.style.gridArea = CAM_AREA[cam];
+      if (!detail.cameras.includes(cam)) {
+        tile.classList.add("empty"); // fixed slot, no footage this event — left blank
+        grid.appendChild(tile);
+        return;
+      }
       const v = document.createElement("video");
       v.playsInline = true;
       v.preload = "auto";

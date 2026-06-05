@@ -64,7 +64,9 @@
     const footer = document.getElementById("grid-footer");
     footer.innerHTML = `<div class="loading">Loading…</div>`;
 
-    const params = new URLSearchParams({ folder: state.folder, limit: PAGE, offset });
+    // No folder → the "All" tab: omit the param so the API returns every folder.
+    const params = new URLSearchParams({ limit: PAGE, offset });
+    if (state.folder) params.set("folder", state.folder);
     if (state.date) {
       // event_ts is stored as ISO (YYYY-MM-DDTHH:MM:SS); bound the day in the same format.
       params.set("date_from", state.date + "T00:00:00");
@@ -74,7 +76,7 @@
       const data = await window.TUV.api("/api/events?" + params.toString());
       if (!append && data.events.length === 0) {
         view.innerHTML = `<div class="empty">
-          <p>No events found in <strong>${state.folder}</strong>.</p>
+          <p>No events found in <strong>${esc(state.folder || "any folder")}</strong>.</p>
           <p class="hint">If you just installed the add-on, hit <strong>↻ Refresh</strong> to scan your backend.</p></div>`;
         return;
       }
