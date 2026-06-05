@@ -158,8 +158,26 @@
     });
     document.querySelectorAll("#minutes button").forEach((b, i) =>
       b.classList.toggle("active", i === idx));
-    seekTo(0);
-    if (playing) play();
+
+    // Reset the transport UI now. The seek bar / time label are otherwise only
+    // updated from the master's "timeupdate", which won't fire until playback
+    // actually resumes — and never fires if the scene is switched while paused.
+    const seek = document.getElementById("seek");
+    const time = document.getElementById("time");
+    if (seek) seek.value = 0;
+    if (time) time.textContent = "0:00 / 0:00";
+
+    // Safari (and others) silently drop a currentTime/play() issued while the
+    // freshly load()ed media is still at readyState 0, so the new scene never
+    // starts — the picture freezes and the scrubber stays stuck. Wait until the
+    // master can actually play, then seek to 0 and (re)start.
+    const m = masterVideo();
+    const start = () => { seekTo(0); if (playing) play(); };
+    if (m && m.src && m.readyState < 2) {
+      m.addEventListener("canplay", start, { once: true });
+    } else {
+      start();
+    }
   }
 
   function eachVideo(fn) { Object.values(videos).forEach(fn); }

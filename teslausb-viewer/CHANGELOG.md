@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.9
+
+### 🐛 Bug Fixes
+- Fix multi-scene playback stalling when advancing to the next scene. When a scene ended
+  (or the Scene button was clicked) the player swapped each camera's `src`, called
+  `load()`, then immediately issued `currentTime = 0` and `play()` — but the freshly
+  loaded media is still at `readyState 0`, so Safari silently drops both calls: the
+  picture freezes and the scrubber stays stuck at the previous scene's end instead of
+  resetting to 0:00. The player now waits for the master camera's `canplay` before
+  seeking and (re)starting, and resets the seek bar / time label immediately so the
+  transport reflects the new scene even when switched while paused.
+
 ## 0.1.8
 
 ### ✨ Improvements
