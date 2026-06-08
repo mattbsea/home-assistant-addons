@@ -75,32 +75,6 @@ class CacheManager:
             cached.write_bytes(data)
         return data or None
 
-    def total_bytes(self) -> int:
-        return _dir_size(self.root)
-
-
-def _dir_size(path: Path) -> int:
-    total = 0
-    for p in path.rglob("*"):
-        if p.is_file():
-            try:
-                total += p.stat().st_size
-            except OSError:
-                pass
-    return total
-
-
-def _rmtree(path: Path) -> None:
-    for p in sorted(path.rglob("*"), reverse=True):
-        try:
-            p.unlink() if p.is_file() else p.rmdir()
-        except OSError:
-            pass
-    try:
-        path.rmdir()
-    except OSError:
-        pass
-
 
 def order_cameras(cameras: list[str]) -> list[str]:
     """Stable camera ordering for the player grid (known order, then any extras)."""

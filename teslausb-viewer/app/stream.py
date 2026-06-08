@@ -69,6 +69,12 @@ class StreamServer:
                     stderr=asyncio.subprocess.PIPE,
                 )
                 log.info("Started rclone serve http on 127.0.0.1:%d", self.port)
+                # Drain stderr line-by-line — this also waits for exit (EOF on the pipe).
+                # An undrained PIPE can fill its ~64K buffer, block rclone's next write,
+                # and wedge both the sidecar and this supervisor (no auto-restart).
+                if self._proc.stderr is not None:
+                    async for line in self._proc.stderr:
+                        log.warning("rclone serve: %s", line.decode(errors="replace").rstrip())
                 rc = await self._proc.wait()
                 log.warning("rclone serve http exited (rc=%s); restarting", rc)
             except asyncio.CancelledError:
@@ -119,6 +125,9 @@ class StreamServer:
             upstream = await self._client.send(req, stream=True)
         except httpx.ConnectError:
             raise HTTPException(503, "streaming sidecar starting; retry")
+        except httpx.TransportError:
+            # Sidecar dropped/timeout before any bytes — fail cleanly rather than 500.
+            raise HTTPException(502, "backend stream error")
         if upstream.status_code == 404:
             await upstream.aclose()
             raise HTTPException(404, "clip not found on backend")
