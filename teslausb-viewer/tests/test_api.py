@@ -107,6 +107,14 @@ def run():
         check("__version__ matches config.yaml", _app.__version__ == cfg_ver,
               f"{_app.__version__} vs {cfg_ver}")
 
+        # Auto-play regression guard: every camera tile must be muted. Tesla clips have no
+        # audio, and an UNmuted <video> gates play() behind a user gesture — which silently
+        # breaks gesture-free auto-play-on-open. Muted playback is the universally
+        # autoplay-allowed case. (No JS runtime in this suite, so guard the source.)
+        pjs = c.get("/static/player.js").text
+        check("player mutes all tiles", "v.muted = true" in pjs)
+        check("no unmuted master (autoplay gate)", "cam !== master" not in pjs)
+
         # Malicious X-Ingress-Path must be rejected (no script/quote injection).
         r = c.get("/", headers={"X-Ingress-Path": '/x"></script><script>alert(1)</script>'})
         check("malicious ingress header neutralised",

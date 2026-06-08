@@ -87,7 +87,11 @@
       const v = document.createElement("video");
       v.playsInline = true;
       v.preload = "auto";
-      v.muted = cam !== master; // a single audio source avoids echo
+      // Tesla clips have no audio track, so mute every tile. Muted playback is the one
+      // case browsers allow to autoplay without a user gesture; an unmuted element gates
+      // play() behind a gesture (the muted *flag* is checked, not whether real audio
+      // exists) — which is exactly what silently broke auto-play-on-open.
+      v.muted = true;
       v.addEventListener("error", () => showTileError(tile, cam));
       tile.appendChild(v);
       const label = document.createElement("span");

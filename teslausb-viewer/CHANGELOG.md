@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+### 🐛 Fixes
+- **Auto-play on open now actually plays.** The front (master) camera tile was created
+  unmuted, and browsers gate an unmuted `<video>` behind a user gesture — so the gesture-free
+  auto-play was silently rejected and the picture froze. Tesla clips have no audio track, so
+  all tiles are now muted, which is the case browsers allow to autoplay. (Fixes the auto-play
+  added in 0.2.1.)
+
 ## 0.2.1
 
 ### ✨ Improvements

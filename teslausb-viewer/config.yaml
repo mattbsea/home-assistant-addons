@@ -1,7 +1,7 @@
 ---
 name: "TeslaUSB Viewer"
 description: "Browse and watch TeslaUSB dashcam/Sentry videos from your cloud backend, with stats in Home Assistant"
-version: "0.2.1"
+version: "0.2.2"
 slug: "teslausb_viewer"
 init: false
 
