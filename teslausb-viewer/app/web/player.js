@@ -3,7 +3,6 @@
 // played as "scenes" — one minute at a time with a stepper (gapless concat is a later phase).
 (function () {
   const DRIFT = 0.15;       // seconds of tolerated drift before a hard re-sync
-  const POLL_MS = 800;
   const CAM_LABELS = {
     front: "Front", back: "Rear",
     left_repeater: "Left", right_repeater: "Right",
@@ -23,7 +22,6 @@
   let videos = {};          // camera -> <video>
   let master = null;        // master camera name
   let playing = false;
-  let pollTimer = null;
 
   function vurl(camera, minuteTs) {
     return window.TUV.url(
@@ -47,33 +45,8 @@
         <p><a href="#/">← Back</a></p></div>`;
       return;
     }
-    await prepareThenRender();
-  }
-
-  async function prepareThenRender() {
-    const msg = document.getElementById("prep-msg");
-    try {
-      await window.TUV.api("/api/events/" + encodeURIComponent(detail.event_id) + "/prepare",
-        { method: "POST" });
-    } catch (e) {
-      if (msg) msg.textContent = "Failed to prepare clips: " + e.message;
-      return;
-    }
-    // Poll until the cache copy finishes.
-    const poll = async () => {
-      let st;
-      try {
-        st = await window.TUV.api("/api/events/" + encodeURIComponent(detail.event_id) + "/status");
-      } catch (e) { st = { state: "error", error: e.message }; }
-      if (st.state === "ready") { render(); return; }
-      if (st.state === "error") {
-        if (msg) msg.textContent = "Download failed: " + (st.error || "unknown error");
-        return;
-      }
-      if (msg) msg.textContent = `Downloading clips from backend… (${st.ready || 0}/${st.total || "?"})`;
-      pollTimer = setTimeout(poll, POLL_MS);
-    };
-    poll();
+    // Clips stream on demand — render immediately and let each <video> pull from /video.
+    render();
   }
 
   function render() {
@@ -255,7 +228,6 @@
   }
 
   function stop() {
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     playing = false;
     eachVideo((v) => { try { v.pause(); v.removeAttribute("src"); v.load(); } catch (e) {} });
     videos = {};

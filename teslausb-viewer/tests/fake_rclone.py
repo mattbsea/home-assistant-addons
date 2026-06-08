@@ -90,6 +90,69 @@ def main(argv):
         sys.stdout.write(json.dumps({"total": 1000, "used": 400, "free": 600}))
         return 0
 
+    if cmd == "serve" and rest[:1] == ["http"]:
+        import http.server
+        import socketserver
+        from urllib.parse import unquote
+
+        serve_args = rest[1:]
+        addr, target = "127.0.0.1:8080", None
+        i = 0
+        valued = {"--addr", "--vfs-cache-mode", "--vfs-cache-max-size",
+                  "--vfs-cache-max-age", "--cache-dir"}
+        while i < len(serve_args):
+            a = serve_args[i]
+            if a == "--addr":
+                addr = serve_args[i + 1]; i += 2; continue
+            if a in valued:
+                i += 2; continue
+            if a.startswith("--"):
+                i += 1; continue
+            target = a; i += 1
+        docroot = resolve(target)
+        host, _, port = addr.partition(":")
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                path = os.path.normpath(os.path.join(docroot, unquote(self.path.lstrip("/"))))
+                if not path.startswith(docroot) or not os.path.isfile(path):
+                    self.send_error(404); return
+                size = os.path.getsize(path)
+                rng = self.headers.get("Range")
+                with open(path, "rb") as fh:
+                    if rng and rng.startswith("bytes="):
+                        start_s, _, end_s = rng[len("bytes="):].partition("-")
+                        start = int(start_s or 0)
+                        end = int(end_s) if end_s else size - 1
+                        end = min(end, size - 1)
+                        fh.seek(start)
+                        chunk = fh.read(end - start + 1)
+                        self.send_response(206)
+                        self.send_header("Content-Type", "video/mp4")
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                        self.send_header("Content-Length", str(len(chunk)))
+                        self.end_headers()
+                        self.wfile.write(chunk)
+                    else:
+                        data = fh.read()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "video/mp4")
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+
+        class Srv(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+
+        with Srv((host, int(port)), H) as srv:
+            srv.serve_forever()
+        return 0
+
     sys.stderr.write(f"fake rclone: unknown command {cmd}")
     return 2
 

@@ -208,7 +208,7 @@ class Database:
     def find_file(self, event_id: str, camera: str, minute_ts: str) -> dict | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT camera, minute_ts, filename, size FROM files"
+                "SELECT camera, minute_ts, filename, size, path FROM files"
                 " WHERE event_id=? AND camera=? AND minute_ts=?",
                 (event_id, camera, minute_ts),
             ).fetchone()

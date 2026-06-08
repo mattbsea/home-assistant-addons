@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0
+
+### ✨ Improvements
+- **On-demand streaming playback.** Opening an event no longer downloads every clip first.
+  The add-on runs an `rclone serve http` sidecar with a read-through VFS disk cache (bounded
+  by `cache_size_mb`) and the player streams each camera straight through a Range-forwarding
+  proxy — first frame plays immediately, and only the bytes you watch are fetched (then
+  cached, so seeks and the multi-camera re-syncs stay fast). Works for every rclone backend
+  and stays same-origin behind ingress.
+
+### 🔧 Changes
+- Removed the `prepare`/`status` "Downloading clips…" step (no longer needed).
+- `cache_size_mb` now bounds the streaming read-cache rather than a per-event copy cache.
+
 ## 0.1.11
 
 ### 🐛 Bug Fixes

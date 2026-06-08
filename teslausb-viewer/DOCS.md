@@ -10,8 +10,10 @@ TeslaUSB archives your TeslaCam footage to a backend (S3/MinIO, Google Drive, Dr
 OneDrive, Backblaze B2, SMB/CIFS, SFTP, WebDAV, …). All of those are
 [rclone](https://rclone.org) remotes, so this add-on reads them through **one** layer:
 rclone. You give it your existing rclone configuration; it indexes the events and streams
-the video into your browser. When you open an event, its clips are copied to a local cache
-on the Home Assistant host and served from there with seek support.
+the video into your browser. When you open an event, its clips stream on demand straight
+from the backend through an `rclone serve http` sidecar with a read-through disk cache — the
+first frame plays immediately, and the bytes you watch are cached on the Home Assistant host
+so seeking and the multi-camera re-syncs stay fast.
 
 > **Ingress-only.** The viewer is reachable only through the Home Assistant sidebar panel.
 > No port is exposed.
@@ -24,7 +26,7 @@ on the Home Assistant host and served from there with seek support.
 | `remote_name` | The rclone remote to read (e.g. `minio`). Defaults to the first `[section]` in the config. |
 | `remote_path` | Path **within** the remote where TeslaUSB writes, i.e. the folder that contains `SavedClips/`, `SentryClips/`, `RecentClips/` (e.g. `teslacam`). |
 | `refresh_interval_minutes` | How often to re-scan the backend for new events (5–1440). |
-| `cache_size_mb` | Maximum size of the local video cache before least-recently-watched events are evicted (256–51200). |
+| `cache_size_mb` | Maximum size of the streaming read-through cache on disk before older bytes are reclaimed (256–51200). |
 | `publish_mqtt` | Publish statistics to Home Assistant via MQTT discovery (needs the Mosquitto broker + MQTT integration). |
 | `s3_endpoint` / `s3_access_key_id` / `s3_secret_access_key` / `s3_bucket` / `s3_region` | Optional guided fields for S3-compatible backends, used **only** when `rclone_conf` is empty. |
 

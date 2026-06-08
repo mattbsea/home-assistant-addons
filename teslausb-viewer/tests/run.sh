@@ -44,3 +44,9 @@ PATH="$BIN:$PATH" PYTHONPATH="$ADDON_DIR" \
   TUV_RCLONE_CONF="$DATA/rclone.conf" TUV_CACHE_DIR="$DATA/cache" \
   TUV_REMOTE_NAME=test TUV_REMOTE_PATH=teslacam TUV_MQTT_ENABLED=false \
   "$VENV/bin/python" "$ADDON_DIR/tests/test_api.py"
+
+PATH="$BIN:$PATH" PYTHONPATH="$ADDON_DIR" \
+  TUV_FAKE_BACKEND="$BACKEND" TUV_DATA_DIR="$DATA" \
+  TUV_RCLONE_CONF="$DATA/rclone.conf" TUV_CACHE_DIR="$DATA/cache" \
+  TUV_REMOTE_NAME=test TUV_REMOTE_PATH=teslacam TUV_MQTT_ENABLED=false \
+  "$VENV/bin/python" "$ADDON_DIR/tests/test_stream.py"

@@ -49,25 +49,22 @@ def run():
         check("thumb served", r.status_code == 200 and r.content == b"PNGDATA")
 
         r = c.get(f"/api/events/{EVENT_ID}/video/front/{MINUTE}")
-        check("video 425 before prepare", r.status_code == 425, str(r.status_code))
-
-        c.post(f"/api/events/{EVENT_ID}/prepare")
-        st = {}
-        for _ in range(50):
-            st = c.get(f"/api/events/{EVENT_ID}/status").json()
-            if st["state"] in ("ready", "error"):
-                break
-            time.sleep(0.1)
-        check("prepare ready", st.get("state") == "ready", str(st))
-
-        r = c.get(f"/api/events/{EVENT_ID}/video/front/{MINUTE}")
-        check("video 200 after prepare", r.status_code == 200, str(r.status_code))
+        check("video 200 streamed", r.status_code == 200, str(r.status_code))
         check("video full length 4096", len(r.content) == 4096, str(len(r.content)))
 
         r = c.get(f"/api/events/{EVENT_ID}/video/front/{MINUTE}", headers={"Range": "bytes=0-1023"})
         check("video 206 on range", r.status_code == 206, str(r.status_code))
         check("content-range header", r.headers.get("content-range", "").startswith("bytes 0-1023/4096"))
         check("range body 1024 bytes", len(r.content) == 1024, str(len(r.content)))
+
+        # Legacy rows with an empty path fall back to event_id/filename and still stream.
+        import sqlite3 as _sql
+        from app.config import get_settings as _gs
+        _db = _sql.connect(_gs().db_path)
+        _db.execute("UPDATE files SET path='' WHERE event_id=? AND camera='front'", (EVENT_ID,))
+        _db.commit(); _db.close()
+        r = c.get(f"/api/events/{EVENT_ID}/video/front/{MINUTE}")
+        check("legacy empty-path still streams", r.status_code == 200, str(r.status_code))
 
         r = c.get("/api/events?folder=SavedClips&date_from=2024-01-15T00:00:00&date_to=2024-01-15T23:59:59")
         check("date filter matches day", r.json()["total"] == 1, str(r.json()["total"]))
@@ -80,16 +77,8 @@ def run():
         rec_id = "RecentClips/2024-01-15_10-31-00"
         rd = c.get(f"/api/events/{rec_id}/detail").json()
         check("recent cameras", rd.get("cameras") == ["front", "back"], str(rd.get("cameras")))
-        c.post(f"/api/events/{rec_id}/prepare")
-        rst = {}
-        for _ in range(50):
-            rst = c.get(f"/api/events/{rec_id}/status").json()
-            if rst["state"] in ("ready", "error"):
-                break
-            time.sleep(0.1)
-        check("recent prepare ready", rst.get("state") == "ready", str(rst))
         r = c.get(f"/api/events/{rec_id}/video/front/2024-01-15_10-31-00")
-        check("recent video 200 (fetched from date subfolder)", r.status_code == 200, str(r.status_code))
+        check("recent video 200 (streamed from date subfolder)", r.status_code == 200, str(r.status_code))
         check("recent video length 2048", len(r.content) == 2048, str(len(r.content)))
 
         # RecentClips has no Tesla thumb.png, so the thumbnailer should have generated one
