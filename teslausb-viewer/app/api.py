@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from . import stats
+from . import __version__, stats
 from .cache import order_cameras
 from .models import FOLDERS
 
@@ -30,9 +30,9 @@ def _state(request: Request):
 async def index(request: Request) -> HTMLResponse:
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     base = getattr(request.state, "ingress_base", "")
+    html = html.replace("{{INGRESS_BASE}}", base).replace("{{VERSION}}", __version__)
     # Always revalidate the shell so a deploy's new asset references are picked up.
-    return HTMLResponse(html.replace("{{INGRESS_BASE}}", base),
-                        headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/api/health")

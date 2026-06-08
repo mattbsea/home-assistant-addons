@@ -101,6 +101,10 @@
     buildMinuteStepper();
     wireTransport();
     wireMasterSync();
+    // Auto-play: opening an event is a deliberate "watch this" gesture, so start
+    // rolling immediately. loadMinute() honours this once the master can play.
+    playing = true;
+    document.getElementById("play-btn").textContent = "⏸";
     loadMinute(0);
   }
 
@@ -208,6 +212,9 @@
   function play() {
     playing = true;
     document.getElementById("play-btn").textContent = "⏸";
+    // Tesla clips carry no audio track, so browsers allow autoplay without a user
+    // gesture — the auto-play on open (and scene-advance) just rolls. .catch() swallows
+    // the benign abort if a scene is switched out from under a pending play().
     eachVideo((v) => { if (v.src) v.play().catch(() => {}); });
   }
   function pause() {

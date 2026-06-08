@@ -8,6 +8,7 @@ the prepare->ready cache state machine, HTTP Range/206 video serving, date filte
 """
 import os
 import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -96,6 +97,15 @@ def run():
         r = c.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/TOKEN"})
         check("ingress base injected", 'window.INGRESS_BASE = "/api/hassio_ingress/TOKEN"' in r.text)
         check("assets use base", "/api/hassio_ingress/TOKEN/static/app.js" in r.text)
+
+        # Version is injected into the branding and matches the add-on version.
+        import app as _app
+        check("version injected into shell", f"v{_app.__version__}" in r.text, _app.__version__)
+        check("no unrendered version placeholder", "{{VERSION}}" not in r.text)
+        cfg = (Path(__file__).resolve().parent.parent / "config.yaml").read_text()
+        cfg_ver = next(l.split('"')[1] for l in cfg.splitlines() if l.startswith("version:"))
+        check("__version__ matches config.yaml", _app.__version__ == cfg_ver,
+              f"{_app.__version__} vs {cfg_ver}")
 
         # Malicious X-Ingress-Path must be rejected (no script/quote injection).
         r = c.get("/", headers={"X-Ingress-Path": '/x"></script><script>alert(1)</script>'})

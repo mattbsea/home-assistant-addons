@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1
+
+### ✨ Improvements
+- **Click an event to start watching.** Opening an event now auto-plays instead of waiting
+  for a play-button press. (Tesla clips have no audio track, so browsers allow this without
+  a user gesture.)
+- **Version shown in the header.** The "TeslaUSB Viewer" branding now displays the running
+  add-on version (e.g. `v0.2.1`), so it's obvious which build is loaded.
+
 ## 0.2.0
 
 ### ✨ Improvements
