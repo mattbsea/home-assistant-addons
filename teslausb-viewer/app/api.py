@@ -2,8 +2,8 @@
 
 Every URL the browser uses is built in the frontend from window.INGRESS_BASE, so these
 handlers use plain relative paths. The one exception is `/` which injects that base into
-index.html. Video is served from the local per-event cache via FileResponse, which gives
-HTTP Range / 206 handling for free.
+index.html. Video is streamed on demand: `/video` proxies the browser's Range request to
+the rclone serve http sidecar (see app/stream.py), passing 206/Content-Range straight back.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import stats
 from .cache import order_cameras
@@ -123,32 +123,18 @@ async def thumb(event_id: str, request: Request) -> Response:
                     headers={"Cache-Control": "max-age=86400"})
 
 
-@router.post("/api/events/{event_id:path}/prepare")
-async def prepare(event_id: str, request: Request) -> JSONResponse:
-    st = _state(request)
-    row = await asyncio.to_thread(st.db.get_event, event_id)
-    if not row:
-        raise HTTPException(404, "event not found")
-    status = await st.cache.prepare(event_id, row.get("files", []))
-    return JSONResponse(status)
-
-
-@router.get("/api/events/{event_id:path}/status")
-async def status(event_id: str, request: Request) -> JSONResponse:
-    return JSONResponse(_state(request).cache.status(event_id))
-
-
 @router.get("/api/events/{event_id:path}/video/{camera}/{minute_ts}")
 async def video(event_id: str, camera: str, minute_ts: str, request: Request) -> Response:
     st = _state(request)
+    if not st.stream.available:
+        raise HTTPException(503, "backend not configured")
     row = await asyncio.to_thread(st.db.find_file, event_id, camera, minute_ts)
     if not row:
         raise HTTPException(404, "no such clip")
-    path = st.cache.file_path(event_id, row["filename"])
-    if not path:
-        # Cached copy not ready yet — tell the client to keep polling /status.
-        raise HTTPException(status_code=425, detail="clip not cached yet; call prepare")
-    return FileResponse(path, media_type="video/mp4")
+    # `path` is the clip's location under the remote base (recorded since 0.1.7); older
+    # rows fall back to the folder-shaped path the copy model assumed.
+    remote_path = row.get("path") or f"{event_id}/{row['filename']}"
+    return await st.stream.video_response(remote_path, request.headers.get("range"))
 
 
 @router.post("/api/refresh")
