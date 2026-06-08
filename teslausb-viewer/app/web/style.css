@@ -154,7 +154,8 @@ main::-webkit-scrollbar { display: none; } /* …and WebKit/Blink */
    clicks reach the video underneath; only the map link re-enables them. */
 .meta-overlay {
   position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 12px;
+  flex-wrap: wrap;   /* clock + meta stack instead of colliding on a narrow phone */
   padding: 7px 14px; pointer-events: none;
   background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0));
   color: #fff; font-size: .82rem;
