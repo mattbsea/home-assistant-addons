@@ -129,6 +129,7 @@ main::-webkit-scrollbar { display: none; } /* …and WebKit/Blink */
     "l  r  rr";
   flex: 1 1 auto;
   min-height: 0;          /* grid fills the player's remaining height */
+  position: relative;     /* positioning context for the metadata overlay */
 }
 .cam-tile {
   position: relative; background: #000; border-radius: 8px;
@@ -148,6 +149,29 @@ main::-webkit-scrollbar { display: none; } /* …and WebKit/Blink */
 }
 .cam-error span { color: var(--text); }
 .cam-error small { font-size: .72rem; }
+
+/* Metadata overlay — translucent strip across the grid bottom. pointer-events:none lets
+   clicks reach the video underneath; only the map link re-enables them. */
+.meta-overlay {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 7px 14px; pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0));
+  color: #fff; font-size: .82rem;
+}
+.meta-overlay.hidden { display: none; }
+.meta-clock {
+  font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,.9);
+}
+.meta-info {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+  opacity: .92; text-shadow: 0 1px 3px rgba(0,0,0,.9);
+}
+.meta-info .sep { opacity: .45; }
+.meta-info a { color: #fff; text-decoration: underline; pointer-events: auto; white-space: nowrap; }
+.transport #meta-toggle { background: var(--surface-2); color: var(--muted); }
+.transport #meta-toggle.active { color: var(--accent); }
 
 .transport {
   display: flex; align-items: center; gap: 12px;

@@ -29,7 +29,7 @@
   }
 
   // --- routing: #/ (browser) and #/event/<id> (player) ----------------------
-  const state = { folder: "SavedClips", date: "" };
+  const state = { folder: "", date: "" };   // default to the "All" folder view
 
   function route() {
     const hash = location.hash || "#/";

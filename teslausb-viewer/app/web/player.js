@@ -69,6 +69,7 @@
             <option value="1" selected>1×</option><option value="1.5">1.5×</option>
             <option value="2">2×</option>
           </select>
+          <button id="meta-toggle" title="Show/hide info overlay">ⓘ</button>
         </div>
         <div class="minutes" id="minutes"></div>
       </div>`;
@@ -102,6 +103,7 @@
       videos[cam] = v;
     });
 
+    buildMetaOverlay();
     buildMinuteStepper();
     wireTransport();
     wireMasterSync();
@@ -134,6 +136,70 @@
     });
   }
 
+  // --- metadata overlay: live recording clock + per-event metadata --------------
+  // A translucent strip across the grid bottom. The clock ticks (clip start time, parsed
+  // from the filename, + the master's currentTime); the static line shows trigger reason,
+  // city, and a map link — only the fields the event actually has (RecentClips have none).
+  function buildMetaOverlay() {
+    const grid = document.getElementById("cam-grid");
+    if (!grid) return;
+    const ov = document.createElement("div");
+    ov.className = "meta-overlay";
+    ov.id = "meta-overlay";
+    ov.innerHTML = `<span class="meta-clock" id="meta-clock"></span>` +
+      `<span class="meta-info">${buildMetaInfo()}</span>`;
+    grid.appendChild(ov);
+    if (metaHidden()) { ov.classList.add("hidden"); }
+    updateMetaClock();
+  }
+
+  function buildMetaInfo() {
+    const parts = [];
+    const label = window.TUV.reasonLabel ? window.TUV.reasonLabel(detail.reason) : detail.reason;
+    if (label) parts.push(`<span>${escAttr(label)}</span>`);
+    if (detail.city) parts.push(`<span>${escAttr(detail.city)}</span>`);
+    if (detail.est_lat != null && detail.est_lon != null) {
+      const q = encodeURIComponent(`${detail.est_lat},${detail.est_lon}`);
+      parts.push(`<a href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener">📍 map</a>`);
+    }
+    return parts.join(`<span class="sep">·</span>`);
+  }
+
+  // "YYYY-MM-DD_HH-MM-SS" -> a Date built from the literal wall-clock components (the time
+  // is shown back in the same local frame, so this is timezone-neutral — no conversion).
+  function clipStartDate() {
+    const m = detail.minutes[minuteIndex];
+    if (!m || !m.minute_ts) return null;
+    const [d, t] = m.minute_ts.split("_");
+    if (!d || !t) return null;
+    const [Y, Mo, D] = d.split("-").map(Number);
+    const [H, Mi, S] = t.split("-").map(Number);
+    const dt = new Date(Y, Mo - 1, D, H, Mi, S);
+    return isNaN(dt) ? null : dt;
+  }
+
+  function updateMetaClock() {
+    const el = document.getElementById("meta-clock");
+    if (!el) return;
+    const base = clipStartDate();
+    if (!base) { el.textContent = ""; return; }
+    const mv = masterVideo();
+    const offset = mv && isFinite(mv.currentTime) ? mv.currentTime : 0;
+    const now = new Date(base.getTime() + offset * 1000);
+    const date = now.toLocaleDateString(undefined,
+      { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+    const time = now.toLocaleTimeString(undefined,
+      { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    el.textContent = `${date} · ${time}`;
+  }
+
+  function metaHidden() {
+    try { return localStorage.getItem("tuv_meta_hidden") === "1"; } catch (e) { return false; }
+  }
+  function setMetaHidden(hidden) {
+    try { localStorage.setItem("tuv_meta_hidden", hidden ? "1" : "0"); } catch (e) { /* ignore */ }
+  }
+
   function loadMinute(idx) {
     minuteIndex = idx;
     const minute = detail.minutes[idx];
@@ -161,6 +227,7 @@
     const time = document.getElementById("time");
     if (seek) seek.value = 0;
     if (time) time.textContent = "0:00 / 0:00";
+    updateMetaClock();   // reflect the new scene's start time even while paused
 
     // Safari (and others) silently drop a currentTime/play() issued while the
     // freshly load()ed media is still at readyState 0, so the new scene never
@@ -189,6 +256,17 @@
       const m = masterVideo();
       if (m && m.duration) seekTo((e.target.value / 1000) * m.duration);
     };
+    const mt = document.getElementById("meta-toggle");
+    if (mt) {
+      mt.classList.toggle("active", !metaHidden());
+      mt.onclick = () => {
+        const ov = document.getElementById("meta-overlay");
+        if (!ov) return;
+        const hidden = ov.classList.toggle("hidden");
+        setMetaHidden(hidden);
+        mt.classList.toggle("active", !hidden);
+      };
+    }
   }
 
   function wireMasterSync() {
@@ -204,6 +282,7 @@
       const time = document.getElementById("time");
       if (m.duration) seek.value = Math.round((m.currentTime / m.duration) * 1000);
       time.textContent = fmt(m.currentTime) + " / " + fmt(m.duration || 0);
+      updateMetaClock();
     });
     m.addEventListener("waiting", () => eachVideo((v) => { if (v !== m) v.pause(); }));
     m.addEventListener("playing", () => { if (playing) eachVideo((v) => { if (v !== m) v.play().catch(() => {}); }); });

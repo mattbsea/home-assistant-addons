@@ -98,4 +98,5 @@
 
   window.TUV = window.TUV || {};
   window.TUV.browser = { show };
+  window.TUV.reasonLabel = reasonLabel;   // reused by the player's metadata overlay
 })();

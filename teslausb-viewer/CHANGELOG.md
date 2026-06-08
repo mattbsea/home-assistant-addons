@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+### ✨ Improvements
+- **Metadata overlay on playback.** A translucent strip across the bottom of the camera grid
+  shows a **live recording clock** (the clip's wall-clock time, ticking as it plays) plus the
+  event's **trigger reason**, **city**, and a **📍 map link** from the GPS estimate — only the
+  fields a given event actually has (RecentClips, which carry no `event.json`, show just the
+  clock). Toggle it with the **ⓘ** button in the transport bar; the choice is remembered.
+- **Browser opens on the "All" view** by default, instead of Saved.
+
 ## 0.2.2
 
 ### 🐛 Fixes

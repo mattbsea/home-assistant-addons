@@ -115,6 +115,20 @@ def run():
         check("player mutes all tiles", "v.muted = true" in pjs)
         check("no unmuted master (autoplay gate)", "cam !== master" not in pjs)
 
+        # Metadata overlay (v0.3.0): present in the player, reuses reasonLabel, and the
+        # detail contract it depends on returns coordinates.
+        check("metadata overlay present", "meta-overlay" in pjs and "meta-clock" in pjs)
+        check("overlay toggle present", "meta-toggle" in pjs)
+        bjs = c.get("/static/browser.js").text
+        check("reasonLabel exposed for overlay", "TUV.reasonLabel = reasonLabel" in bjs)
+        check("detail exposes coordinates",
+              d.get("est_lat") == 47.6 and d.get("est_lon") == -122.3,
+              f"{d.get('est_lat')},{d.get('est_lon')}")
+
+        # Default browse view is the "All" folder (no folder pre-selected).
+        idx = c.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/TOKEN"}).text
+        check("default tab is All", 'data-folder="" class="active"' in idx)
+
         # Malicious X-Ingress-Path must be rejected (no script/quote injection).
         r = c.get("/", headers={"X-Ingress-Path": '/x"></script><script>alert(1)</script>'})
         check("malicious ingress header neutralised",
