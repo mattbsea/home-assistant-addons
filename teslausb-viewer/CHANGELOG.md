@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.11
+
+### 🐛 Bug Fixes
+- Serve the frontend (`index.html` + `/static/*`) with `Cache-Control: no-cache` so the
+  browser always revalidates against the ETag. Previously Starlette emitted an ETag but
+  no `Cache-Control`, so browsers applied *heuristic* freshness and kept serving the old
+  `player.js`/`style.css` after an add-on update — which is why UI changes (e.g. the new
+  camera layout) didn't appear without a manual hard-reload. Revalidation is cheap (a 304
+  when unchanged) but now every deploy is picked up on the next load.
+
 ## 0.1.10
 
 ### ✨ Improvements

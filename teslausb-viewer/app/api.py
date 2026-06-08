@@ -30,7 +30,9 @@ def _state(request: Request):
 async def index(request: Request) -> HTMLResponse:
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     base = getattr(request.state, "ingress_base", "")
-    return HTMLResponse(html.replace("{{INGRESS_BASE}}", base))
+    # Always revalidate the shell so a deploy's new asset references are picked up.
+    return HTMLResponse(html.replace("{{INGRESS_BASE}}", base),
+                        headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/api/health")

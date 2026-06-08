@@ -25,6 +25,19 @@ log = logging.getLogger("teslausb_viewer")
 WEB_DIR = Path(__file__).parent / "web"
 
 
+class _RevalidatingStatic(StaticFiles):
+    """Serve static assets with ``Cache-Control: no-cache`` so the browser always
+    revalidates against the ETag. Without this, Starlette emits an ETag but no
+    Cache-Control, and browsers apply *heuristic* freshness — silently serving a
+    stale player.js/style.css after an add-on update until the heuristic expires.
+    ``no-cache`` keeps the cache (cheap 304s) but guarantees deploys are picked up."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 async def refresh_and_publish(app: FastAPI) -> dict:
     """Run one index scan, generate missing thumbnails, then push stats. The single refresh path."""
     result = await app.state.indexer.scan()
@@ -91,4 +104,4 @@ async def ingress_base(request: Request, call_next):
 
 
 app.include_router(router)
-app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+app.mount("/static", _RevalidatingStatic(directory=str(WEB_DIR)), name="static")
