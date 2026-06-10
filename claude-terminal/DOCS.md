@@ -23,6 +23,7 @@ The add-on uses OAuth authentication — you'll be prompted to log in to your An
 | Option | Default | Description |
 |--------|---------|-------------|
 | `auto_launch_claude` | `true` | Launch Claude automatically when the terminal opens. Set to `false` to show the interactive session picker instead. |
+| `auto_continue` | `true` | When Claude reports a rate/usage/session limit, parse the reset time from the message, wait until 1 minute after the limit lifts, then automatically send `continue` to resume the session. Detection runs server-side, so it works with the browser closed. Set to `false` to disable. |
 | `claude_args` | `""` | Extra command-line arguments passed to every `claude` invocation. For example: `--model claude-opus-4-5` or `--verbose`. |
 | `persistent_apt_packages` | `[]` | APT packages to install on every startup. |
 | `persistent_pip_packages` | `[]` | Python pip packages to install on every startup. |

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.8
+
+### ✨ New Features
+- **Auto-continue after rate limits**: When Claude hits a rate, usage, or session limit (e.g. "5-hour limit reached - resets 3pm (UTC)", "Claude usage limit reached. Resets at 2pm", "Please try again in 5 hours"), the add-on now parses the reset time from the message, waits until 1 minute after the limit lifts, and automatically types `continue` + Enter so the session resumes unattended — even with the browser tab closed, since detection runs server-side on the PTY output stream
+  - Handles absolute reset times with optional timezones ("resets 3pm (Europe/Dublin)") and relative ones ("try again in 5 hours"); if a limit is detected but no time can be parsed, it retries every 30 minutes
+  - Applies to every Claude tab independently; disable with the new `auto_continue: false` add-on option
+
 ## 2.0.7
 
 ### ✨ New Features

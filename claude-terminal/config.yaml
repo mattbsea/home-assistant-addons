@@ -1,7 +1,7 @@
 ---
 name: "Claude Terminal"
 description: "Terminal interface for Anthropic's Claude Code CLI with persistent auth and packages"
-version: "2.0.7"
+version: "2.0.8"
 slug: "claude_terminal"
 init: false
 
@@ -31,12 +31,14 @@ ports_description:
 # Add-on configuration options
 options:
   auto_launch_claude: true
+  auto_continue: true
   claude_args: ""
   persistent_apt_packages: []
   persistent_pip_packages: []
   claude_tabs: []
 schema:
   auto_launch_claude: bool?
+  auto_continue: bool?
   claude_args: str?
   persistent_apt_packages:
     - str

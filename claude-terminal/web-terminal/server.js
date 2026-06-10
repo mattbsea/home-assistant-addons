@@ -3,8 +3,10 @@ const http = require('http');
 const path = require('path');
 const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
+const { AutoContinueWatcher } = require('./auto-continue');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
+const AUTO_CONTINUE = (process.env.AUTO_CONTINUE || 'true').toLowerCase() !== 'false';
 const RING_BUFFER_SIZE = 512 * 1024; // 512KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
 
@@ -56,6 +58,7 @@ function buildSessionEnv(env) {
     const sessionEnv = Object.assign({}, process.env, env || {});
     delete sessionEnv.CLAUDE_TAB_CONFIG;
     delete sessionEnv.WEB_TERMINAL_PORT;
+    delete sessionEnv.AUTO_CONTINUE;
     const home = sessionEnv.HOME || '/home/claude';
     const localBin = home + '/.local/bin';
     if (sessionEnv.PATH && !sessionEnv.PATH.includes(localBin)) {
@@ -65,12 +68,28 @@ function buildSessionEnv(env) {
 }
 
 function attachPtyHandlers(session, ptyProcess) {
+    if (session.autoContinue) {
+        session.autoContinue.dispose();
+        session.autoContinue = null;
+    }
+    if (AUTO_CONTINUE && path.basename(session.command || '') === 'claude') {
+        session.autoContinue = new AutoContinueWatcher(session.label, (data) => {
+            try { session.pty.write(data); } catch (e) {}
+        });
+    }
+
     ptyProcess.onData((data) => {
         session.ringBuffer.append(data);
+        if (session.autoContinue) {
+            session.autoContinue.onData(data);
+        }
         broadcastToClients({ type: 'output', tabId: session.tabId, data });
     });
 
     ptyProcess.onExit(({ exitCode }) => {
+        if (session.autoContinue) {
+            session.autoContinue.dispose();
+        }
         console.log(`PTY exited for tab "${session.label}" (tabId: ${session.tabId}) with code ${exitCode}`);
         broadcastToClients({ type: 'exited', tabId: session.tabId, exitCode, restart: session.restart });
 
@@ -164,6 +183,9 @@ function destroySession(tabId) {
     if (!session) return;
 
     session.restart = false;
+    if (session.autoContinue) {
+        session.autoContinue.dispose();
+    }
     try {
         session.pty.kill();
     } catch (e) {}

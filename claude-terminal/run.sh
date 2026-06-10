@@ -277,6 +277,15 @@ build_tab_config() {
     auto_launch_claude=$(bashio::config 'auto_launch_claude' 'true')
     claude_args=$(bashio::config 'claude_args' '')
 
+    # Auto-continue: resume Claude automatically after a rate/usage limit resets
+    local auto_continue
+    auto_continue=$(bashio::config 'auto_continue' 'true')
+    if [ "$auto_continue" = "null" ]; then
+        auto_continue="true"
+    fi
+    export AUTO_CONTINUE="$auto_continue"
+    bashio::log.info "Auto-continue after rate limit: ${auto_continue}"
+
     # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
     claude_args=$(echo "$claude_args" | sed 's/—/--/g')
     # Handle bashio "null" for unset values
