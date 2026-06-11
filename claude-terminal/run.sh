@@ -388,6 +388,10 @@ start_web_terminal() {
 
     export WEB_TERMINAL_PORT="$port"
 
+    # Expose the add-on version so the web UI can show it in the header
+    export ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo '')"
+    bashio::log.info "Add-on version: ${ADDON_VERSION:-unknown}"
+
     # Drop from root to the claude user for the Node.js server process
     # gosu performs a clean privilege drop (no sudo, no setuid shell overhead)
     # Source nvm to get Node.js 20 on PATH (falls back to system Node.js)

@@ -370,6 +370,7 @@ function handleConnection(ws) {
                     tabs: getSessionList(),
                     config: tabConfig,
                     activeTabId: activeTabId,
+                    version: process.env.ADDON_VERSION || '',
                 }));
                 break;
             }

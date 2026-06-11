@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.9
+
+### ✨ New Features
+- **Version in header**: The tab bar now shows "Claude Terminal vX.Y.Z" on the right, so you can see at a glance which add-on version is running. On narrow (phone) screens only the version number is shown to save space.
+
 ## 2.0.8
 
 ### ✨ New Features

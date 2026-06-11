@@ -11,6 +11,7 @@
 <div id="app">
     <div id="tab-bar">
         <button id="new-tab-btn" title="New shell tab">+</button>
+        <div id="addon-brand"><span id="addon-brand-name">Claude Terminal</span> <span id="addon-version"></span></div>
     </div>
     <div id="terminal-container"></div>
     <div id="connection-status">Reconnecting...</div>
@@ -111,6 +112,9 @@
         switch (msg.type) {
             case 'sessions':
                 tabConfig = msg.config || [];
+                if (msg.version) {
+                    document.getElementById('addon-version').textContent = 'v' + msg.version;
+                }
                 // Reconstruct tabs from existing server sessions
                 if (msg.tabs && msg.tabs.length > 0) {
                     for (const tab of msg.tabs) {
