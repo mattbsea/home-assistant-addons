@@ -127,15 +127,18 @@ class AutoContinueWatcher {
                 Math.abs(resetAt - this.scheduledResetAt) < RESCHEDULE_TOLERANCE_MS) {
                 return;  // same limit event, already scheduled
             }
-            this.schedule(resetAt, matched);
+            this.log(`[auto-continue] "${this.label}": limit detected — "${matched}"`);
+            this.schedule(resetAt);
         } else if (!this.timer) {
             // Limit detected but no reset time found; retry conservatively.
             // If the limit is still active the message reappears and we loop.
-            this.schedule(now + FALLBACK_DELAY_MS - RESUME_GRACE_MS, matched + ' (no reset time parsed)');
+            this.log(`[auto-continue] "${this.label}": limit detected — "${matched}" ` +
+                     `(no reset time in message)`);
+            this.schedule(now + FALLBACK_DELAY_MS - RESUME_GRACE_MS);
         }
     }
 
-    schedule(resetAt, reason) {
+    schedule(resetAt) {
         const now = Date.now();
         const fireAt = Math.min(resetAt + RESUME_GRACE_MS, now + MAX_WAIT_MS);
         const delay = Math.max(fireAt - now, 5000);
@@ -146,8 +149,8 @@ class AutoContinueWatcher {
         this.timer.unref?.();
 
         const mins = Math.round(delay / 60000);
-        this.log(`[auto-continue] "${this.label}": detected "${reason}"; ` +
-                 `sending "continue" at ${new Date(fireAt).toISOString()} (in ~${mins} min)`);
+        this.log(`[auto-continue] "${this.label}": will send "continue" at ` +
+                 `${new Date(fireAt).toISOString()} (in ~${mins} min)`);
     }
 
     fire() {

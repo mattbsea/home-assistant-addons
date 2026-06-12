@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.10
+
+### ✨ Improvements
+- **Clearer auto-continue logging**: When a rate/usage/session limit is detected, the add-on now logs an explicit `limit detected — "<message>"` line at the moment of detection, followed by a separate `will send "continue" at <time>` line noting exactly when the resume will fire. Previously detection and scheduling were fused into a single line that only appeared for newly-scheduled events.
+
 ## 2.0.9
 
 ### ✨ New Features
