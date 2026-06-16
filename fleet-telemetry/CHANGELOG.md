@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5
+
+### 🐛 Bug Fixes
+- **Merge the duplicate "Location" / "Location map" sections into one.** The coordinates and the
+  map are now a single "Location" card; the coordinate text updates in place each refresh while
+  the map iframe is still only reloaded when the vehicle moves (no flashing).
+
 ## 0.4.4
 
 ### 🐛 Bug Fixes

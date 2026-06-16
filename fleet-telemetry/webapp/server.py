@@ -315,11 +315,8 @@ function buildCards(v){
  cards+=card("Gear",`<div class="gear">`+GEARS.map(g=>`<b class="${gear===g?'on':''}">${g}</b>`).join("")
    +(gear&&!GEARS.includes(gear)?`<b class="on">${esc(gear)}</b>`:"")+`</div>`);
  cards+=card("Odometer",`<div class="big">${fmt(odo,0)}<span class="unit">mi</span></div>`);
- if(v.location&&v.location.lat!=null){
-   const la=v.location.lat,lo=v.location.lon;
-   cards+=card("Location",
-     `<div class="sub">${la.toFixed(5)}, ${lo.toFixed(5)} · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a></div>`);
- }
+ // Location is rendered separately in the persistent map card (so the iframe isn't recreated
+ // each tick); it is intentionally NOT a grid card here.
  const known=new Set(["Soc","VehicleSpeed","Gear","Odometer","Location"]);
  const extra=Object.keys(f).filter(k=>!known.has(k));
  if(extra.length){
@@ -361,7 +358,8 @@ async function tick(){
      el=document.createElement("div");el.id=id;
      el.innerHTML=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.vin)}</h2>`
        +`<div class="grid gridslot"></div>`
-       +`<div class="card mapcard" style="display:none;margin-top:14px"><h3>Location map</h3>`
+       +`<div class="card mapcard" style="display:none;margin-top:14px"><h3>Location</h3>`
+       +`<div class="sub maploc"></div>`
        +`<iframe class="mapframe" loading="lazy"></iframe></div>`;
      vehiclesEl.appendChild(el);
    }
@@ -369,6 +367,7 @@ async function tick(){
    const mapcard=el.querySelector(".mapcard"),frame=el.querySelector(".mapframe");
    if(v.location&&v.location.lat!=null){
      const la=v.location.lat,lo=v.location.lon,key=la.toFixed(5)+","+lo.toFixed(5);
+     el.querySelector(".maploc").innerHTML=`${la.toFixed(5)}, ${lo.toFixed(5)} · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a>`;
      if(mapKeys[v.vin]!==key){
        const d=0.01,bbox=[lo-d,la-d,lo+d,la+d].join("%2C");
        frame.src=`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la}%2C${lo}`;
