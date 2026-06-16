@@ -239,6 +239,60 @@ def _save_wizard_state(data):
     os.replace(tmp, WIZARD_STATE_FILE)
 
 
+def _check_pubkey(domain):
+    url = f"https://{domain}/.well-known/appspecific/com.tesla.3p.public-key.pem"
+    try:
+        ctx = ssl.create_default_context()
+        req = urllib.request.urlopen(url, context=ctx, timeout=10)
+        body = req.read(4096).decode("utf-8", errors="replace")
+        if "BEGIN PUBLIC KEY" in body or "BEGIN EC PUBLIC KEY" in body:
+            return {"ok": True, "url": url}
+        return {"ok": False, "error": "URL reachable but content is not an EC public key PEM"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _check_cert_detail():
+    try:
+        out = subprocess.run(
+            ["openssl", "x509", "-noout", "-subject", "-enddate", "-in", CERT_FILE],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode != 0:
+            return {"ok": False, "error": out.stderr.strip() or "certificate file not found or invalid"}
+        subject = ""
+        not_after = ""
+        for line in out.stdout.splitlines():
+            if line.startswith("subject="):
+                subject = line.split("=", 1)[1].strip()
+            elif line.startswith("notAfter="):
+                not_after = line.split("=", 1)[1].strip()
+        days = None
+        if not_after:
+            try:
+                exp = time.mktime(time.strptime(not_after, "%b %d %H:%M:%S %Y %Z"))
+                days = round((exp - time.time()) / 86400.0, 1)
+            except ValueError:
+                pass
+        ok = days is not None and days > 0
+        return {"ok": ok, "subject": subject, "not_after": not_after, "days_left": days}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _check_records_status():
+    with _lock:
+        total = _total_records
+        last = _last_record_epoch
+        vins = list(_latest.keys())
+    return {
+        "ok": total > 0,
+        "total": total,
+        "last_epoch": last,
+        "vins": vins,
+    }
+
+
 def build_state():
     now = time.time()
     with _lock:
