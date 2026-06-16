@@ -378,21 +378,23 @@ function buildCards(v){
    +row("Climate keeper",S('ClimateKeeperMode'))
    +row("Cabin overheat",S('CabinOverheatProtectionMode')));
 
- // Security & access
+ // Security
+ cards+=mcard("Security",
+   row("Locked",B('Locked')==null?null:(B('Locked')?"locked":"unlocked"))
+   +row("Sentry",S('SentryMode')));
+
+ // Doors & windows — door summary, then one labelled row per window
  const DOORLBL={DriverFront:"Driver front",DriverRear:"Driver rear",PassengerFront:"Passenger front",PassengerRear:"Passenger rear",TrunkFront:"Frunk",TrunkRear:"Trunk"};
  const dsraw=raw('DoorState');let doors=null;
  if(dsraw&&typeof dsraw==="object"){
    const open=Object.keys(dsraw).filter(k=>dsraw[k]).map(k=>DOORLBL[k]||k);
    doors=open.length?open.join(", "):"all closed";
  }
- const win=[["FdWindow","FL"],["FpWindow","FR"],["RdWindow","RL"],["RpWindow","RR"]];
- const winOpen=win.filter(([k])=>{const s=S(k);return s&&s!=="Closed";}).map(([k,l])=>`${l} ${S(k)}`).join(", ");
- const anyWin=win.some(([k])=>S(k)!=null);
- cards+=mcard("Security & access",
-   row("Locked",B('Locked')==null?null:(B('Locked')?"locked":"unlocked"))
-   +row("Sentry",S('SentryMode'))
-   +row("Doors",doors)
-   +row("Windows",anyWin?(winOpen||"all closed"):null));
+ const WINLBL={FdWindow:"Front left",FpWindow:"Front right",RdWindow:"Rear left",RpWindow:"Rear right"};
+ const humanize=s=>typeof s==="string"?s.replace(/([a-z])([A-Z])/g,"$1 $2"):s;
+ let winRows="";
+ for(const k in WINLBL){const s=S(k);if(s!=null)winRows+=row(WINLBL[k],humanize(s));}
+ cards+=mcard("Doors & windows",row("Doors",doors)+winRows);
 
  // Tire pressure (bar -> psi)
  const tp=k=>{const n=N(k);return n==null?null:Math.round(n*14.5038);};

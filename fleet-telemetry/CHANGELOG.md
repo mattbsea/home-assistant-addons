@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7
+
+### 🐛 Bug Fixes
+- **Split "Doors & windows" out of Security and de-cram the windows.** Windows used to render as one
+  jammed cell (`FL PartiallyOpen, FR PartiallyOpen, …`). Now Security (locked/sentry) is its own card,
+  and each window gets its own labelled row (Front left / Front right / Rear left / Rear right) with a
+  humanized status (`PartiallyOpen` → `Partially Open`).
+
 ## 0.4.6
 
 ### ✨ Dashboard reorganization
