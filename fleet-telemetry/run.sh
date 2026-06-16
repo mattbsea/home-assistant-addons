@@ -186,6 +186,18 @@ export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
   done ) &
 bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB_PORT})"
 
+# --- Fleet-API shim for TeslaMate (read-only) -------------------------------
+# Serves the three Fleet API endpoints TeslaMate polls, assembled from the live stream, so
+# TeslaMate can point TESLA_API_HOST here (with use_streaming_api=false per car) instead of polling
+# Tesla. State is checkpointed to /data so it warm-starts across restarts. Isolated restart loop.
+export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json"
+( while true; do
+    python3 /opt/webapp/shim.py
+    bashio::log.warning "Fleet-API shim exited; restarting in 3s"
+    sleep 3
+  done ) &
+bashio::log.info "Fleet-API shim listening on :8085 (set TeslaMate TESLA_API_HOST to this add-on; use_streaming_api=false)"
+
 # --- TeslaMate bridge (optional) --------------------------------------------
 # Forwards decoded records to a MyTeslaMate websocket server (POST /), replacing the Google
 # Pub/Sub push so TeslaMate can stream fully self-hosted. The websocket server can be bundled

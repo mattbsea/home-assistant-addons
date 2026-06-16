@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.4.7
+## 0.5.0
+
+### ✨ New: Fleet-API shim for TeslaMate (experimental)
+- A new local HTTP server on **:8085** answers the three read-only Fleet API endpoints TeslaMate v4
+  polls (`/api/1/products`, `/api/1/vehicles/{id}`, `/api/1/vehicles/{id}/vehicle_data`), assembling
+  the response entirely from the live telemetry stream. Point TeslaMate's `TESLA_API_HOST` at this
+  add-on and set each car's **`use_streaming_api = false`**, and TeslaMate gets its data from here at
+  **zero Fleet-API cost** (streaming is free; this never polls Tesla). Token refresh still goes to
+  real Tesla via `TESLA_AUTH_HOST`.
+- **Cold-start safe**: reports the car `asleep` until the essential fields are present (and answers
+  `vehicle_data` with a fuse-safe `408` if asked early), so TeslaMate keeps polling and never
+  receives a half-populated snapshot. Latest state is checkpointed to `/data` for warm restarts.
+- Still validating power sign/scale, charge-energy deltas, and gear/charge-state strings against a
+  real drive + charge; those mappings are isolated.
 
 ### 🐛 Bug Fixes
 - **Split "Doors & windows" out of Security and de-cram the windows.** Windows used to render as one
