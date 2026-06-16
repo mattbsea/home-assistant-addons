@@ -389,8 +389,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path.endswith("/setup"):
             self._send(200, PAGE_SETUP, "text/html; charset=utf-8")
         elif path == "" or path.endswith("/index.html"):
-            ws = _load_wizard_state()
-            if not ws.get("completed"):
+            try:
+                with open(WIZARD_STATE_FILE) as fh:
+                    ws = json.load(fh)
+                redirect = not ws.get("completed")
+            except FileNotFoundError:
+                redirect = True   # first run — no state file yet
+            except (OSError, ValueError):
+                redirect = False  # broken file → serve dashboard, don't trap user in redirect loop
+            if redirect:
                 self.send_response(302)
                 self.send_header("Location", "./setup")
                 self.send_header("Cache-Control", "no-store")
@@ -403,7 +410,7 @@ class Handler(BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def do_POST(self):
-        path = self.path.split("?", 1)[0]
+        path = self.path.split("?", 1)[0].rstrip("/")
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(n) if n > 0 else b""
@@ -415,6 +422,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, json.dumps({"error": "invalid json"}))
 
         if path.endswith("/api/wizard/save"):
+            if not isinstance(payload, dict):
+                return self._send(400, json.dumps({"error": "payload must be a JSON object"}))
             state = _load_wizard_state()
             # Deep-merge: top-level keys in payload overwrite state; nested dicts merged
             for k, v in payload.items():
