@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.3
+
+### Bug Fixes
+- **Prime snapshot now fills in missing Climate and Battery fields.** `_prime_to_fields` was not
+  mapping `fan_status` → `HvacFanStatus`, `driver_temp_setting` → `HvacLeftTemperatureRequest`,
+  `passenger_temp_setting` → `HvacRightTemperatureRequest`, `charge_limit_soc` → `ChargeLimitSoc`,
+  `charger_phases` → `ChargerPhases`, or `fast_charger_present` → `FastChargerPresent`. The
+  dashboard now shows all of these from the initial prime rather than waiting for live telemetry.
+- **Shim `fan_status` was always null when derived from streaming telemetry.** `HvacFanStatus`
+  arrives as an enum string (e.g. `HvacFanStatusSpeed3`) but the shim passed it to `_round_int()`
+  which can't parse strings. Fixed with a dedicated `_fan_speed()` parser.
+
 ## 0.7.0
 
 ### Added

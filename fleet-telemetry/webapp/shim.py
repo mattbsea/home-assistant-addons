@@ -62,6 +62,19 @@ def _round_int(v):
     return int(round(n)) if n is not None else None
 
 
+def _fan_speed(v):
+    """Parse HvacFanStatus enum ('HvacFanStatusSpeed3') or bare int to an integer fan level."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    s = str(v)
+    if "Off" in s:
+        return 0
+    m = re.search(r"\d+", s)
+    return int(m.group()) if m else None
+
+
 def _parse_loc(val):
     if isinstance(val, dict):
         return _num(val.get("latitude", val.get("Latitude"))), _num(val.get("longitude", val.get("Longitude")))
@@ -204,7 +217,7 @@ class Vehicle:
             "timestamp": ts, "outside_temp": _num(f.get("OutsideTemp")), "inside_temp": _num(f.get("InsideTemp")),
             "is_climate_on": (_bool(f.get("HvacACEnabled")) or _strip_state(f.get("HvacPower")) == "On") or None,
             "climate_keeper_mode": (lambda m: m.lower() if m else None)(_strip_state(f.get("ClimateKeeperMode"))),
-            "fan_status": _round_int(f.get("HvacFanStatus")), "driver_temp_setting": _num(f.get("HvacLeftTemperatureRequest")),
+            "fan_status": _fan_speed(f.get("HvacFanStatus")), "driver_temp_setting": _num(f.get("HvacLeftTemperatureRequest")),
             "passenger_temp_setting": _num(f.get("HvacRightTemperatureRequest"))}
 
         sentry = _strip_state(f.get("SentryMode"))

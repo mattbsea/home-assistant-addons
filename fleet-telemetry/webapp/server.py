@@ -184,11 +184,24 @@ def _prime_to_fields(p):
     put("TimeToFullCharge", cs.get("time_to_full_charge"))
     put("ChargingCableType", cs.get("conn_charge_cable"))
     put("FastChargerType", cs.get("fast_charger_type"))
+    put("ChargeLimitSoc", cs.get("charge_limit_soc"))
+    put("ChargerPhases", cs.get("charger_phases"))
+    if isinstance(cs.get("fast_charger_present"), bool):
+        put("FastChargerPresent", cs["fast_charger_present"])
     put("InsideTemp", cl.get("inside_temp"))
     put("OutsideTemp", cl.get("outside_temp"))
     put("ClimateKeeperMode", cl.get("climate_keeper_mode"))
     if isinstance(cl.get("is_climate_on"), bool):
         put("HvacACEnabled", cl["is_climate_on"])
+    fs = cl.get("fan_status")
+    if fs is not None:
+        try:
+            fi = int(fs)
+            put("HvacFanStatus", "HvacFanStatusOff" if fi == 0 else f"HvacFanStatusSpeed{fi}")
+        except (TypeError, ValueError):
+            pass
+    put("HvacLeftTemperatureRequest", cl.get("driver_temp_setting"))
+    put("HvacRightTemperatureRequest", cl.get("passenger_temp_setting"))
     if ds.get("latitude") is not None and ds.get("longitude") is not None:
         put("Location", {"latitude": ds["latitude"], "longitude": ds["longitude"]})
     put("GpsHeading", ds.get("heading"))
