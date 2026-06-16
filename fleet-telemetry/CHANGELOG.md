@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+- In-app onboarding wizard at `/setup` — guides new users and TeslaMate migrators through the full setup process step by step
+- Auto-redirects to wizard on first install (before wizard is marked complete)
+- Live public key URL check for Tesla developer app setup (Step 4)
+- Live certificate verification check from within the wizard (Step 8)
+- Pre-generated copy-paste payloads: EC key commands, partner registration curl, fleet_telemetry_config JSON and curl
+- TeslaMate integration path selector with pre-filled env var blocks (Step 10)
+- Real-time verification screen polls for certificate and first telemetry record (Step 11)
+- "Setup Guide" button in dashboard header for post-setup reference
+- Wizard state persisted to `/data/wizard-state.json` — resume mid-flow after add-on restart
+
 ## 0.6.6
 
 ### 🐛 Bug Fixes
