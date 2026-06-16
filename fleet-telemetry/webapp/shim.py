@@ -193,7 +193,10 @@ class Vehicle:
         shift = gear if gear in ("D", "R", "N") else None
         driving = shift in ("D", "R", "N")
         pv, pc = _num(f.get("PackVoltage")), _num(f.get("PackCurrent"))
-        power = round(pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else (None if driving else 0)
+        # PackCurrent sign: negative = discharging (driving), positive = charging (regen).
+        # Fleet API drive_state.power convention: positive = consuming, negative = regenerating.
+        # So negate the product to match what TeslaMate expects.
+        power = round(-pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else (None if driving else 0)
         drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": _num(f.get("GpsHeading")),
                        "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift}
 

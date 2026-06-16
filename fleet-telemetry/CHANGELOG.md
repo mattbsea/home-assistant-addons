@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.6
+
+### Bug Fixes
+- **`drive_state.power` sign was inverted.** `PackCurrent` in Tesla's streaming telemetry is
+  negative when the battery is discharging (driving) and positive during regen — the opposite of
+  the Fleet API's `drive_state.power` convention (positive = consuming, negative = regenerating).
+  The shim was computing `pv × pc / 1000` which gave negative power the entire time the car was
+  driving, causing TeslaMate to log every trip as net-regeneration. Fixed to `-pv × pc / 1000`.
+
 ## 0.7.5
 
 ### Bug Fixes
