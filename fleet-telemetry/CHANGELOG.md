@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+### ✨ New Features
+- **TeslaMate bridge (self-hosted, no Google Pub/Sub)**: optional `teslamate_bridge_url` option.
+  When set, the add-on forwards decoded telemetry records to a [MyTeslaMate websocket
+  server](https://github.com/MyTeslaMate/websocket) by POSTing the same
+  `{"message":{"data":base64(payload)}}` envelope that a Pub/Sub push subscription would — so
+  TeslaMate can use the websocket as its streaming source without any cloud dependency. stdlib-only
+  glue that tails the logger output; isolated from the telemetry path.
+
 ## 0.2.1
 
 ### 🔒 Security

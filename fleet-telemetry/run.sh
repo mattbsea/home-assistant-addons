@@ -186,6 +186,20 @@ export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
   done ) &
 bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB_PORT})"
 
+# --- TeslaMate bridge (optional) --------------------------------------------
+# Forwards decoded records to a self-hosted MyTeslaMate websocket server (POST /), replacing
+# the Google Pub/Sub push. Also tails the records file; isolated from the telemetry path.
+BRIDGE_URL="$(bashio::config 'teslamate_bridge_url')"
+if [ -n "${BRIDGE_URL}" ] && [ "${BRIDGE_URL}" != "null" ]; then
+    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${BRIDGE_URL}"
+    ( while true; do
+        python3 /opt/webapp/bridge.py
+        bashio::log.warning "TeslaMate bridge exited; restarting in 5s"
+        sleep 5
+      done ) &
+    bashio::log.info "TeslaMate bridge forwarding telemetry to ${BRIDGE_URL}"
+fi
+
 # --- Run the server with cert-refresh supervision ---------------------------
 SERVER_PID=""
 start_server() {
