@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+### 🐛 Bug Fixes
+- **Bundled websocket server: use the HTTP-receiver variant.** The published `myteslamate/websocket`
+  image is the Google Pub/Sub *pull* variant (crashes without `/key.json`). Vendor the upstream
+  `master` source instead — the `POST /` receiver with no GCP dependency — and npm-install it at
+  build, so the self-hosted glue path works without any cloud credentials.
+
 ## 0.4.0
 
 ### ✨ New Features

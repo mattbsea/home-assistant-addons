@@ -7,10 +7,15 @@ ARG BUILD_FROM
 # statically linked in, so the runtime base only needs libstdc++6.
 FROM tesla/fleet-telemetry:v0.9.0 AS upstream
 
-# MyTeslaMate websocket server (bundled, optional). We copy the already-installed app from the
-# published image — its node_modules (express/express-ws/ws/sync-request) are pure JS, so they run
-# fine under the Node runtime we install on the Debian base. Pinned by digest for reproducibility.
-FROM myteslamate/websocket@sha256:bbe99c9315eb3147c40353511f3ac17fcc95421c231c3a90f6c0b7886102c86a AS teslamate_ws
+# MyTeslaMate websocket server (bundled, optional). We vendor the upstream "master" source — the
+# HTTP-receiver variant (POST / accepts the Pub/Sub-push envelope; NO google-cloud subscriber) — and
+# npm-install its pure-JS deps here. The published Docker image is the Pub/Sub-pull variant and is
+# deliberately NOT used. node_modules built here run under the add-on's Node runtime (both glibc).
+FROM node:20-bookworm-slim AS teslamate_ws
+WORKDIR /opt/teslamate-ws
+COPY teslamate-ws/package*.json ./
+RUN npm install --omit=dev
+COPY teslamate-ws/ ./
 
 FROM ${BUILD_FROM}
 
