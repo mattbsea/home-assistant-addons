@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5
+
+### Bug Fixes
+- **`charge_limit_soc` now tracks live telemetry.** The shim's `_assemble()` was not reading
+  `ChargeLimitSoc` from the stream, so TeslaMate always saw the prime snapshot value (e.g. 80%)
+  even when the car's actual limit changed (e.g. to 50%). Fixed by including it in the assembled
+  `charge_state`.
+
 ## 0.7.4
 
 ### Bug Fixes

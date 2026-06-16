@@ -211,7 +211,8 @@ class Vehicle:
             "charger_power": charger_power, "charger_voltage": _round_int(f.get("ChargerVoltage")),
             "conn_charge_cable": _strip_state(f.get("ChargingCableType")),
             "fast_charger_present": f.get("FastChargerPresent") if isinstance(f.get("FastChargerPresent"), bool) else None,
-            "fast_charger_type": _strip_state(f.get("FastChargerType")), "time_to_full_charge": _num(f.get("TimeToFullCharge"))}
+            "fast_charger_type": _strip_state(f.get("FastChargerType")), "time_to_full_charge": _num(f.get("TimeToFullCharge")),
+            "charge_limit_soc": _round_int(f.get("ChargeLimitSoc"))}
 
         climate_state = {
             "timestamp": ts, "outside_temp": _num(f.get("OutsideTemp")), "inside_temp": _num(f.get("InsideTemp")),
