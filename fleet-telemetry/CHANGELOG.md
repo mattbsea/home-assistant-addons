@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.4
+
+### Bug Fixes
+- **Dashboard blank after v0.7.2.** `HvacFanStatus` arrives from the live telemetry stream as an
+  integer (e.g. `8`), but the fan row lambda called `.replace()` on it — integers don't have
+  `.replace()`, causing a TypeError that crashed `buildCards()` and left the entire vehicle grid
+  empty. The lambda now handles both integer values (`8` → `"Speed 8"`, `0` → `"Off"`) and enum
+  strings.
+
 ## 0.7.3
 
 ### Bug Fixes

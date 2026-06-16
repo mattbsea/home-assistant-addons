@@ -196,8 +196,7 @@ def _prime_to_fields(p):
     fs = cl.get("fan_status")
     if fs is not None:
         try:
-            fi = int(fs)
-            put("HvacFanStatus", "HvacFanStatusOff" if fi == 0 else f"HvacFanStatusSpeed{fi}")
+            put("HvacFanStatus", int(fs))
         except (TypeError, ValueError):
             pass
     put("HvacLeftTemperatureRequest", cl.get("driver_temp_setting"))
@@ -629,7 +628,7 @@ function buildCards(v){
    +row("HVAC",S('HvacPower'))
    +row("Climate keeper",S('ClimateKeeperMode'))
    +row("Cabin overheat",S('CabinOverheatProtectionMode'))
-   +row("Fan",(v=>v?v.replace(/([A-Za-z])(\d)/g,'$1 $2'):v)(S('HvacFanStatus'))));
+   +row("Fan",(v=>{if(v==null)return null;if(typeof v==='number')return v===0?'Off':'Speed '+v;return String(v).replace(/([A-Za-z])(\d)/g,'$1 $2');})(S('HvacFanStatus'))));
 
  // Security
  cards+=mcard("Security",
