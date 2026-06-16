@@ -437,6 +437,25 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        try:  # drain request body
+            n = int(self.headers.get("Content-Length", "0") or 0)
+            if n:
+                self.rfile.read(n)
+        except (ValueError, OSError):
+            pass
+        # OAuth token endpoint: lets TeslaMate run with NO real Tesla tokens — point its
+        # TESLA_AUTH_HOST here and it "refreshes" against us forever. The token is opaque; the
+        # "qts-" prefix makes TeslaMate skip JWT decoding. (The shim's own priming still uses the
+        # real refresh token configured in the add-on options, calling real Tesla directly.)
+        if path.endswith("/token"):
+            self._json(200, {"access_token": "qts-shim-token", "token_type": "Bearer",
+                             "expires_in": 28800, "refresh_token": "shim-refresh-token",
+                             "created_at": int(time.time()), "id_token": "qts-shim-id-token"})
+        else:
+            self._json(404, {"error": "not_found"})
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path in ("/api/1/products", "/api/1/vehicles", "/api/1/vehicles/"):

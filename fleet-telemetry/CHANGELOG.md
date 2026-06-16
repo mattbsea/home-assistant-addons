@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.4
+
+### ✨ Improvements
+- **Auth-free TeslaMate operation.** The shim now accepts `POST /token` requests and returns a
+  synthetic bearer token (`qts-` prefix, 8 h expiry). Point TeslaMate's `TESLA_AUTH_HOST` at the
+  shim (`http://<addon-host>:8085`) and sign it in with any dummy tokens — it will "refresh"
+  against the shim forever, making zero real Tesla auth calls. The shim's own priming still uses
+  the real add-on credentials directly.
+
 ## 0.6.3
 
 ### ✨ Improvements
