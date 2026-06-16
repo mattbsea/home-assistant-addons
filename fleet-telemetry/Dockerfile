@@ -33,7 +33,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=upstream /fleet-telemetry /usr/local/bin/fleet-telemetry
-COPY --from=teslamate_ws /usr/node/app /opt/teslamate-ws
+COPY --from=teslamate_ws /opt/teslamate-ws /opt/teslamate-ws
 
 COPY run.sh /run.sh
 COPY scripts/ /opt/scripts/
