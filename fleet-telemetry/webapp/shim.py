@@ -42,6 +42,9 @@ CLIENT_ID = os.environ.get("FT_SHIM_CLIENT_ID", "")
 REFRESH_SEED = os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
 AUTH_HOST = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
 FLEET_HOST = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.cloud.tesla.com")
+# Add-on restarts are rare, so by default we wake a sleeping car once on startup to grab a complete
+# fresh snapshot. Set false to be battery-conservative (then priming skips cars that are asleep).
+WAKE_ON_PRIME = os.environ.get("FT_SHIM_WAKE_ON_PRIME", "true").lower() == "true"
 
 _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 _META = {"CreatedAt", "IsResend", "Vin", "ConnectionID", "NetworkInterface", "Status"}
@@ -92,6 +95,12 @@ def _http_post_form(url, data):
 
 def _http_get(url, token):
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.load(r)
+
+
+def _http_post_bearer(url, token):
+    req = urllib.request.Request(url, data=b"", method="POST", headers={"Authorization": "Bearer " + token})
     with urllib.request.urlopen(req, timeout=25) as r:
         return json.load(r)
 
@@ -289,6 +298,27 @@ class Manager:
         return None
 
     # --- priming -----------------------------------------------------------
+    def _wake(self, tid, at):
+        """Wake a sleeping car and wait (~30s) for it to come online. Returns the resulting state.
+        wake_up is exempt from Tesla's command-signing requirement; if Tesla still rejects it, we
+        give up gracefully and the caller skips this car."""
+        try:
+            _http_post_bearer(FLEET_HOST + f"/api/1/vehicles/{tid}/wake_up", at)
+        except Exception as e:
+            print(f"[shim] prime: wake_up failed: {e}", flush=True)
+            return "asleep"
+        for _ in range(15):
+            time.sleep(2)
+            try:
+                s = _http_get(FLEET_HOST + f"/api/1/vehicles/{tid}", at).get("response", {}).get("state")
+            except Exception:
+                s = None
+            if s == "online":
+                print("[shim] prime: car woke up", flush=True)
+                return "online"
+        print("[shim] prime: wake timed out", flush=True)
+        return "asleep"
+
     def prime_once(self):
         rt = self.refresh_token or REFRESH_SEED
         if not (CLIENT_ID and rt):
@@ -325,9 +355,13 @@ class Manager:
                 if p.get("display_name"):
                     veh.display_name = p["display_name"]
                 tid, state = veh.tesla_id, p.get("state")
-            if state != "online" or not tid:
-                print(f"[shim] prime: {vin} is {state} — skip vehicle_data (won't wake it)", flush=True)
+            if not tid:
                 continue
+            if state != "online":
+                state = self._wake(tid, at) if WAKE_ON_PRIME else state
+                if state != "online":
+                    print(f"[shim] prime: {vin} is {state} — skipping vehicle_data", flush=True)
+                    continue
             try:
                 ep = "charge_state;climate_state;drive_state;location_data;vehicle_config;vehicle_state;gui_settings"
                 vd = _http_get(FLEET_HOST + f"/api/1/vehicles/{tid}/vehicle_data?endpoints=" + urllib.parse.quote(ep), at)

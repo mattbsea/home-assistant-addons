@@ -195,6 +195,7 @@ export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json"
 export FT_SHIM_CLIENT_ID="$(bashio::config 'teslamate_shim_client_id')"
 export FT_SHIM_REFRESH_TOKEN="$(bashio::config 'teslamate_shim_refresh_token')"
 export FT_SHIM_FLEET_HOST="$(bashio::config 'teslamate_shim_fleet_api_host')"
+export FT_SHIM_WAKE_ON_PRIME="$(jbool 'teslamate_shim_wake_on_prime')"
 ( while true; do
     python3 /opt/webapp/shim.py
     bashio::log.warning "Fleet-API shim exited; restarting in 3s"

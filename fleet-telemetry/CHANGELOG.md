@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2
+
+### ✨ Improvements
+- **Priming wakes a sleeping car** to grab a complete fresh snapshot on startup (add-on restarts are
+  rare, so the battery/cost impact is negligible and you always get full data). New option
+  `teslamate_shim_wake_on_prime` (default on) — set off to keep the old behavior of skipping cars
+  that are asleep. `wake_up` is exempt from command-signing; if Tesla rejects it the shim gives up
+  gracefully and falls back to telemetry.
+
 ## 0.6.1
 
 ### 🐛 Bug Fixes
