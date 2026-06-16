@@ -13,6 +13,8 @@ import re
 import subprocess
 import threading
 import time
+import ssl
+import urllib.request
 
 _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 from collections import defaultdict, deque
@@ -26,6 +28,7 @@ PORT = int(os.environ.get("FT_WEB_PORT", "8099"))
 SHIM_STATE_FILE = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
 NAMESPACE = os.environ.get("FT_NAMESPACE", "tesla_telemetry")
 ADDON_VERSION = os.environ.get("FT_ADDON_VERSION", "")
+WIZARD_STATE_FILE = os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json")
 HISTORY_MAX = 600  # ~ last N samples kept per series for sparklines
 
 START_TIME = time.time()
@@ -219,6 +222,21 @@ def _load_primes():
         return {}
     return {vin: {"prime": vd.get("prime"), "display_name": vd.get("display_name")}
             for vin, vd in (d.get("vehicles") or {}).items()}
+
+
+def _load_wizard_state():
+    try:
+        with open(WIZARD_STATE_FILE) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_wizard_state(data):
+    tmp = WIZARD_STATE_FILE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, WIZARD_STATE_FILE)
 
 
 def build_state():
