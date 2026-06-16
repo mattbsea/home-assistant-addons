@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.3
+
+### ✨ Improvements
+- **Dashboard now reflects the shim's primed snapshot.** The ingress dashboard reads the shim's
+  persisted state and fills any gaps the live stream hasn't provided (and shows fields telemetry
+  never carries — car type/trim/color, real display name). Live telemetry still wins for everything
+  it provides; the prime just makes the dashboard complete immediately after a restart instead of
+  looking empty while slow fields trickle in.
+
 ## 0.6.2
 
 ### ✨ Improvements

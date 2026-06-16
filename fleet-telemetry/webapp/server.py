@@ -21,6 +21,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 CERT_FILE = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
 PORT = int(os.environ.get("FT_WEB_PORT", "8099"))
+# The shim's persisted snapshot (telemetry + a real-Fleet-API "prime"); we read it so the dashboard
+# shows the same complete picture the shim serves TeslaMate, even for fields telemetry doesn't stream.
+SHIM_STATE_FILE = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
 NAMESPACE = os.environ.get("FT_NAMESPACE", "tesla_telemetry")
 ADDON_VERSION = os.environ.get("FT_ADDON_VERSION", "")
 HISTORY_MAX = 600  # ~ last N samples kept per series for sparklines
@@ -157,6 +160,67 @@ def _rate_per_min():
     return round(len(recent) / span * 60.0, 1)
 
 
+def _prime_to_fields(p):
+    """Map a shim 'prime' (Tesla vehicle_data shape) back to telemetry field names so the dashboard's
+    existing cards can render it. Used only to fill gaps the live stream hasn't (or won't) provide."""
+    ds = p.get("drive_state") or {}; cs = p.get("charge_state") or {}
+    cl = p.get("climate_state") or {}; vs = p.get("vehicle_state") or {}; vc = p.get("vehicle_config") or {}
+    out = {}
+
+    def put(k, v):
+        if v is not None:
+            out[k] = v
+    put("Soc", cs.get("battery_level"))
+    put("BatteryLevel", cs.get("usable_battery_level"))
+    put("RatedRange", cs.get("battery_range"))
+    put("EstBatteryRange", cs.get("est_battery_range"))
+    put("IdealBatteryRange", cs.get("ideal_battery_range"))
+    put("DetailedChargeState", cs.get("charging_state"))
+    put("ChargerVoltage", cs.get("charger_voltage"))
+    put("ChargeAmps", cs.get("charger_actual_current"))
+    put("TimeToFullCharge", cs.get("time_to_full_charge"))
+    put("ChargingCableType", cs.get("conn_charge_cable"))
+    put("FastChargerType", cs.get("fast_charger_type"))
+    put("InsideTemp", cl.get("inside_temp"))
+    put("OutsideTemp", cl.get("outside_temp"))
+    put("ClimateKeeperMode", cl.get("climate_keeper_mode"))
+    if isinstance(cl.get("is_climate_on"), bool):
+        put("HvacACEnabled", cl["is_climate_on"])
+    if ds.get("latitude") is not None and ds.get("longitude") is not None:
+        put("Location", {"latitude": ds["latitude"], "longitude": ds["longitude"]})
+    put("GpsHeading", ds.get("heading"))
+    put("VehicleSpeed", ds.get("speed"))
+    put("Gear", ds.get("shift_state"))
+    put("Odometer", vs.get("odometer"))
+    put("Version", vs.get("car_version"))
+    if isinstance(vs.get("locked"), bool):
+        put("Locked", vs["locked"])
+    if isinstance(vs.get("sentry_mode"), bool):
+        put("SentryMode", "Armed" if vs["sentry_mode"] else "Off")
+    for a, b in (("tpms_pressure_fl", "TpmsPressureFl"), ("tpms_pressure_fr", "TpmsPressureFr"),
+                 ("tpms_pressure_rl", "TpmsPressureRl"), ("tpms_pressure_rr", "TpmsPressureRr")):
+        put(b, vs.get(a))
+    if any(k in vs for k in ("df", "pf", "dr", "pr", "ft", "rt")):
+        put("DoorState", {"DriverFront": bool(vs.get("df")), "PassengerFront": bool(vs.get("pf")),
+                          "DriverRear": bool(vs.get("dr")), "PassengerRear": bool(vs.get("pr")),
+                          "TrunkFront": bool(vs.get("ft")), "TrunkRear": bool(vs.get("rt"))})
+    put("CarType", vc.get("car_type"))
+    put("Trim", vc.get("trim_badging"))
+    put("ExteriorColor", vc.get("exterior_color"))
+    put("Wheels", vc.get("wheel_type"))
+    return out
+
+
+def _load_primes():
+    try:
+        with open(SHIM_STATE_FILE) as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {vin: {"prime": vd.get("prime"), "display_name": vd.get("display_name")}
+            for vin, vd in (d.get("vehicles") or {}).items()}
+
+
 def build_state():
     now = time.time()
     with _lock:
@@ -167,9 +231,17 @@ def build_state():
         total = _total_records
         client_versions = dict(_client_versions)
         last_epoch = _last_record_epoch
+    primes = _load_primes()
+    vins = list(dict.fromkeys(list(vins) + list(primes.keys())))  # union: telemetry + primed VINs
     vehicles = []
     for vin in vins:
-        fields = latest[vin]
+        fields = dict(latest.get(vin, {}))
+        # Fill display gaps from the shim's prime (live telemetry, having a real received_at, wins).
+        pe = primes.get(vin) or {}
+        if pe.get("prime"):
+            for k, v in _prime_to_fields(pe["prime"]).items():
+                if k not in fields:
+                    fields[k] = {"value": v, "created_at": "", "received_at": 0}
         loc_lat = loc_lon = None
         if "Location" in fields:
             loc_lat, loc_lon = _parse_location(fields["Location"]["value"])
@@ -179,6 +251,7 @@ def build_state():
         hist = history.get(vin) or {"soc": [], "speed": []}
         vehicles.append({
             "vin": vin,
+            "display_name": pe.get("display_name") or vin,
             "fields": fields,
             "location": {"lat": loc_lat, "lon": loc_lon},
             "soc_history": [round(v, 2) for _, v in hist["soc"]],
@@ -445,7 +518,7 @@ async function tick(){
      // (text/SVG, no flash); the map iframe lives in its own card so it is never
      // recreated — we only change its src when the vehicle moves.
      el=document.createElement("div");el.id=id;
-     el.innerHTML=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.vin)}</h2>`
+     el.innerHTML=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.display_name||v.vin)}</h2>`
        +`<div class="grid gridslot"></div>`
        +`<div class="card mapcard" style="display:none;margin-top:14px"><h3>Location</h3>`
        +`<div class="sub maploc"></div>`
