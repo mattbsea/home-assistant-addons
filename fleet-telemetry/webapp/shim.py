@@ -143,11 +143,14 @@ class VehicleStore:
 
     # --- derived state -----------------------------------------------------
     def _ready_locked(self):
+        # Essentials that always stream while the car is awake. Odometer is intentionally NOT
+        # required: a *parked* car doesn't re-emit it (it only ticks on its timer / while driving),
+        # so requiring it would pin a parked car to "asleep" after a cold start. Odometer flows
+        # into vehicle_data when present and persists across restarts.
         f = self.fields
         has_batt = _num(f.get("Soc")) is not None or _num(f.get("BatteryLevel")) is not None
-        has_odo = _num(f.get("Odometer")) is not None
         has_loc = _parse_loc(f.get("Location"))[0] is not None
-        return has_batt and has_odo and has_loc
+        return has_batt and has_loc
 
     def state_str(self):
         with self.lock:

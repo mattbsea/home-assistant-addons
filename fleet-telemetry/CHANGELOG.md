@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+### 🐛 Bug Fixes
+- **Shim readiness no longer requires `Odometer`.** A parked car doesn't re-emit `Odometer` (it only
+  ticks on its timer / while driving), so requiring it kept a parked car pinned to `asleep` after a
+  cold start. Readiness now needs only battery + location; `Odometer` flows into `vehicle_data` when
+  present and persists across restarts.
+
 ## 0.5.0
 
 ### ✨ New: Fleet-API shim for TeslaMate (experimental)
