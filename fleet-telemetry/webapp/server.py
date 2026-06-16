@@ -478,6 +478,8 @@ h1{font-size:18px;margin:0;font-weight:650}
 .kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .kv:last-child{border-bottom:0}.kv span:first-child{color:var(--mut)}
 .kv i{font-style:normal;color:var(--mut);font-size:11px;margin-left:3px}
+@keyframes kvpulse{0%,8%{color:var(--good);font-weight:700;font-size:14.5px}100%{color:inherit;font-weight:inherit;font-size:inherit}}
+.kv-pulse>span:last-child{animation:kvpulse 5s ease-out forwards}
 h2{font-size:15px;margin:18px 0 10px}
 .spark{width:100%;height:46px;display:block;margin-top:8px}
 a{color:var(--accent)}
@@ -526,6 +528,7 @@ function card(t,inner){return `<div class="card"><h3>${t}</h3>${inner}</div>`;}
 // Persistent per-VIN map state: the last lat,lon we pointed the iframe at, so we only
 // reload the OpenStreetMap embed when the vehicle actually moves (not every refresh).
 const mapKeys={};
+const prevKV={}; // vin -> {label -> valueText}, used to detect changed fields for pulse animation
 // Telemetry enums arrive verbose ("DetailedChargeStateDisconnected", "WindowStateClosed",
 // "SettingTemperatureUnitFahrenheit"). Strip the prefix to the meaningful suffix, and treat the
 // "<invalid>" sentinel (field not applicable right now) as absent.
@@ -677,6 +680,13 @@ async function tick(){
      vehiclesEl.appendChild(el);
    }
    el.querySelector(".gridslot").innerHTML=buildCards(v);
+   // Pulse rows whose value changed since the last tick
+   {const pk=prevKV[v.vin]||{};const nk={};
+    el.querySelectorAll('.gridslot .kv').forEach(div=>{
+      const sp=div.children;if(sp.length<2)return;
+      const lbl=sp[0].textContent,val=sp[1].textContent;
+      nk[lbl]=val;if(pk[lbl]!=null&&pk[lbl]!==val)div.classList.add('kv-pulse');
+    });prevKV[v.vin]=nk;}
    const mapcard=el.querySelector(".mapcard"),frame=el.querySelector(".mapframe");
    if(v.location&&v.location.lat!=null){
      const la=v.location.lat,lo=v.location.lon,key=la.toFixed(5)+","+lo.toFixed(5);
