@@ -885,7 +885,7 @@ function renderStep3(){
 </div>
 <div class="card"><h3>3 — Host the public key</h3>
   <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Upload <code>public.pem</code> to your web server so it's reachable at exactly:</p>
-  <pre>https://${domain}/.well-known/appspecific/com.tesla.3p.public-key.pem</pre>
+  <pre>https://${esc(domain)}/.well-known/appspecific/com.tesla.3p.public-key.pem</pre>
 </div>
 ${markDone(3)}`;
 }
@@ -1172,7 +1172,7 @@ function canAdvance(){
   if(s===4)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
   if(s===8)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
   if(s===10)return!!(W.inputs.tm_path&&W.steps["10"]==="done");
-  const manual=[2,3,5,6,7,9];
+  const manual=[3,5,6,7,9];
   if(manual.includes(s))return W.steps[String(s)]==="done";
   return true;
 }
