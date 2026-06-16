@@ -40,9 +40,11 @@ fi
 
 # 2. Resolve the certificate id by domain name
 CERTS_JSON="$(curl -fsS "${BASE_URL}/api/nginx/certificates" -H "Authorization: Bearer ${TOKEN}")"
+# Match the domain case-insensitively — LE/NPM store domains lowercase, but the user may type
+# mixed case in the add-on config. Pick the newest matching cert if several exist.
 CERT_ID="$(echo "${CERTS_JSON}" \
     | jq -r --arg d "${NPM_CERT_DOMAIN}" \
-        '[.[] | select(.domain_names | index($d))] | sort_by(.expires_on) | last | .id // empty')"
+        '[.[] | select(.domain_names | map(ascii_downcase) | index($d | ascii_downcase))] | sort_by(.expires_on) | last | .id // empty')"
 if [ -z "${CERT_ID}" ]; then
     log "ERROR: no NPM certificate found for domain '${NPM_CERT_DOMAIN}'"
     exit 4

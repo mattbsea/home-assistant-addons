@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### 🐛 Bug Fixes
+- **Case-insensitive certificate matching**: resolve the NPM certificate by domain regardless of
+  the case typed in `npm_cert_domain` (Let's Encrypt/NPM store domains lowercase).
+
 ## 0.1.0
 
 ### ✨ Initial release
