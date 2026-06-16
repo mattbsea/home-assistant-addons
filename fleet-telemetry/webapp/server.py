@@ -492,6 +492,7 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
   <span class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">connecting…</span></span>
   <span class="pill" id="ratePill">— rec/min</span>
   <span class="pill" id="totalPill">— records</span>
+  <a class="pill" href="./setup" style="text-decoration:none;color:var(--mut)">⚙ Setup Guide</a>
   <span style="flex:1"></span>
   <span class="pill" id="updatedPill">updated —</span>
 </header>
