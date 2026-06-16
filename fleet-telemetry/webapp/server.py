@@ -701,6 +701,582 @@ tick();setInterval(tick,5000);
 </script>
 </body></html>"""
 
+PAGE_SETUP = r"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fleet Telemetry Setup</title>
+<style>
+:root{--bg:#0b0f17;--card:#141b29;--card2:#1b2435;--line:#26314a;--txt:#e7edf7;--mut:#8a98b3;--accent:#3ea6ff;--good:#3ddc97;--warn:#ffb454;--bad:#ff5d5d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:780px;margin:0 auto;padding:24px 18px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+h1{font-size:18px;margin:0;font-weight:650;flex:1}
+a.back{color:var(--mut);text-decoration:none;font-size:13px}a.back:hover{color:var(--txt)}
+.progress{height:4px;background:var(--card2);border-radius:2px;margin-bottom:10px;overflow:hidden}
+.progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width .4s}
+.step-label{color:var(--mut);font-size:12px;margin-bottom:22px}
+h2{font-size:20px;font-weight:650;margin:0 0 10px}
+.subtitle{color:var(--mut);margin:0 0 22px;font-size:14px;line-height:1.6}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+.card h3{font-size:11.5px;font-weight:600;color:var(--mut);letter-spacing:.07em;text-transform:uppercase;margin:0 0 12px}
+pre{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.5;margin:0;white-space:pre-wrap;word-break:break-all}
+.codewrap{position:relative;margin-bottom:4px}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--card);border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
+.copy-btn:hover{color:var(--txt)}
+.input-row{display:flex;gap:8px;margin-bottom:10px}
+input[type=text]{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;color:var(--txt);font-size:13.5px;outline:none}
+input[type=text]:focus{border-color:var(--accent)}
+.btn{padding:10px 20px;border-radius:8px;border:none;font-size:13.5px;font-weight:600;cursor:pointer}
+.btn-primary{background:var(--accent);color:#04121f}.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-secondary{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.result{padding:10px 14px;border-radius:8px;margin-top:10px;font-size:13px}
+.result.ok{background:#0e2a1e;border:1px solid var(--good);color:var(--good)}
+.result.err{background:#2a0e0e;border:1px solid var(--bad);color:var(--bad)}
+.result.info{background:var(--card2);border:1px solid var(--line);color:var(--mut)}
+.big-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.big-btn{background:var(--card);border:2px solid var(--line);border-radius:12px;padding:20px;text-align:left;cursor:pointer;transition:border-color .2s}
+.big-btn:hover,.big-btn.sel{border-color:var(--accent)}
+.big-btn h3{margin:0 0 6px;font-size:14px;font-weight:650;color:var(--txt)}
+.big-btn p{margin:0;font-size:12.5px;color:var(--mut)}
+.nav{display:flex;gap:10px;margin-top:28px;padding-top:20px;border-top:1px solid var(--line);align-items:center}
+.nav .skip{margin-left:auto;color:var(--mut);background:none;border:none;font-size:12.5px;cursor:pointer;text-decoration:underline}
+.mark-done{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--card2);border-radius:8px;cursor:pointer;user-select:none;margin-top:4px;border:1px solid var(--line)}
+.mark-done input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+.mark-done span{font-size:13.5px}
+.check-row{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.check-row:last-child{border-bottom:0}
+.check-num{width:22px;height:22px;border-radius:50%;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:1px}
+.integration-opts{display:flex;flex-direction:column;gap:10px}
+.int-opt{background:var(--card2);border:2px solid var(--line);border-radius:10px;padding:14px;cursor:pointer}
+.int-opt:hover,.int-opt.sel{border-color:var(--accent)}
+.int-opt h4{margin:0 0 4px;font-size:13.5px;font-weight:650;color:var(--txt)}
+.int-opt p{margin:0;font-size:12px;color:var(--mut)}
+.int-opt pre{margin-top:12px;font-size:12px}
+.region-sel{display:flex;gap:8px;margin-bottom:14px}
+.region-btn{padding:7px 16px;border-radius:7px;border:1px solid var(--line);background:var(--card2);color:var(--mut);cursor:pointer;font-size:12.5px}
+.region-btn.sel{border-color:var(--accent);color:var(--accent);background:#0d1e36}
+.status-items{display:flex;flex-direction:column;gap:8px}
+.status-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:8px}
+.si-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.si-ok{background:#0e2a1e}.si-wait{background:#1b2435}.si-bad{background:#2a0e0e}
+.si-info{flex:1}.si-title{font-size:13px;font-weight:600}.si-sub{font-size:12px;color:var(--mut);margin-top:2px}
+.summary-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.summary-row:last-child{border-bottom:0}
+.sum-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.sum-ok{background:#0e2a1e;color:var(--good)}.sum-pending{background:var(--card2);color:var(--mut)}
+a{color:var(--accent)}
+ol{padding-left:20px;margin:0}ol li{line-height:1.9;font-size:13.5px}
+</style></head>
+<body><div class="wrap">
+<header>
+  <h1>⚡ Fleet Telemetry Setup</h1>
+  <a class="back" href="./">← Dashboard</a>
+</header>
+<div class="progress"><div class="progress-bar" id="pbar"></div></div>
+<div class="step-label" id="stepLabel"></div>
+<div id="stepContent"></div>
+<div class="nav" id="nav"></div>
+</div>
+<script>
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function ago(e){if(!e)return"never";const s=Math.max(0,Date.now()/1000-e);
+ if(s<60)return Math.round(s)+"s ago";if(s<3600)return Math.round(s/60)+"m ago";return Math.round(s/3600)+"h ago";}
+
+let W={user_type:null,completed:false,current_step:1,steps:{},inputs:{}};
+let pollTimer=null;
+
+async function api(method,path,body){
+  const opts={method,headers:{"Content-Type":"application/json"},cache:"no-store"};
+  if(body)opts.body=JSON.stringify(body);
+  const r=await fetch(new URL(path,location.href),opts);
+  return r.json();
+}
+
+async function save(patch){
+  // Locally merge patch into W
+  for(const [k,v] of Object.entries(patch)){
+    if(v&&typeof v==="object"&&!Array.isArray(v)&&W[k]&&typeof W[k]==="object")
+      W[k]={...W[k],...v};
+    else W[k]=v;
+  }
+  await api("POST","api/wizard/save",patch);
+}
+
+function visibleSteps(){
+  const ut=W.user_type;
+  if(!ut)return[1];
+  if(ut==="new")return[1,2,3,4,5,6,7,8,9,11,12];
+  if(ut==="teslamate_working")return[1,6,7,8,9,10,11,12];
+  return[1,2,3,4,5,6,7,8,9,10,11,12];
+}
+
+function codebox(code,id){
+  return `<div class="codewrap"><pre id="${esc(id)}">${esc(code)}</pre><button class="copy-btn" onclick="copyCode('${esc(id)}')">Copy</button></div>`;
+}
+
+function markDone(n){
+  const done=W.steps[String(n)]==="done";
+  return `<label class="mark-done"><input type="checkbox" ${done?"checked":""} onchange="toggleDone(${n},this.checked)"><span>I've completed this step</span></label>`;
+}
+
+function checkResultHtml(r){
+  if(!r)return"";
+  if(r.ok)return`<div class="result ok">✓ ${r.subject?esc(r.subject)+(r.days_left!=null?" · "+r.days_left+" days left":""):r.url?esc(r.url):"Check passed"}</div>`;
+  return`<div class="result err">✗ ${esc(r.error||"Check failed")}</div>`;
+}
+
+// ---- Step renderers ----
+
+function renderStep1(){
+  const ut=W.user_type;
+  const tmSel=ut==="teslamate_broken"||ut==="teslamate_working";
+  return`
+<h2>Welcome to Fleet Telemetry</h2>
+<p class="subtitle">Let's get you set up. Which best describes your situation?</p>
+<div class="big-btns">
+  <div class="big-btn${ut==="new"?" sel":""}" onclick="selectType('new')">
+    <h3>I'm new to Fleet Telemetry</h3>
+    <p>Set up Tesla streaming telemetry from scratch</p>
+  </div>
+  <div class="big-btn${tmSel?" sel":""}" onclick="showTMFollow()">
+    <h3>I'm migrating TeslaMate to Fleet Telemetry</h3>
+    <p>TeslaMate is already running — add streaming telemetry as its data source</p>
+  </div>
+</div>
+<div id="tmfollow" style="display:${tmSel?"block":"none"};margin-top:16px">
+  <div class="card"><h3>Is TeslaMate currently working?</h3>
+  <div style="display:flex;gap:10px;margin-top:4px">
+    <button class="btn ${ut==="teslamate_working"?"btn-primary":"btn-secondary"}" onclick="selectType('teslamate_working')">Yes — it's working</button>
+    <button class="btn ${ut==="teslamate_broken"?"btn-primary":"btn-secondary"}" onclick="selectType('teslamate_broken')">No — it stopped working</button>
+  </div></div>
+</div>`;
+}
+
+function renderStep2(){
+  return`
+<h2>Prerequisites</h2>
+<p class="subtitle">Before we start, make sure you have the following ready. This typically takes about 30 minutes.</p>
+<div class="card">
+  <h3>What you'll need</h3>
+  <div class="check-row"><div class="check-num">1</div><div><b>Tesla Developer account</b> — sign up at <a href="https://developer.tesla.com" target="_blank">developer.tesla.com</a></div></div>
+  <div class="check-row"><div class="check-num">2</div><div><b>A public-facing domain</b> pointing to your home IP — e.g. <code>telemetry.example.org</code></div></div>
+  <div class="check-row"><div class="check-num">3</div><div><b>NGINX Proxy Manager</b> already running, with the ability to issue Let's Encrypt certificates</div></div>
+  <div class="check-row"><div class="check-num">4</div><div><b>Port 443 forwarded</b> to your Home Assistant host in your router</div></div>
+</div>`;
+}
+
+function renderStep3(){
+  const domain=W.inputs.domain||"&lt;your-domain&gt;";
+  return`
+<h2>Tesla Developer App &amp; EC Key Pair</h2>
+<p class="subtitle">Create a Tesla developer application and generate the cryptographic key pair it requires.</p>
+<div class="card"><h3>1 — Create your Tesla app</h3>
+  <ol>
+    <li>Go to <a href="https://developer.tesla.com/en_US/dashboard" target="_blank">developer.tesla.com</a> and sign in</li>
+    <li>Click <b>Create App</b> and fill in the details</li>
+    <li>Under scopes, request <b>vehicle_device_data</b></li>
+    <li>Note your <b>Client ID</b> — you'll need it in the next step</li>
+  </ol>
+</div>
+<div class="card"><h3>2 — Generate an EC key pair</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Run on any machine with openssl. Keep <code>private.pem</code> secure.</p>
+  ${codebox("openssl ecparam -name prime256v1 -genkey -noout -out private.pem\nopenssl ec -in private.pem -pubout -out public.pem","kp-cmd")}
+</div>
+<div class="card"><h3>3 — Host the public key</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Upload <code>public.pem</code> to your web server so it's reachable at exactly:</p>
+  <pre>https://${domain}/.well-known/appspecific/com.tesla.3p.public-key.pem</pre>
+</div>
+${markDone(3)}`;
+}
+
+function renderStep4(){
+  const domain=W.inputs.domain||"";
+  const res=W.inputs.pubkey_check||null;
+  return`
+<h2>Verify Public Key URL</h2>
+<p class="subtitle">Enter your telemetry domain. We'll fetch the public key URL from inside the container to confirm Tesla can reach it.</p>
+<div class="card"><h3>Your telemetry domain</h3>
+  <div class="input-row">
+    <input type="text" id="domainInput" placeholder="telemetry.example.org" value="${esc(domain)}">
+    <button class="btn btn-outline" onclick="checkPubkey()">Test URL</button>
+  </div>
+  <p style="color:var(--mut);font-size:12px;margin:0">Checks <code>https://&lt;domain&gt;/.well-known/appspecific/com.tesla.3p.public-key.pem</code> for a valid EC public key.</p>
+  <div id="pubkeyResult">${checkResultHtml(res)}</div>
+</div>`;
+}
+
+function renderStep5(){
+  const domain=W.inputs.domain||"&lt;your-domain&gt;";
+  const clientId=W.inputs.client_id||"&lt;your-client-id&gt;";
+  const curl=`# 1. Get a Partner Auth token
+curl -X POST https://auth.tesla.com/oauth2/v3/token \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -d "grant_type=client_credentials&client_id=${clientId}&client_secret=<YOUR_SECRET>&scope=openid+vehicle_device_data+offline_access"
+
+# 2. Register your domain (use access_token from step 1)
+curl -X POST https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/partner_accounts \\
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"domain":"${domain}"}'`;
+  return`
+<h2>Register Partner Account</h2>
+<p class="subtitle">Tell Tesla's API about your app domain. One-time registration.</p>
+<div class="card"><h3>Your Tesla client ID</h3>
+  <div class="input-row" style="margin-bottom:4px">
+    <input type="text" id="clientIdInput" placeholder="abc123def456..." value="${esc(W.inputs.client_id||"")}">
+  </div>
+  <p style="color:var(--mut);font-size:12px;margin:0 0 14px">Pre-fills the commands below.</p>
+  <h3 style="margin-top:0">Registration commands</h3>
+  ${codebox(curl,"reg-cmd")}
+</div>
+${markDone(5)}`;
+}
+
+function renderStep6(){
+  const domain=W.inputs.domain||"&lt;your-domain&gt;";
+  return`
+<h2>Issue TLS Certificate in NPM</h2>
+<p class="subtitle">The add-on fetches its certificate from NGINX Proxy Manager automatically. Issue a Let's Encrypt cert for your telemetry domain first.</p>
+<div class="card"><h3>Steps in NGINX Proxy Manager</h3>
+  <ol>
+    <li>Open NPM and go to <b>SSL Certificates</b></li>
+    <li>Click <b>Add SSL Certificate → Let's Encrypt</b></li>
+    <li>Domain: <code>${domain}</code></li>
+    <li>Complete DNS or HTTP challenge and click <b>Save</b></li>
+  </ol>
+</div>
+<div class="card" style="border-color:var(--warn)">
+  <h3 style="color:var(--warn)">Important</h3>
+  <p style="margin:0;font-size:13px">The <b>npm_cert_domain</b> you set in the add-on must match the domain on this certificate exactly (case-sensitive).</p>
+</div>
+${markDone(6)}`;
+}
+
+function renderStep7(){
+  return`
+<h2>Create NPM Stream (TCP Passthrough)</h2>
+<p class="subtitle">Fleet Telemetry uses mTLS — the TLS handshake must reach the add-on directly. Use a <b>Stream</b>, not a Proxy Host, so TLS is not terminated at the proxy.</p>
+<div class="card"><h3>Traffic flow</h3>
+<pre>Tesla Vehicle
+  ↓  TLS — NOT terminated at proxy
+[443] → NPM Stream (TCP passthrough)
+  ↓
+[4443] → Fleet Telemetry add-on
+  ↓  mTLS handshake + telemetry data</pre></div>
+<div class="card"><h3>Steps in NGINX Proxy Manager</h3>
+  <ol>
+    <li>Go to <b>Streams</b> in NPM (not Proxy Hosts)</li>
+    <li>Click <b>Add Stream</b></li>
+    <li>Incoming port: <b>443</b></li>
+    <li>Forward host: your Home Assistant IP address</li>
+    <li>Forward port: <b>4443</b> (the add-on's telemetry port)</li>
+    <li>Protocol: <b>TCP</b> only — disable UDP</li>
+    <li><b>Do NOT enable SSL termination</b> — leave it off</li>
+    <li>Save</li>
+  </ol>
+</div>
+${markDone(7)}`;
+}
+
+function renderStep8(){
+  const domain=W.inputs.domain||"";
+  const res=W.inputs.cert_check||null;
+  return`
+<h2>Configure the Add-on</h2>
+<p class="subtitle">Fill in these fields in the add-on's <b>Configuration</b> tab in Home Assistant, then restart the add-on.</p>
+<div class="card"><h3>Required fields</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr><td style="padding:6px 0;color:var(--mut);width:170px;vertical-align:top">npm_url</td><td>Base URL of your NPM admin panel, e.g. <code>https://proxy.example.org:81</code></td></tr>
+    <tr><td style="padding:6px 0;color:var(--mut);vertical-align:top">npm_email</td><td>NPM admin email address</td></tr>
+    <tr><td style="padding:6px 0;color:var(--mut);vertical-align:top">npm_password</td><td>NPM admin password</td></tr>
+    <tr><td style="padding:6px 0;color:var(--mut);vertical-align:top">npm_cert_domain</td><td><code>${esc(domain||"your telemetry domain from the previous step")}</code></td></tr>
+  </table>
+</div>
+<div class="card"><h3>Verify certificate after restart</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">Save your configuration, restart the add-on, then click <b>Verify Certificate</b> to confirm it loaded correctly. <b>Next</b> is unlocked only when the certificate check passes.</p>
+  <button class="btn btn-outline" onclick="checkCert()">Verify Certificate</button>
+  <div id="certResult">${checkResultHtml(res)}</div>
+</div>`;
+}
+
+function renderStep9(){
+  const domain=W.inputs.domain||"&lt;your-domain&gt;";
+  const region=W.inputs.region||"na";
+  const hosts={na:"https://fleet-api.prd.na.vn.cloud.tesla.com",eu:"https://fleet-api.prd.eu.vn.cloud.tesla.com",cn:"https://fleet-api.prd.cn.vn.cloud.tesla.com"};
+  const host=hosts[region];
+  const cfg=`{
+  "hostname": "${domain}",
+  "port": 443,
+  "ca": "<Let's Encrypt R3+R10 chain — see note below>",
+  "fields": {
+    "VehicleSpeed":        {"interval_seconds": 10},
+    "Location":            {"interval_seconds": 30},
+    "Soc":                 {"interval_seconds": 30},
+    "Gear":                {"interval_seconds": 5},
+    "DetailedChargeState": {"interval_seconds": 30},
+    "ACChargingPower":     {"interval_seconds": 30},
+    "DCChargingPower":     {"interval_seconds": 30},
+    "InsideTemp":          {"interval_seconds": 60},
+    "OutsideTemp":         {"interval_seconds": 60}
+  }
+}`;
+  const curl=`curl -X POST ${host}/api/1/vehicles/<VIN>/fleet_telemetry_config \\
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '<config-json>'`;
+  return`
+<h2>Configure Vehicle Telemetry</h2>
+<p class="subtitle">Tell your Tesla vehicle where to stream data. Run this once per vehicle using your Fleet API access token.</p>
+<div class="region-sel">
+  <button class="region-btn${region==="na"?" sel":""}" onclick="setRegion('na')">North America</button>
+  <button class="region-btn${region==="eu"?" sel":""}" onclick="setRegion('eu')">Europe</button>
+  <button class="region-btn${region==="cn"?" sel":""}" onclick="setRegion('cn')">China</button>
+</div>
+<div class="card"><h3>Config JSON</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Paste the full Let's Encrypt intermediate chain into the <code>ca</code> field. Download from <a href="https://letsencrypt.org/certificates/" target="_blank">letsencrypt.org/certificates</a>.</p>
+  ${codebox(cfg,"cfg-json")}
+</div>
+<div class="card"><h3>API command</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Replace &lt;VIN&gt; and &lt;ACCESS_TOKEN&gt; with your vehicle's VIN and a valid Fleet API bearer token.</p>
+  ${codebox(curl,"cfg-curl")}
+</div>
+${markDone(9)}`;
+}
+
+function renderStep10(){
+  const sel=W.inputs.tm_path||null;
+  const haHost=location.hostname;
+  const paths=[
+    {id:"bridge",title:"Streaming bridge (recommended)",desc:"Add-on runs a bundled websocket server on port 8081. TeslaMate receives live streaming data — best data freshness.",
+     config:`# In add-on Configuration tab:\nenable_teslamate_bridge: true\n\n# In TeslaMate environment:\nTESLA_WSS_HOST=wss://<your-domain>:8081\nTESLA_WSS_USE_VIN=true`},
+    {id:"shim",title:"Fleet-API shim (polling)",desc:"TeslaMate polls this add-on's built-in Fleet API shim. No real Tesla API calls — data assembled from streaming telemetry.",
+     config:`# In TeslaMate environment:\nTESLA_API_HOST=http://${haHost}:8085\n\n# In TeslaMate UI, per car:\nuse_streaming_api = false`},
+    {id:"shim_auth",title:"Auth-free shim",desc:"Same as Fleet-API shim, but also mocks Tesla auth so TeslaMate never needs real Tesla credentials.",
+     config:`# In TeslaMate environment:\nTESLA_API_HOST=http://${haHost}:8085\nTESLA_AUTH_HOST=http://${haHost}:8085\n\n# In TeslaMate UI, per car:\nuse_streaming_api = false`},
+  ];
+  return`
+<h2>TeslaMate Integration</h2>
+<p class="subtitle">Choose how TeslaMate will receive vehicle data from this add-on.</p>
+<div class="integration-opts">
+${paths.map(p=>`<div class="int-opt${sel===p.id?" sel":""}" onclick="selectTMPath('${p.id}')">
+  <h4>${esc(p.title)}</h4><p>${esc(p.desc)}</p>
+  ${sel===p.id?codebox(p.config,"tm-cfg-"+p.id):""}
+</div>`).join("")}
+</div>
+${markDone(10)}`;
+}
+
+function renderStep11(){
+  const st=W.inputs.verify_state||{};
+  function si(icon,cls,title,sub){
+    return`<div class="status-item"><div class="si-icon ${cls}">${icon}</div><div class="si-info"><div class="si-title">${title}</div><div class="si-sub">${sub}</div></div></div>`;
+  }
+  const certOk=st.cert_ok,recOk=st.records_ok,vins=st.vins||[];
+  return`
+<h2>Verification</h2>
+<p class="subtitle">Confirming everything is connected. The vehicle streams every few minutes when awake — you may need to wait or manually wake the car from the Tesla app.</p>
+<div class="card"><div class="status-items">
+  ${si(certOk?"✓":"…",certOk?"si-ok":"si-wait","TLS Certificate",certOk?`Valid · ${esc(st.cert_subject||"")} · ${st.cert_expiry} days remaining`:"Checking…")}
+  ${si(recOk?"✓":"…",recOk?"si-ok":"si-wait","Telemetry Records",recOk?`${esc(String(st.total_records||0))} records received · last seen ${esc(ago(st.last_epoch||0))} · VIN …${esc((vins[0]||"").slice(-6))}`:"Waiting for first record from your vehicle…")}
+</div></div>
+<p style="color:var(--mut);font-size:12.5px;text-align:center;margin-top:14px">${recOk?"Records are flowing — you're all set!":"Polling every 5 seconds…"}</p>`;
+}
+
+function renderStep12(){
+  const ut=W.user_type;
+  const items=[
+    {label:"Tesla developer app created",ok:W.steps["3"]==="done"||!visibleSteps().includes(3)},
+    {label:"EC key pair generated &amp; public key hosted",ok:!!(W.inputs.pubkey_check?.ok)||!visibleSteps().includes(4)},
+    {label:"Partner account registered",ok:W.steps["5"]==="done"||!visibleSteps().includes(5)},
+    {label:"NPM certificate issued",ok:W.steps["6"]==="done"},
+    {label:"NPM Stream configured",ok:W.steps["7"]==="done"},
+    {label:"Add-on configured &amp; certificate verified",ok:!!(W.inputs.cert_check?.ok)},
+    {label:"Vehicle telemetry configured",ok:W.steps["9"]==="done"},
+    ...(ut!=="new"?[{label:"TeslaMate integration configured",ok:W.steps["10"]==="done"}]:[]),
+    {label:"Telemetry records verified",ok:!!(W.inputs.verify_state?.records_ok)},
+  ];
+  return`
+<h2>Setup Complete 🎉</h2>
+<p class="subtitle">Your Fleet Telemetry add-on is up and running. Here's a summary of what was configured.</p>
+<div class="card"><h3>Setup summary</h3>
+  ${items.map(i=>`<div class="summary-row"><div class="sum-icon ${i.ok?"sum-ok":"sum-pending"}">${i.ok?"✓":"○"}</div><div style="font-size:13px">${i.label}</div></div>`).join("")}
+</div>
+<div class="card" style="background:transparent;border-color:var(--accent)">
+  <p style="margin:0;font-size:13.5px">The <b>Setup Guide</b> is always accessible from the dashboard header if you need to revisit any of these steps.</p>
+</div>`;
+}
+
+// ---- Interactions ----
+
+async function selectType(t){
+  document.getElementById("tmfollow").style.display="block";
+  await save({user_type:t,current_step:1});
+  render();
+}
+
+function showTMFollow(){
+  document.getElementById("tmfollow").style.display="block";
+}
+
+async function toggleDone(stepNum,checked){
+  const steps={...W.steps};
+  if(checked)steps[String(stepNum)]="done"; else delete steps[String(stepNum)];
+  await save({steps});
+  updateNav();
+}
+
+async function checkPubkey(){
+  const inp=document.getElementById("domainInput");if(!inp)return;
+  const raw=inp.value.trim();
+  const domain=raw.replace(/^https?:\/\//,"").replace(/\/.*$/,"");
+  if(!domain)return;
+  document.getElementById("pubkeyResult").innerHTML=`<div class="result info">Checking ${esc(domain)}…</div>`;
+  const r=await api("POST","api/wizard/check",{check:"pubkey",domain});
+  await save({inputs:{...W.inputs,domain,pubkey_check:r}});
+  document.getElementById("pubkeyResult").innerHTML=checkResultHtml(r);
+  updateNav();
+}
+
+async function checkCert(){
+  document.getElementById("certResult").innerHTML=`<div class="result info">Checking certificate…</div>`;
+  const r=await api("POST","api/wizard/check",{check:"cert"});
+  await save({inputs:{...W.inputs,cert_check:r}});
+  document.getElementById("certResult").innerHTML=checkResultHtml(r);
+  updateNav();
+}
+
+async function setRegion(r){
+  await save({inputs:{...W.inputs,region:r}});
+  render();
+}
+
+async function selectTMPath(p){
+  await save({inputs:{...W.inputs,tm_path:p}});
+  render();
+}
+
+function copyCode(id){
+  const el=document.getElementById(id);if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=el.parentElement.querySelector(".copy-btn");
+    if(btn){btn.textContent="Copied!";setTimeout(()=>btn.textContent="Copy",1500);}
+  });
+}
+
+// ---- Navigation ----
+
+function canAdvance(){
+  const s=W.current_step;
+  if(s===1)return!!W.user_type;
+  if(s===4)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
+  if(s===8)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
+  if(s===10)return!!(W.inputs.tm_path&&W.steps["10"]==="done");
+  const manual=[2,3,5,6,7,9];
+  if(manual.includes(s))return W.steps[String(s)]==="done";
+  return true;
+}
+
+async function goNext(){
+  if(!canAdvance())return;
+  // Save client_id from step 5 input before advancing
+  if(W.current_step===5){
+    const inp=document.getElementById("clientIdInput");
+    if(inp&&inp.value.trim())await save({inputs:{...W.inputs,client_id:inp.value.trim()}});
+  }
+  const vs=visibleSteps();
+  const idx=vs.indexOf(W.current_step);
+  if(idx<vs.length-1){
+    const next=vs[idx+1];
+    const patch={current_step:next};
+    if(next===12)patch.completed=true;
+    await save(patch);
+    render();window.scrollTo(0,0);
+  }
+}
+
+async function goPrev(){
+  const vs=visibleSteps();
+  const idx=vs.indexOf(W.current_step);
+  if(idx>0){await save({current_step:vs[idx-1]});render();window.scrollTo(0,0);}
+}
+
+async function skipVerify(){
+  await save({current_step:12,completed:true});render();window.scrollTo(0,0);
+}
+
+// ---- Verify polling ----
+
+function startVerifyPoll(){
+  if(pollTimer)return;
+  pollVerify();
+  pollTimer=setInterval(pollVerify,5000);
+}
+
+function stopVerifyPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+
+async function pollVerify(){
+  try{
+    const[cr,rr]=await Promise.all([
+      api("POST","api/wizard/check",{check:"cert"}),
+      api("POST","api/wizard/check",{check:"records"}),
+    ]);
+    const st={cert_ok:cr.ok,cert_subject:cr.subject||"",cert_expiry:cr.days_left,
+              records_ok:rr.ok,total_records:rr.total||0,last_epoch:rr.last_epoch||0,vins:rr.vins||[]};
+    // Merge without triggering full re-render (update display in-place)
+    W.inputs={...W.inputs,verify_state:st};
+    await api("POST","api/wizard/save",{inputs:{verify_state:st}});
+    const sc=document.getElementById("stepContent");
+    if(sc&&W.current_step===11)sc.innerHTML=renderStep11();
+    if(rr.ok){stopVerifyPoll();updateNav();}
+  }catch(e){/* ignore transient errors */}
+}
+
+// ---- Render ----
+
+const STEP_TITLES={1:"User Type",2:"Prerequisites",3:"Tesla Developer App",4:"Verify Public Key",
+  5:"Register Partner Account",6:"NPM Certificate",7:"NPM Stream",8:"Add-on Configuration",
+  9:"Vehicle Telemetry Config",10:"TeslaMate Integration",11:"Verification",12:"Done"};
+const RENDERERS={1:renderStep1,2:renderStep2,3:renderStep3,4:renderStep4,5:renderStep5,
+  6:renderStep6,7:renderStep7,8:renderStep8,9:renderStep9,10:renderStep10,11:renderStep11,12:renderStep12};
+
+function render(){
+  const vs=visibleSteps();
+  const idx=vs.indexOf(W.current_step);
+  document.getElementById("pbar").style.width=((idx+1)/vs.length*100)+"%";
+  document.getElementById("stepLabel").textContent=`Step ${idx+1} of ${vs.length} · ${STEP_TITLES[W.current_step]||""}`;
+  const fn=RENDERERS[W.current_step];
+  document.getElementById("stepContent").innerHTML=fn?fn():`<p style="color:var(--mut)">Unknown step.</p>`;
+  updateNav();
+  if(W.current_step===11&&!(W.inputs.verify_state?.records_ok))startVerifyPoll();
+  else stopVerifyPoll();
+}
+
+function updateNav(){
+  const vs=visibleSteps();
+  const idx=vs.indexOf(W.current_step);
+  const isFirst=idx===0,isLast=W.current_step===12,ok=canAdvance();
+  let html="";
+  if(!isFirst)html+=`<button class="btn btn-secondary" onclick="goPrev()">← Back</button>`;
+  if(!isLast)html+=`<button class="btn btn-primary" onclick="goNext()"${ok?"":" disabled"}>Next →</button>`;
+  else html+=`<a class="btn btn-primary" href="./" style="text-decoration:none">Go to Dashboard →</a>`;
+  if(W.current_step===11&&!(W.inputs.verify_state?.records_ok))
+    html+=`<button class="skip" onclick="skipVerify()">Skip for now</button>`;
+  document.getElementById("nav").innerHTML=html;
+}
+
+// ---- Init ----
+(async()=>{
+  try{
+    const data=await api("GET","api/wizard/state");
+    if(data&&typeof data==="object")
+      W=Object.assign({user_type:null,completed:false,current_step:1,steps:{},inputs:{}},data);
+  }catch(e){}
+  render();
+})();
+</script>
+</body></html>"""
+
 
 def main():
     threading.Thread(target=_tail_records, daemon=True).start()
