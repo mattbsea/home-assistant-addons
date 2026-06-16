@@ -1,0 +1,92 @@
+---
+name: "Tesla Fleet Telemetry"
+description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
+version: "0.1.0"
+slug: "fleet_telemetry"
+init: false
+
+# Upstream binary is published amd64-only (tesla/fleet-telemetry); we copy it directly.
+arch:
+  - amd64
+
+# External resources
+url: "https://github.com/teslamotors/fleet-telemetry"
+
+startup: application
+boot: auto
+
+# Internal listen ports are FIXED here; remap the host side in the Network tab and point your
+# NGINX Proxy Manager passthrough Stream at the chosen host port.
+ports:
+  4443/tcp: 4443
+  8080/tcp: 8080
+  9090/tcp: 9090
+ports_description:
+  4443/tcp: "Vehicle telemetry (mTLS). Point your NPM passthrough Stream here."
+  8080/tcp: "Status/health endpoint"
+  9090/tcp: "Prometheus metrics (only used when metrics_enabled is on)"
+
+# Persistent storage for generated config.json, fetched TLS certs, and GCP credentials
+map:
+  - data:rw
+
+# Used for bashio::info.timezone; entities are not published directly by this add-on
+hassio_api: true
+
+# Auto-discover the Home Assistant MQTT broker when the MQTT backend is enabled with a blank broker
+services:
+  - mqtt:want
+
+# Add-on configuration options
+options:
+  log_level: "info"
+  json_log_enable: true
+  namespace: "tesla_telemetry"
+  reliable_ack: false
+  rate_limit_enabled: true
+  rate_limit_message_interval: 30
+  rate_limit_message_limit: 1000
+  metrics_enabled: false
+  npm_url: ""
+  npm_email: ""
+  npm_password: ""
+  npm_cert_domain: ""
+  cert_refresh_hours: 12
+  enable_logger: true
+  enable_mqtt: false
+  mqtt_broker: ""
+  mqtt_client_id: "fleet-telemetry"
+  mqtt_topic_base: "telemetry"
+  mqtt_qos: 1
+  mqtt_username: ""
+  mqtt_password: ""
+  enable_pubsub: false
+  gcp_project_id: ""
+  gcp_service_account_json: ""
+  extra_config_json: ""
+schema:
+  log_level: "list(trace|debug|info|warn|error)"
+  json_log_enable: bool
+  namespace: str
+  reliable_ack: bool
+  rate_limit_enabled: bool
+  rate_limit_message_interval: int(1,3600)
+  rate_limit_message_limit: int(1,1000000)
+  metrics_enabled: bool
+  npm_url: url
+  npm_email: email
+  npm_password: password
+  npm_cert_domain: str
+  cert_refresh_hours: int(1,168)
+  enable_logger: bool
+  enable_mqtt: bool
+  mqtt_broker: str?
+  mqtt_client_id: str?
+  mqtt_topic_base: str?
+  mqtt_qos: int(0,2)
+  mqtt_username: str?
+  mqtt_password: password?
+  enable_pubsub: bool
+  gcp_project_id: str?
+  gcp_service_account_json: str?
+  extra_config_json: str?

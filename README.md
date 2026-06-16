@@ -45,6 +45,19 @@ Features:
 
 [Documentation](pai/DOCS.md)
 
+### Tesla Fleet Telemetry
+
+Self-hosted [Tesla fleet-telemetry](https://github.com/teslamotors/fleet-telemetry) server. Tesla vehicles stream high-frequency telemetry directly to your Home Assistant host over an encrypted, mutually-authenticated WebSocket, and the server fans those records out to your chosen backends.
+
+Features:
+- Runs the official `fleet-telemetry` binary, all server settings exposed on the Configuration page
+- First-class backends: Logger (stdout), MQTT (auto-discovers the HA Mosquitto broker), and Google Pub/Sub
+- Raw-JSON escape hatch for advanced backends (Kafka, Kinesis, ZMQ)
+- mTLS handled by the add-on, with automatic certificate fetch/renew from NGINX Proxy Manager
+- Bring-your-own reverse proxy (a TCP passthrough Stream) for public exposure
+
+[Documentation](fleet-telemetry/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:

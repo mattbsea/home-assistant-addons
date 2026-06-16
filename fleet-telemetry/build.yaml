@@ -1,0 +1,8 @@
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: Tesla Fleet Telemetry"
+  org.opencontainers.image.description: "Self-hosted Tesla fleet-telemetry server with mTLS, NPM cert sync, and Logger/MQTT/Pub-Sub backends"
+  org.opencontainers.image.source: "https://github.com/teslamotors/fleet-telemetry"
+  org.opencontainers.image.licenses: "Apache-2.0"
