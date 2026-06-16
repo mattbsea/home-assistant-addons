@@ -495,6 +495,7 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
   <span class="pill" id="ratePill">— rec/min</span>
   <span class="pill" id="totalPill">— records</span>
   <a class="pill" href="./setup" style="text-decoration:none;color:var(--mut)">⚙ Setup Guide</a>
+  <button class="pill" id="unitBtn" onclick="toggleUnits()" style="cursor:pointer;border:none;background:var(--card2)"></button>
   <span style="flex:1"></span>
   <span class="pill" id="updatedPill">updated —</span>
 </header>
@@ -529,6 +530,14 @@ function card(t,inner){return `<div class="card"><h3>${t}</h3>${inner}</div>`;}
 // reload the OpenStreetMap embed when the vehicle actually moves (not every refresh).
 const mapKeys={};
 const prevKV={}; // vin -> {label -> valueText}, used to detect changed fields for pulse animation
+let useImperial=localStorage.getItem('ft_units')!=='metric';
+document.getElementById('unitBtn').textContent=useImperial?'°F · mi · psi':'°C · km · bar';
+function toggleUnits(){
+  useImperial=!useImperial;
+  localStorage.setItem('ft_units',useImperial?'imperial':'metric');
+  document.getElementById('unitBtn').textContent=useImperial?'°F · mi · psi':'°C · km · bar';
+  tick();
+}
 // Telemetry enums arrive verbose ("DetailedChargeStateDisconnected", "WindowStateClosed",
 // "SettingTemperatureUnitFahrenheit"). Strip the prefix to the meaningful suffix, and treat the
 // "<invalid>" sentinel (field not applicable right now) as absent.
@@ -551,9 +560,12 @@ function buildCards(v){
  const row=(label,val,unit)=>{if(val==null||val===""||val==="<invalid>")return"";
    return `<div class="kv"><span>${esc(label)}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
  const mcard=(t,inner)=>inner&&inner.trim()?card(t,inner):"";
- const fahr=String(raw('SettingTemperatureUnit')||"").includes("Fahrenheit");
+ const fahr=useImperial;
  const tc=k=>{const n=N(k);return n==null?null:(fahr?Math.round(n*9/5+32):Math.round(n*10)/10);};
  const tu=fahr?"°F":"°C";
+ const distUnit=useImperial?"mi":"km";
+ const d=v=>v==null?null:(useImperial?v:Math.round(v*1.60934*10)/10);
+ const pressUnit=useImperial?"psi":"bar";
  const onoff=k=>{const b=B(k);return b==null?null:(b?"on":"off");};
  let cards="";
 
@@ -565,7 +577,7 @@ function buildCards(v){
    `<div class="big">${soc==null?"—":fmt(soc,0)}<span class="unit">%</span></div>`
    +`<div class="battery"><span style="width:${soc==null?0:Math.max(2,soc)}%;background:${batColor(soc||0)}"></span></div>`
    +spark(sh,batColor(soc||0))
-   +row("Range",nf(N('RatedRange')!=null?N('RatedRange'):N('IdealBatteryRange')),"mi")
+   +row("Range",nf(d(N('RatedRange')!=null?N('RatedRange'):N('IdealBatteryRange'))),distUnit)
    +row("Energy left",nf(N('EnergyRemaining'),1),"kWh")
    +row("Charge limit",nf(N('ChargeLimitSoc')),"%"));
 
@@ -574,7 +586,7 @@ function buildCards(v){
  let chInner=row("State",chState);
  if(charging){
    chInner+=row("Power",nf((N('ACChargingPower')||0)+(N('DCChargingPower')||0),1),"kW")
-     +row("Rate",nf(N('ChargeRateMilePerHour')),"mi/h")
+     +row("Rate",nf(d(N('ChargeRateMilePerHour'))),useImperial?"mi/h":"km/h")
      +row("Current",nf(N('ChargeAmps')),"A")
      +row("Voltage",nf(N('ChargerVoltage')),"V")
      +row("Added (AC)",nf(N('ACChargingEnergyIn'),1),"kWh")
@@ -594,7 +606,7 @@ function buildCards(v){
    +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
    +row("Gear",gear)
    +row("Heading",nf(N('GpsHeading')),"°")
-   +row("Odometer",nf(N('Odometer')),"mi"));
+   +row("Odometer",nf(d(N('Odometer'))),distUnit));
 
  // Climate
  cards+=mcard("Climate",
@@ -624,10 +636,10 @@ function buildCards(v){
  cards+=mcard("Doors & windows",row("Doors",doors)+winRows);
 
  // Tire pressure (bar -> psi)
- const tp=k=>{const n=N(k);return n==null?null:Math.round(n*14.5038);};
+ const tp=k=>{const n=N(k);return n==null?null:(useImperial?Math.round(n*14.5038):Math.round(n*100)/100);};
  cards+=mcard("Tire pressure",
-   row("Front L",tp('TpmsPressureFl'),"psi")+row("Front R",tp('TpmsPressureFr'),"psi")
-   +row("Rear L",tp('TpmsPressureRl'),"psi")+row("Rear R",tp('TpmsPressureRr'),"psi"));
+   row("Front L",tp('TpmsPressureFl'),pressUnit)+row("Front R",tp('TpmsPressureFr'),pressUnit)
+   +row("Rear L",tp('TpmsPressureRl'),pressUnit)+row("Rear R",tp('TpmsPressureRr'),pressUnit));
 
  // Vehicle
  cards+=card("Vehicle",
