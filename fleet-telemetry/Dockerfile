@@ -19,6 +19,10 @@ COPY teslamate-ws/ ./
 
 FROM ${BUILD_FROM}
 
+# Supervisor passes the add-on version as a build arg; surface it to the dashboard.
+ARG BUILD_VERSION
+ENV FT_ADDON_VERSION=${BUILD_VERSION}
+
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

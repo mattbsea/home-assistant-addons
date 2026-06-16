@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+### ✨ Improvements
+- Dashboard now shows the **add-on version** (header chip + footer), sourced from the Supervisor
+  `BUILD_VERSION` build arg.
+- Renamed the sidebar panel to **Tesla Telemetry**.
+
 ## 0.4.1
 
 ### 🐛 Bug Fixes

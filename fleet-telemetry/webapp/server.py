@@ -22,6 +22,7 @@ RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 CERT_FILE = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
 PORT = int(os.environ.get("FT_WEB_PORT", "8099"))
 NAMESPACE = os.environ.get("FT_NAMESPACE", "tesla_telemetry")
+ADDON_VERSION = os.environ.get("FT_ADDON_VERSION", "")
 HISTORY_MAX = 600  # ~ last N samples kept per series for sparklines
 
 START_TIME = time.time()
@@ -190,6 +191,7 @@ def build_state():
         "records_per_min": _rate_per_min(),
         "last_record_epoch": last_epoch,
         "namespace": NAMESPACE,
+        "version": ADDON_VERSION,
         "cert": _cert_expiry(),
         "vehicles": vehicles,
     }
@@ -257,7 +259,8 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
 </style></head>
 <body><div class="wrap">
 <header>
-  <h1>⚡ Tesla Fleet Telemetry</h1>
+  <h1>⚡ Tesla Telemetry</h1>
+  <span class="pill" id="verPill">v—</span>
   <span class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">connecting…</span></span>
   <span class="pill" id="ratePill">— rec/min</span>
   <span class="pill" id="totalPill">— records</span>
@@ -297,8 +300,9 @@ async function tick(){
  $("#ratePill").textContent=fmt(st.records_per_min,1)+" rec/min";
  $("#totalPill").textContent=fmt(st.total_records)+" records";
  $("#updatedPill").textContent="last record "+ago(st.last_record_epoch);
+ $("#verPill").textContent="v"+(st.version||"—");
  const c=st.cert||{};
- $("#foot").innerHTML=`uptime ${dur(st.uptime_seconds)} · namespace <b>${esc(st.namespace)}</b>`
+ $("#foot").innerHTML=`add-on v${esc(st.version||"—")} · uptime ${dur(st.uptime_seconds)} · namespace <b>${esc(st.namespace)}</b>`
    +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${esc(c.not_after)})`:"");
  if(!st.vehicles.length){return;}
  let html="";
