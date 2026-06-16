@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.1.2"
+version: "0.2.0"
 slug: "fleet_telemetry"
 init: false
 
@@ -14,6 +14,12 @@ url: "https://github.com/teslamotors/fleet-telemetry"
 
 startup: application
 boot: auto
+
+# Web dashboard (ingress): latest telemetry + server health, served in the HA sidebar.
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:car-electric
+panel_title: "Fleet Telemetry"
 
 # Internal listen ports are FIXED here; remap the host side in the Network tab and point your
 # NGINX Proxy Manager passthrough Stream at the chosen host port.

@@ -13,6 +13,8 @@ BINARY="/usr/local/bin/fleet-telemetry"
 TELEMETRY_PORT=4443
 STATUS_PORT=8080
 METRICS_PORT=9090
+WEB_PORT=8099
+RECORDS_FILE="/tmp/ft-records.jsonl"
 
 bashio::log.info "Starting Tesla Fleet Telemetry add-on..."
 mkdir -p "${CERTS_DIR}"
@@ -171,10 +173,25 @@ fi
 bashio::log.info "Effective configuration (secrets omitted):"
 jq 'del(.mqtt.password)' "${CONFIG_JSON}" | while IFS= read -r line; do bashio::log.info "  ${line}"; done
 
+# --- Telemetry dashboard (ingress, read-only) -------------------------------
+# Independent of the telemetry path: it only tails a copy of the logger output, so if it
+# dies the vehicle stream is unaffected. Restarted in a loop to keep the panel available.
+: > "${RECORDS_FILE}" 2>/dev/null || true
+export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
+       FT_CERT_FILE="${CERTS_DIR}/server.crt" FT_NAMESPACE="${NAMESPACE}"
+( while true; do
+    python3 /opt/webapp/server.py
+    bashio::log.warning "dashboard exited; restarting in 3s"
+    sleep 3
+  done ) &
+bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB_PORT})"
+
 # --- Run the server with cert-refresh supervision ---------------------------
 SERVER_PID=""
 start_server() {
-    "${BINARY}" -config="${CONFIG_JSON}" &
+    # Tee the binary's stdout/stderr to the records file (for the dashboard) while still
+    # surfacing it in the add-on log. $! remains the binary's PID for clean kill/restart.
+    "${BINARY}" -config="${CONFIG_JSON}" > >(tee -a "${RECORDS_FILE}") 2>&1 &
     SERVER_PID=$!
     bashio::log.info "fleet-telemetry started (pid ${SERVER_PID}) listening on :${TELEMETRY_PORT} (telemetry), :${STATUS_PORT} (status)"
 }

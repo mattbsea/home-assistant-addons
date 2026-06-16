@@ -189,6 +189,16 @@ WebSocket to `telemetry.example.org:443`, which NPM passes through to the add-on
 
 ---
 
+## Dashboard
+
+The add-on adds a **Fleet Telemetry** panel to the Home Assistant sidebar (ingress). It tails the
+logger output and shows, per vehicle, the latest battery/charging, speed, gear, odometer, and a
+location mini-map, plus stream health (records/min, total records, last-seen, TLS cert expiry,
+uptime, telemetry client version). It updates every few seconds and renders any extra telemetry
+fields you configure. The dashboard is read-only and isolated — if it stops, the vehicle stream is
+unaffected. (The Logger backend is what feeds it, so keep `enable_logger` on if you want the panel
+populated.)
+
 ## Verification
 
 1. **Add-on log** — with the Logger backend you should see incoming records as JSON once a car

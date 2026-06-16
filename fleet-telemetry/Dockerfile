@@ -18,12 +18,14 @@ RUN apt-get update \
         jq \
         unzip \
         openssl \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=upstream /fleet-telemetry /usr/local/bin/fleet-telemetry
 
 COPY run.sh /run.sh
 COPY scripts/ /opt/scripts/
+COPY webapp/ /opt/webapp/
 RUN chmod +x /run.sh /opt/scripts/*.sh
 
 CMD ["/run.sh"]

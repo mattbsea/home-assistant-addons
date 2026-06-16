@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+### ✨ New Features
+- **Telemetry dashboard (ingress panel)**: a built-in web page in the HA sidebar showing the
+  latest live telemetry per vehicle — battery (with charging trend + SoC sparkline), speed,
+  gear, odometer, and a location mini-map — plus stream health (records/min, total records,
+  last-seen, online status, TLS cert expiry, add-on uptime, telemetry client version). It also
+  renders any extra telemetry fields you add to the config automatically.
+- Dashboard is read-only and isolated from the telemetry path (it tails a copy of the logger
+  output via `tee`), so it can never disrupt the vehicle stream.
+
 ## 0.1.2
 
 ### 🐛 Bug Fixes
