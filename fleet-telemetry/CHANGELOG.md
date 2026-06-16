@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.6
+
+### 🐛 Bug Fixes
+- **`charge_energy_added` was double-counting energy.** `ACChargingEnergyIn` (AC wall draw) and
+  `DCChargingEnergyIn` (energy stored in battery) measure the same energy at opposite sides of
+  the onboard AC→DC converter — summing them counted each kWh twice. The shim now uses only
+  `DCChargingEnergyIn` (battery-stored, matching what Tesla's Fleet API reports), falling back to
+  AC if DC hasn't arrived yet.
+
 ## 0.6.5
 
 ### 🐛 Bug Fixes

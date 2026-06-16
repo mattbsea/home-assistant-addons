@@ -141,7 +141,14 @@ class Vehicle:
         return cs in ("Charging", "Starting")
 
     def _energy_in(self):
-        return (_num(self.fields.get("ACChargingEnergyIn")) or 0.0) + (_num(self.fields.get("DCChargingEnergyIn")) or 0.0)
+        # ACChargingEnergyIn = AC wall draw; DCChargingEnergyIn = energy stored in battery.
+        # They measure the same energy at different sides of the onboard converter — summing
+        # them double-counts. Tesla's Fleet API charge_energy_added is the battery-stored (DC)
+        # side. Fall back to AC only if DC hasn't arrived yet (e.g., very first record).
+        dc = _num(self.fields.get("DCChargingEnergyIn"))
+        if dc is not None:
+            return dc
+        return _num(self.fields.get("ACChargingEnergyIn")) or 0.0
 
     # --- readiness / state -------------------------------------------------
     def ready(self):
