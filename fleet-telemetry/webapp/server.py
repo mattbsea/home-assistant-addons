@@ -254,6 +254,8 @@ h1{font-size:18px;margin:0;font-weight:650}
 .gear b.on{background:var(--accent);color:#04121f}
 .kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .kv:last-child{border-bottom:0}.kv span:first-child{color:var(--mut)}
+.kv i{font-style:normal;color:var(--mut);font-size:11px;margin-left:3px}
+h2{font-size:15px;margin:18px 0 10px}
 .spark{width:100%;height:46px;display:block;margin-top:8px}
 a{color:var(--accent)}
 iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;background:var(--card2)}
@@ -300,35 +302,120 @@ function card(t,inner){return `<div class="card"><h3>${t}</h3>${inner}</div>`;}
 // Persistent per-VIN map state: the last lat,lon we pointed the iframe at, so we only
 // reload the OpenStreetMap embed when the vehicle actually moves (not every refresh).
 const mapKeys={};
+// Telemetry enums arrive verbose ("DetailedChargeStateDisconnected", "WindowStateClosed",
+// "SettingTemperatureUnitFahrenheit"). Strip the prefix to the meaningful suffix, and treat the
+// "<invalid>" sentinel (field not applicable right now) as absent.
+function pretty(field,val){
+ if(val==null)return null;
+ if(typeof val!=="string")return val;
+ if(val==="<invalid>"||val==="invalid"||val==="")return null;
+ let s=val;const i=s.lastIndexOf("State");
+ if(i>=0&&i+5<s.length){s=s.slice(i+5);}
+ else{for(const p of [field,field.replace(/^Setting/,"")]){if(p&&s.startsWith(p)&&s.length>p.length){s=s.slice(p.length);break;}}}
+ return s;
+}
 function buildCards(v){
- const f=v.fields||{};const get=k=>f[k]?f[k].value:null;
- const soc=get("Soc"),speed=get("VehicleSpeed"),odo=get("Odometer"),gear=gearName(get("Gear"));
- const sh=v.soc_history||[];const charging=sh.length>=2&&sh[sh.length-1]>sh[0];
+ const f=v.fields||{};
+ const raw=k=>f[k]?f[k].value:undefined;
+ const N=k=>{const x=raw(k);if(x==null||x==="<invalid>")return null;const n=Number(x);return Number.isNaN(n)?null:n;};
+ const S=k=>pretty(k,raw(k));
+ const B=k=>{const x=raw(k);return (x===true||x===false)?x:null;};
+ const nf=(x,dp=0)=>x==null?null:Number(x).toLocaleString(undefined,{maximumFractionDigits:dp});
+ const row=(label,val,unit)=>{if(val==null||val===""||val==="<invalid>")return"";
+   return `<div class="kv"><span>${esc(label)}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
+ const mcard=(t,inner)=>inner&&inner.trim()?card(t,inner):"";
+ const fahr=String(raw('SettingTemperatureUnit')||"").includes("Fahrenheit");
+ const tc=k=>{const n=N(k);return n==null?null:(fahr?Math.round(n*9/5+32):Math.round(n*10)/10);};
+ const tu=fahr?"°F":"°C";
+ const onoff=k=>{const b=B(k);return b==null?null:(b?"on":"off");};
  let cards="";
- const socN=soc==null?null:Number(soc);
- cards+=card("Battery"+(charging?" ⚡ charging":""),
-   `<div class="big">${fmt(socN,1)}<span class="unit">%</span></div>`
-   +`<div class="battery"><span style="width:${socN==null?0:Math.max(2,socN)}%;background:${batColor(socN||0)}"></span></div>`
-   +spark(sh,batColor(socN||0)));
- cards+=card("Speed",`<div class="big">${fmt(speed,0)}<span class="unit">mph</span></div>`
-   +(v.speed_history&&v.speed_history.length>1?spark(v.speed_history,"var(--accent)"):`<div class="sub">${v.online?"parked / idle":"—"}</div>`));
- cards+=card("Gear",`<div class="gear">`+GEARS.map(g=>`<b class="${gear===g?'on':''}">${g}</b>`).join("")
-   +(gear&&!GEARS.includes(gear)?`<b class="on">${esc(gear)}</b>`:"")+`</div>`);
- cards+=card("Odometer",`<div class="big">${fmt(odo,0)}<span class="unit">mi</span></div>`);
- // Location is rendered separately in the persistent map card (so the iframe isn't recreated
- // each tick); it is intentionally NOT a grid card here.
- const known=new Set(["Soc","VehicleSpeed","Gear","Odometer","Location"]);
- const extra=Object.keys(f).filter(k=>!known.has(k));
- if(extra.length){
-   cards+=card("Other signals",extra.map(k=>`<div class="kv"><span>${esc(k)}</span><span>${
-     esc(typeof f[k].value==="object"?JSON.stringify(f[k].value):f[k].value)}</span></div>`).join(""));
+
+ // Battery (headline + range/energy)
+ const soc=N('Soc')!=null?N('Soc'):N('BatteryLevel');
+ const sh=v.soc_history||[];
+ const charging=S('ChargeState')==="Charging"||(N('ACChargingPower')||0)>0||(N('DCChargingPower')||0)>0;
+ cards+=card("Battery"+(charging?" ⚡":""),
+   `<div class="big">${soc==null?"—":fmt(soc,0)}<span class="unit">%</span></div>`
+   +`<div class="battery"><span style="width:${soc==null?0:Math.max(2,soc)}%;background:${batColor(soc||0)}"></span></div>`
+   +spark(sh,batColor(soc||0))
+   +row("Range",nf(N('RatedRange')!=null?N('RatedRange'):N('IdealBatteryRange')),"mi")
+   +row("Energy left",nf(N('EnergyRemaining'),1),"kWh")
+   +row("Charge limit",nf(N('ChargeLimitSoc')),"%"));
+
+ // Charging — full detail only while actually charging; otherwise compact state.
+ const chState=S('DetailedChargeState')||S('ChargeState');
+ let chInner=row("State",chState);
+ if(charging){
+   chInner+=row("Power",nf((N('ACChargingPower')||0)+(N('DCChargingPower')||0),1),"kW")
+     +row("Rate",nf(N('ChargeRateMilePerHour')),"mi/h")
+     +row("Current",nf(N('ChargeAmps')),"A")
+     +row("Voltage",nf(N('ChargerVoltage')),"V")
+     +row("Added (AC)",nf(N('ACChargingEnergyIn'),1),"kWh")
+     +row("Added (DC)",nf(N('DCChargingEnergyIn'),1),"kWh")
+     +row("Time to full",nf(N('TimeToFullCharge'),1),"h")
+     +row("Cable",S('ChargingCableType'))
+     +row("Fast charger",S('FastChargerType'));
  }
+ chInner+=row("Port door",B('ChargePortDoorOpen')==null?null:(B('ChargePortDoorOpen')?"open":"closed"))
+   +row("Port latch",S('ChargePortLatch'));
+ cards+=mcard("Charging",chInner);
+
+ // Drive
+ const speed=N('VehicleSpeed');const g=raw('Gear');const gear=(g==null||g==="<invalid>")?null:gearName(g);
+ cards+=card("Drive",
+   `<div class="big">${speed==null?'<span style="font-size:16px;color:var(--mut)">parked / idle</span>':fmt(speed,0)+'<span class="unit">mph</span>'}</div>`
+   +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
+   +row("Gear",gear)
+   +row("Heading",nf(N('GpsHeading')),"°")
+   +row("Odometer",nf(N('Odometer')),"mi"));
+
+ // Climate
+ cards+=mcard("Climate",
+   row("Inside",tc('InsideTemp'),tu)
+   +row("Outside",tc('OutsideTemp'),tu)
+   +row("A/C",onoff('HvacACEnabled'))
+   +row("HVAC",S('HvacPower'))
+   +row("Climate keeper",S('ClimateKeeperMode'))
+   +row("Cabin overheat",S('CabinOverheatProtectionMode')));
+
+ // Security & access
+ const DOORLBL={DriverFront:"Driver front",DriverRear:"Driver rear",PassengerFront:"Passenger front",PassengerRear:"Passenger rear",TrunkFront:"Frunk",TrunkRear:"Trunk"};
+ const dsraw=raw('DoorState');let doors=null;
+ if(dsraw&&typeof dsraw==="object"){
+   const open=Object.keys(dsraw).filter(k=>dsraw[k]).map(k=>DOORLBL[k]||k);
+   doors=open.length?open.join(", "):"all closed";
+ }
+ const win=[["FdWindow","FL"],["FpWindow","FR"],["RdWindow","RL"],["RpWindow","RR"]];
+ const winOpen=win.filter(([k])=>{const s=S(k);return s&&s!=="Closed";}).map(([k,l])=>`${l} ${S(k)}`).join(", ");
+ const anyWin=win.some(([k])=>S(k)!=null);
+ cards+=mcard("Security & access",
+   row("Locked",B('Locked')==null?null:(B('Locked')?"locked":"unlocked"))
+   +row("Sentry",S('SentryMode'))
+   +row("Doors",doors)
+   +row("Windows",anyWin?(winOpen||"all closed"):null));
+
+ // Tire pressure (bar -> psi)
+ const tp=k=>{const n=N(k);return n==null?null:Math.round(n*14.5038);};
+ cards+=mcard("Tire pressure",
+   row("Front L",tp('TpmsPressureFl'),"psi")+row("Front R",tp('TpmsPressureFr'),"psi")
+   +row("Rear L",tp('TpmsPressureRl'),"psi")+row("Rear R",tp('TpmsPressureRr'),"psi"));
+
+ // Vehicle
  cards+=card("Vehicle",
-   `<div class="kv"><span>VIN</span><span>${esc(v.vin)}</span></div>`
-   +`<div class="kv"><span>Status</span><span style="color:${v.online?'var(--good)':'var(--bad)'}">${v.online?'online':'offline'}</span></div>`
-   +`<div class="kv"><span>Last record</span><span>${ago(v.last_seen_epoch)}</span></div>`
-   +`<div class="kv"><span>Client</span><span>${esc(v.client_version||'—')}</span></div>`
-   +`<div class="kv"><span>Signals</span><span>${Object.keys(f).length}</span></div>`);
+   row("Name",typeof raw('VehicleName')==="string"?raw('VehicleName'):null)
+   +row("VIN",v.vin)
+   +row("Software",typeof raw('Version')==="string"?raw('Version'):null)
+   +row("Network",typeof raw('NetworkInterface')==="string"?raw('NetworkInterface'):null)
+   +row("Status",v.online?"online":"offline")
+   +row("Last record",ago(v.last_seen_epoch))
+   +row("Client",v.client_version||null)
+   +row("Signals",Object.keys(f).length));
+
+ // Other — only genuinely ungrouped signals (future-proofing)
+ const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","VehicleName","Version","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
+ const extra=Object.keys(f).filter(k=>!grouped.has(k));
+ if(extra.length){cards+=card("Other signals",extra.map(k=>row(k,typeof raw(k)==="object"?JSON.stringify(raw(k)):(pretty(k,raw(k))!=null?pretty(k,raw(k)):raw(k)))).join(""));}
+
  return cards;
 }
 
@@ -367,7 +454,12 @@ async function tick(){
    const mapcard=el.querySelector(".mapcard"),frame=el.querySelector(".mapframe");
    if(v.location&&v.location.lat!=null){
      const la=v.location.lat,lo=v.location.lon,key=la.toFixed(5)+","+lo.toFixed(5);
-     el.querySelector(".maploc").innerHTML=`${la.toFixed(5)}, ${lo.toFixed(5)} · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a>`;
+     const ff=v.fields||{},gg=k=>ff[k]?ff[k].value:null;
+     const geo=gg('LocatedAtHome')?"🏠 Home":gg('LocatedAtWork')?"🏢 Work":gg('LocatedAtFavorite')?"⭐ Favorite":"";
+     const net=typeof gg('NetworkInterface')==="string"?gg('NetworkInterface'):"";
+     el.querySelector(".maploc").innerHTML=`${la.toFixed(5)}, ${lo.toFixed(5)}`+(geo?` · ${esc(geo)}`:"")
+       +(net?` · <span class="muted">${esc(net)}</span>`:"")
+       +` · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a>`;
      if(mapKeys[v.vin]!==key){
        const d=0.01,bbox=[lo-d,la-d,lo+d,la+d].join("%2C");
        frame.src=`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la}%2C${lo}`;

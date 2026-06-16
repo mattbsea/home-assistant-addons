@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.4.5
+## 0.4.6
+
+### ✨ Dashboard reorganization
+- With the expanded telemetry field set, every extra signal was piling into one "Other signals"
+  box. The dashboard now groups them into themed cards: **Battery** (SoC + range + energy + limit),
+  **Charging** (full detail only while charging, compact state otherwise), **Drive** (speed/gear/
+  heading/odometer), **Climate**, **Security & access** (locks/sentry/doors/windows), **Tire
+  pressure**, and **Vehicle** (name/VIN/software/network).
+- **Cleaner values**: verbose telemetry enums are shortened (`DetailedChargeStateDisconnected` →
+  `Disconnected`, `WindowStateClosed` → `Closed`), the `<invalid>` sentinel is hidden instead of
+  shown, `DoorState` is parsed to friendly names (incl. Frunk/Trunk), and units follow the car's
+  settings (°F, psi, mph, mi). "Other signals" now only shows genuinely ungrouped fields.
 
 ### 🐛 Bug Fixes
 - **Merge the duplicate "Location" / "Location map" sections into one.** The coordinates and the
