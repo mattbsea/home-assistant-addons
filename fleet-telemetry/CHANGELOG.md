@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+### 🐛 Bug Fixes
+- **Clearer NPM permissions error**: if the configured NPM account can see no certificates
+  (non-admin users only see their own), the log now says so explicitly instead of the misleading
+  "no certificate found for domain".
+
 ## 0.1.1
 
 ### 🐛 Bug Fixes

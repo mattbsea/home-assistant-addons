@@ -108,7 +108,7 @@ vehicles connect, then add MQTT and/or Pub/Sub.
 | Option | Description |
 |--------|-------------|
 | `npm_url` | NPM admin API base URL, e.g. `https://proxy.example.org:81`. |
-| `npm_email` / `npm_password` | NPM login used to read the certificate via the API. |
+| `npm_email` / `npm_password` | NPM login used to read the certificate via the API. **Must be an administrator account, or a user that owns the certificate** — in NPM, non-admin users only see their own certs, so a limited account returns an empty list and the fetch fails. |
 | `npm_cert_domain` | The certificate's domain, e.g. `telemetry.example.org`. |
 | `cert_refresh_hours` | How often (hours) to re-pull the cert from NPM so renewals are picked up. The add-on restarts the server only when the cert actually changes. |
 
@@ -207,6 +207,7 @@ WebSocket to `telemetry.example.org:443`, which NPM passes through to the add-on
 | Symptom | Likely cause / fix |
 |---------|--------------------|
 | Add-on exits at startup with *"could not fetch a certificate from NPM"* | Wrong `npm_url`/credentials, or `npm_cert_domain` doesn't match a cert in NPM. The URL must reach the NPM **admin** API (often port `81`). |
+| Log says *"the NPM account … can see 0 certificates"* | The configured NPM login is a non-admin user; it only sees certs it owns. Use an NPM administrator account (or one that owns the certificate). |
 | *"tls config is empty - telemetry server is mTLS only"* | The cert wasn't written. Confirm `/data/certs/server.crt` exists; re-check the `npm_*` options. |
 | Vehicle never connects / TLS handshake errors | The proxy is terminating TLS. It must be a **Stream / TCP passthrough**, not a Proxy Host. Also verify DNS and the public `443` forward. |
 | Vehicle connects then drops | Cert hostname mismatch with `hostname` in the vehicle config, or the `ca` you sent the car doesn't match the served chain. |
