@@ -267,7 +267,10 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
   <span style="flex:1"></span>
   <span class="pill" id="updatedPill">updated —</span>
 </header>
-<div id="content"><p class="muted">Waiting for the first telemetry record… (the vehicle streams every few minutes when awake)</p></div>
+<div id="content">
+  <p id="empty" class="muted">Waiting for the first telemetry record… (the vehicle streams every few minutes when awake)</p>
+  <div id="vehicles"></div>
+</div>
 <div class="foot" id="foot"></div>
 </div>
 <script>
@@ -291,6 +294,44 @@ function gearName(v){if(v==null)return null;const s=String(v).toUpperCase();cons
  if(s.includes("NEUT"))return"N";if(s.includes("DRIVE"))return"D";return s;}
 function card(t,inner){return `<div class="card"><h3>${t}</h3>${inner}</div>`;}
 
+// Persistent per-VIN map state: the last lat,lon we pointed the iframe at, so we only
+// reload the OpenStreetMap embed when the vehicle actually moves (not every refresh).
+const mapKeys={};
+function buildCards(v){
+ const f=v.fields||{};const get=k=>f[k]?f[k].value:null;
+ const soc=get("Soc"),speed=get("VehicleSpeed"),odo=get("Odometer"),gear=gearName(get("Gear"));
+ const sh=v.soc_history||[];const charging=sh.length>=2&&sh[sh.length-1]>sh[0];
+ let cards="";
+ const socN=soc==null?null:Number(soc);
+ cards+=card("Battery"+(charging?" ⚡ charging":""),
+   `<div class="big">${fmt(socN,1)}<span class="unit">%</span></div>`
+   +`<div class="battery"><span style="width:${socN==null?0:Math.max(2,socN)}%;background:${batColor(socN||0)}"></span></div>`
+   +spark(sh,batColor(socN||0)));
+ cards+=card("Speed",`<div class="big">${fmt(speed,0)}<span class="unit">mph</span></div>`
+   +(v.speed_history&&v.speed_history.length>1?spark(v.speed_history,"var(--accent)"):`<div class="sub">${v.online?"parked / idle":"—"}</div>`));
+ cards+=card("Gear",`<div class="gear">`+GEARS.map(g=>`<b class="${gear===g?'on':''}">${g}</b>`).join("")
+   +(gear&&!GEARS.includes(gear)?`<b class="on">${esc(gear)}</b>`:"")+`</div>`);
+ cards+=card("Odometer",`<div class="big">${fmt(odo,0)}<span class="unit">mi</span></div>`);
+ if(v.location&&v.location.lat!=null){
+   const la=v.location.lat,lo=v.location.lon;
+   cards+=card("Location",
+     `<div class="sub">${la.toFixed(5)}, ${lo.toFixed(5)} · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a></div>`);
+ }
+ const known=new Set(["Soc","VehicleSpeed","Gear","Odometer","Location"]);
+ const extra=Object.keys(f).filter(k=>!known.has(k));
+ if(extra.length){
+   cards+=card("Other signals",extra.map(k=>`<div class="kv"><span>${esc(k)}</span><span>${
+     esc(typeof f[k].value==="object"?JSON.stringify(f[k].value):f[k].value)}</span></div>`).join(""));
+ }
+ cards+=card("Vehicle",
+   `<div class="kv"><span>VIN</span><span>${esc(v.vin)}</span></div>`
+   +`<div class="kv"><span>Status</span><span style="color:${v.online?'var(--good)':'var(--bad)'}">${v.online?'online':'offline'}</span></div>`
+   +`<div class="kv"><span>Last record</span><span>${ago(v.last_seen_epoch)}</span></div>`
+   +`<div class="kv"><span>Client</span><span>${esc(v.client_version||'—')}</span></div>`
+   +`<div class="kv"><span>Signals</span><span>${Object.keys(f).length}</span></div>`);
+ return cards;
+}
+
 async function tick(){
  let st;try{st=await (await fetch(new URL('api/state',location.href),{cache:'no-store'})).json();}
  catch(e){$("#statusTxt").textContent="dashboard offline";return;}
@@ -304,52 +345,37 @@ async function tick(){
  const c=st.cert||{};
  $("#foot").innerHTML=`add-on v${esc(st.version||"—")} · uptime ${dur(st.uptime_seconds)} · namespace <b>${esc(st.namespace)}</b>`
    +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${esc(c.not_after)})`:"");
- if(!st.vehicles.length){return;}
- let html="";
+ const vehiclesEl=$("#vehicles");
+ $("#empty").style.display=st.vehicles.length?"none":"";
+ const seen=new Set();
  for(const v of st.vehicles){
-   const f=v.fields||{};const get=k=>f[k]?f[k].value:null;
-   const soc=get("Soc"),speed=get("VehicleSpeed"),odo=get("Odometer"),gear=gearName(get("Gear"));
-   const sh=v.soc_history||[];const charging=sh.length>=2&&sh[sh.length-1]>sh[0];
-   let cards="";
-   // Battery
-   const socN=soc==null?null:Number(soc);
-   cards+=card("Battery"+(charging?" ⚡ charging":""),
-     `<div class="big">${fmt(socN,1)}<span class="unit">%</span></div>`
-     +`<div class="battery"><span style="width:${socN==null?0:Math.max(2,socN)}%;background:${batColor(socN||0)}"></span></div>`
-     +spark(sh,batColor(socN||0)));
-   // Speed
-   cards+=card("Speed",`<div class="big">${fmt(speed,0)}<span class="unit">mph</span></div>`
-     +(v.speed_history&&v.speed_history.length>1?spark(v.speed_history,"var(--accent)"):`<div class="sub">${v.online?"parked / idle":"—"}</div>`));
-   // Gear
-   cards+=card("Gear",`<div class="gear">`+GEARS.map(g=>`<b class="${gear===g?'on':''}">${g}</b>`).join("")
-     +(gear&&!GEARS.includes(gear)?`<b class="on">${esc(gear)}</b>`:"")+`</div>`);
-   // Odometer
-   cards+=card("Odometer",`<div class="big">${fmt(odo,0)}<span class="unit">mi</span></div>`);
-   // Location
+   const id="veh-"+v.vin;seen.add(id);
+   let el=document.getElementById(id);
+   if(!el){
+     // Create the per-vehicle shell ONCE. The grid is re-rendered cheaply each tick
+     // (text/SVG, no flash); the map iframe lives in its own card so it is never
+     // recreated — we only change its src when the vehicle moves.
+     el=document.createElement("div");el.id=id;
+     el.innerHTML=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.vin)}</h2>`
+       +`<div class="grid gridslot"></div>`
+       +`<div class="card mapcard" style="display:none;margin-top:14px"><h3>Location map</h3>`
+       +`<iframe class="mapframe" loading="lazy"></iframe></div>`;
+     vehiclesEl.appendChild(el);
+   }
+   el.querySelector(".gridslot").innerHTML=buildCards(v);
+   const mapcard=el.querySelector(".mapcard"),frame=el.querySelector(".mapframe");
    if(v.location&&v.location.lat!=null){
-     const la=v.location.lat,lo=v.location.lon,d=0.01;
-     const bbox=[lo-d,la-d,lo+d,la+d].join("%2C");
-     cards+=card("Location",
-       `<div class="sub">${la.toFixed(5)}, ${lo.toFixed(5)} · <a href="https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}" target="_blank">open map</a></div>`
-       +`<iframe loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la}%2C${lo}"></iframe>`);
-   }
-   // Other fields (future-proof: anything we didn't special-case)
-   const known=new Set(["Soc","VehicleSpeed","Gear","Odometer","Location"]);
-   const extra=Object.keys(f).filter(k=>!known.has(k));
-   if(extra.length){
-     cards+=card("Other signals",extra.map(k=>`<div class="kv"><span>${esc(k)}</span><span>${
-       esc(typeof f[k].value==="object"?JSON.stringify(f[k].value):f[k].value)}</span></div>`).join(""));
-   }
-   // Vehicle meta
-   cards+=card("Vehicle",
-     `<div class="kv"><span>VIN</span><span>${esc(v.vin)}</span></div>`
-     +`<div class="kv"><span>Status</span><span style="color:${v.online?'var(--good)':'var(--bad)'}">${v.online?'online':'offline'}</span></div>`
-     +`<div class="kv"><span>Last record</span><span>${ago(v.last_seen_epoch)}</span></div>`
-     +`<div class="kv"><span>Client</span><span>${esc(v.client_version||'—')}</span></div>`
-     +`<div class="kv"><span>Signals</span><span>${Object.keys(f).length}</span></div>`);
-   html+=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.vin)}</h2><div class="grid">${cards}</div>`;
+     const la=v.location.lat,lo=v.location.lon,key=la.toFixed(5)+","+lo.toFixed(5);
+     if(mapKeys[v.vin]!==key){
+       const d=0.01,bbox=[lo-d,la-d,lo+d,la+d].join("%2C");
+       frame.src=`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la}%2C${lo}`;
+       mapKeys[v.vin]=key;
+     }
+     mapcard.style.display="";
+   }else{mapcard.style.display="none";}
  }
- $("#content").innerHTML=html;
+ // Drop any vehicle shells that are no longer present.
+ Array.from(vehiclesEl.children).forEach(ch=>{if(ch.id&&!seen.has(ch.id))ch.remove();});
 }
 tick();setInterval(tick,5000);
 </script>

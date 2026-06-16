@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3
+
+### 🐛 Bug Fixes
+- **Dashboard map no longer flashes on refresh.** The page used to rebuild its entire contents
+  every 5 seconds, which destroyed and recreated the OpenStreetMap embed each time — making the
+  map reload (flash) on every poll even when the vehicle hadn't moved. The dashboard now updates
+  values in place and only reloads the map when the vehicle's position actually changes (so it's
+  static when parked, and refreshes just once per new GPS point while driving).
+
 ## 0.4.2
 
 ### ✨ Improvements
