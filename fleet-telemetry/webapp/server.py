@@ -241,11 +241,10 @@ def _save_wizard_state(data):
 
 def _check_pubkey(domain):
     import ipaddress
-    import re as _re
     import socket
     domain = domain.strip().lower().rstrip(".")
     # Only valid hostname characters — no path, port, userinfo, or scheme
-    if not _re.match(r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$", domain):
+    if not re.match(r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$", domain):
         return {"ok": False, "error": "Invalid domain — must be a plain hostname like telemetry.example.org"}
     # Resolve and reject private/loopback addresses
     try:
@@ -267,8 +266,8 @@ def _check_pubkey(domain):
         if "BEGIN PUBLIC KEY" in body or "BEGIN EC PUBLIC KEY" in body:
             return {"ok": True, "url": url}
         return {"ok": False, "error": "URL reachable but content is not an EC public key PEM"}
-    except Exception:
-        return {"ok": False, "error": "Could not fetch public key — check the domain is correct and publicly reachable"}
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not fetch public key: {exc}"}
 
 
 def _check_cert_detail():
