@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0
+
+### ✨ Shim: generic identity + optional self-priming
+- **No hardcoded vehicle identity.** The shim now discovers vehicles from the telemetry stream (and
+  from the prime), supports multiple cars, and synthesizes a stable id/vehicle_id deterministically
+  from each VIN (TeslaMate dedups by VIN and just echoes the id back). Nothing vehicle-specific is
+  baked into the image — the add-on works for any TeslaMate user.
+- **Optional self-priming.** Set `teslamate_shim_client_id` + `teslamate_shim_refresh_token` (your
+  own Tesla app credentials) and on startup the shim makes **one** real Fleet-API call to discover
+  the vehicle list and prime a complete snapshot per *online* car — including fields telemetry never
+  carries (`vehicle_config`, display name, etc.). Live telemetry overlays the dynamic fields. The
+  call is **wake-guarded** (skips cars that are asleep) and costs ~$0.002 per restart. Rotated
+  refresh tokens are persisted; `teslamate_shim_fleet_api_host` selects the region (defaults to NA).
+  Leave the credentials blank to run telemetry-only.
+
 ## 0.5.1
 
 ### 🐛 Bug Fixes

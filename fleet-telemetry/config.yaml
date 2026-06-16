@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.5.1"
+version: "0.6.0"
 slug: "fleet_telemetry"
 init: false
 
@@ -75,6 +75,9 @@ options:
   gcp_service_account_json: ""
   enable_teslamate_bridge: false
   teslamate_bridge_url: ""
+  teslamate_shim_client_id: ""
+  teslamate_shim_refresh_token: ""
+  teslamate_shim_fleet_api_host: "https://fleet-api.prd.na.vn.cloud.tesla.com"
   extra_config_json: ""
 schema:
   log_level: "list(trace|debug|info|warn|error)"
@@ -103,4 +106,7 @@ schema:
   gcp_service_account_json: str?
   enable_teslamate_bridge: bool
   teslamate_bridge_url: str?
+  teslamate_shim_client_id: str?
+  teslamate_shim_refresh_token: password?
+  teslamate_shim_fleet_api_host: str?
   extra_config_json: str?

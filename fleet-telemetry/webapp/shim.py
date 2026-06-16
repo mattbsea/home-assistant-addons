@@ -1,50 +1,49 @@
 #!/usr/bin/env python3
 """Fleet-API shim for TeslaMate.
 
-Serves a tiny subset of Tesla's Fleet API — the three read-only endpoints TeslaMate v4 calls —
-assembled entirely from the local fleet-telemetry stream. Point TeslaMate's TESLA_API_HOST at this
-server (and set each car's `use_streaming_api = false`) and TeslaMate gets its vehicle data from us
-instead of polling Tesla, at zero Fleet-API cost.
+Serves the three read-only Fleet API endpoints TeslaMate v4 polls, assembled from the local
+fleet-telemetry stream, so TeslaMate (TESLA_API_HOST -> here, use_streaming_api=false) gets its data
+from us instead of polling Tesla — at ~zero Fleet-API cost (streaming is free).
 
-Design notes (verified against teslamate-org/teslamate v4.0.1):
-- Endpoints: GET /api/1/products, GET /api/1/vehicles/{id}, GET /api/1/vehicles/{id}/vehicle_data.
-  (TeslaMate never sends wake/commands on the Fleet path.) Each returns 200 + {"response": ...}.
-- vehicle_data MUST contain all five sections (drive_state, charge_state, climate_state,
-  vehicle_state, vehicle_config) with a non-null vehicle_config and a valid, monotonically
-  non-decreasing millisecond `timestamp`, or TeslaMate crashes/discards the poll.
-- Values are in Tesla-native units (mph, miles, °C, bar) — TeslaMate converts internally.
-- Cold start: until the essential fields are known we report state "asleep" (fuse-safe; TeslaMate
-  keeps polling the cheap endpoint and never asks for vehicle_data) and answer vehicle_data with
-  HTTP 408 "vehicle unavailable" (also fuse-safe) as a belt-and-suspenders. We NEVER return 5xx.
-- State survives add-on restarts via a JSON checkpoint in /data, so a restart warm-starts.
+Identity is fully dynamic: vehicles are discovered from the telemetry stream (records carry the VIN)
+and/or from the prime call. TeslaMate only needs a stable id to echo back and dedups by VIN, so we
+synthesize a deterministic id/vehicle_id from each VIN — no real Tesla IDs are hardcoded or required.
 
-Items still pending validation against a real drive + charge are marked TODO(validate).
+Priming (optional): if a Tesla client_id + refresh token are configured (per-user add-on options), on
+startup the shim makes one real Fleet-API call to discover the vehicle list and prime a COMPLETE
+snapshot per online car — including fields telemetry never carries (vehicle_config, gui_settings,
+display name). Live telemetry then overlays the dynamic fields. Wake-guarded (only fetches
+vehicle_data for cars already online) and ~$0.002 per restart. Rotated refresh tokens are persisted.
+
+Verified vs teslamate-org/teslamate v4.0.1: all five vehicle_data sections must be present, with a
+non-null vehicle_config and a monotonically non-decreasing ms timestamp, or TeslaMate crashes. Units
+are Tesla-native (mph/miles/°C/bar). Cold start reports "asleep" + answers vehicle_data 408 (both
+fuse-safe) until ready. State persists to /data for warm restarts.
 """
 
+import hashlib
 import json
 import os
 import re
 import threading
 import time
-from collections import deque
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 PORT = int(os.environ.get("FT_SHIM_PORT", "8085"))
 STATE_FILE = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
-# A record must have arrived within this window for the car to be considered awake/online.
 ONLINE_WINDOW = int(os.environ.get("FT_SHIM_ONLINE_WINDOW", "660"))
-SAVE_EVERY = 15  # seconds between state checkpoints
+SAVE_EVERY = 15
 
-# Vehicle identity (stable; TeslaMate dedups by VIN, so these need only be consistent).
-VIN = os.environ.get("FT_SHIM_VIN", "REDACTED_VIN")
-VEHICLE_ID = int(os.environ.get("FT_SHIM_VEHICLE_ID", "2252258131777778"))
-EID = int(os.environ.get("FT_SHIM_EID", "REDACTED_EXT_ID_2"))
-DISPLAY_NAME = os.environ.get("FT_SHIM_NAME", "REDACTED_DISPLAY_NAME")
-# Static config object — must be non-null & parseable. Empty {} is safe (TeslaMate keeps its
-# existing identification). TODO(validate): bake real car_type/trim/color/wheels for nicer display.
-VEHICLE_CONFIG = {}
+# Priming credentials / hosts (user-supplied add-on options; nothing personal is hardcoded).
+CLIENT_ID = os.environ.get("FT_SHIM_CLIENT_ID", "")
+REFRESH_SEED = os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+AUTH_HOST = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
+FLEET_HOST = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.cloud.tesla.com")
 
+_VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 _META = {"CreatedAt", "IsResend", "Vin", "ConnectionID", "NetworkInterface", "Status"}
 
 
@@ -55,16 +54,18 @@ def _num(v):
         return None
 
 
+def _round_int(v):
+    n = _num(v)
+    return int(round(n)) if n is not None else None
+
+
 def _parse_loc(val):
     if isinstance(val, dict):
-        lat = val.get("latitude", val.get("Latitude"))
-        lon = val.get("longitude", val.get("Longitude"))
-        return _num(lat), _num(lon)
+        return _num(val.get("latitude", val.get("Latitude"))), _num(val.get("longitude", val.get("Longitude")))
     return None, None
 
 
 def _strip_state(v):
-    """'DetailedChargeStateDisconnected' -> 'Disconnected'; '<invalid>' -> None."""
     if v is None or not isinstance(v, str):
         return v
     if v in ("<invalid>", "invalid", ""):
@@ -75,27 +76,173 @@ def _strip_state(v):
     return v
 
 
-class VehicleStore:
-    """Latest-value-per-field for one VIN, fed by tailing the telemetry logger output."""
+def _synth_id(vin, salt):
+    """Deterministic, stable positive bigint id from a VIN (TeslaMate just echoes it)."""
+    return int(hashlib.sha1((salt + vin).encode()).hexdigest()[:15], 16)
 
+
+def _http_post_form(url, data):
+    body = urllib.parse.urlencode(data).encode()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r)
+
+
+def _http_get(url, token):
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.load(r)
+
+
+class Vehicle:
+    def __init__(self, vin, d=None):
+        self.vin = vin
+        self.ext_id = _synth_id(vin, "id:")            # id exposed to TeslaMate (path id)
+        self.ext_vehicle_id = _synth_id(vin, "vid:")
+        d = d or {}
+        self.fields = d.get("fields", {})
+        self.last_epoch = d.get("last_epoch", 0.0)
+        self.charge_baseline = d.get("charge_baseline")
+        self.last_ts = d.get("last_ts", 0)
+        self.prime = d.get("prime")
+        self.tesla_id = d.get("tesla_id")              # real Tesla id, learned from prime (for API calls)
+        self.display_name = d.get("display_name") or vin
+
+    def dump(self):
+        return {"fields": self.fields, "last_epoch": self.last_epoch, "charge_baseline": self.charge_baseline,
+                "last_ts": self.last_ts, "prime": self.prime, "tesla_id": self.tesla_id,
+                "display_name": self.display_name}
+
+    # --- ingest / charge session ------------------------------------------
+    def ingest(self, data):
+        self.last_epoch = time.time()
+        for k, v in data.items():
+            if k not in _META:
+                self.fields[k] = v
+        if self._charging_active():
+            if self.charge_baseline is None:
+                self.charge_baseline = self._energy_in()
+        else:
+            self.charge_baseline = None
+
+    def _charging_active(self):
+        cs = _strip_state(self.fields.get("DetailedChargeState")) or _strip_state(self.fields.get("ChargeState"))
+        return cs in ("Charging", "Starting")
+
+    def _energy_in(self):
+        return (_num(self.fields.get("ACChargingEnergyIn")) or 0.0) + (_num(self.fields.get("DCChargingEnergyIn")) or 0.0)
+
+    # --- readiness / state -------------------------------------------------
+    def ready(self):
+        if self.prime:
+            return True
+        f = self.fields
+        has_batt = _num(f.get("Soc")) is not None or _num(f.get("BatteryLevel")) is not None
+        return has_batt and _parse_loc(f.get("Location"))[0] is not None
+
+    def state_str(self):
+        fresh = self.last_epoch and (time.time() - self.last_epoch) < ONLINE_WINDOW
+        return "online" if (fresh and self.ready()) else "asleep"
+
+    def _ts(self):
+        ts = max(int(time.time() * 1000), self.last_ts + 1)
+        self.last_ts = ts
+        return ts
+
+    def identity(self):
+        return {"id": self.ext_id, "vehicle_id": self.ext_vehicle_id, "vin": self.vin,
+                "state": self.state_str(), "display_name": self.display_name, "in_service": False}
+
+    # --- assemble ----------------------------------------------------------
+    def _assemble(self):
+        f = self.fields
+        ts = self._ts()
+        lat, lon = _parse_loc(f.get("Location"))
+        gear = _strip_state(f.get("Gear"))
+        shift = gear if gear in ("D", "R", "N") else None
+        driving = shift in ("D", "R", "N")
+        pv, pc = _num(f.get("PackVoltage")), _num(f.get("PackCurrent"))
+        power = round(pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else (None if driving else 0)
+        drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": _num(f.get("GpsHeading")),
+                       "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift}
+
+        ac_p, dc_p = _num(f.get("ACChargingPower")), _num(f.get("DCChargingPower"))
+        charger_power = round((ac_p or 0) + (dc_p or 0), 1) if (ac_p is not None or dc_p is not None) else None
+        energy_added = round(self._energy_in() - self.charge_baseline, 3) if self.charge_baseline is not None else None
+        charge_state = {
+            "timestamp": ts,
+            "charging_state": _strip_state(f.get("DetailedChargeState")) or _strip_state(f.get("ChargeState")),
+            "battery_level": _round_int(f.get("Soc") if _num(f.get("Soc")) is not None else f.get("BatteryLevel")),
+            "usable_battery_level": _round_int(f.get("BatteryLevel") if _num(f.get("BatteryLevel")) is not None else f.get("Soc")),
+            "battery_range": _num(f.get("RatedRange")), "est_battery_range": _num(f.get("EstBatteryRange")),
+            "ideal_battery_range": _num(f.get("IdealBatteryRange")), "charge_energy_added": energy_added,
+            "charger_actual_current": _round_int(f.get("ChargeAmps")), "charger_phases": _round_int(f.get("ChargerPhases")),
+            "charger_power": charger_power, "charger_voltage": _round_int(f.get("ChargerVoltage")),
+            "conn_charge_cable": _strip_state(f.get("ChargingCableType")),
+            "fast_charger_present": f.get("FastChargerPresent") if isinstance(f.get("FastChargerPresent"), bool) else None,
+            "fast_charger_type": _strip_state(f.get("FastChargerType")), "time_to_full_charge": _num(f.get("TimeToFullCharge"))}
+
+        climate_state = {
+            "timestamp": ts, "outside_temp": _num(f.get("OutsideTemp")), "inside_temp": _num(f.get("InsideTemp")),
+            "is_climate_on": (_bool(f.get("HvacACEnabled")) or _strip_state(f.get("HvacPower")) == "On") or None,
+            "climate_keeper_mode": (lambda m: m.lower() if m else None)(_strip_state(f.get("ClimateKeeperMode"))),
+            "fan_status": _round_int(f.get("HvacFanStatus")), "driver_temp_setting": _num(f.get("HvacLeftTemperatureRequest")),
+            "passenger_temp_setting": _num(f.get("HvacRightTemperatureRequest"))}
+
+        sentry = _strip_state(f.get("SentryMode"))
+        vehicle_state = {
+            "timestamp": ts, "odometer": _num(f.get("Odometer")),
+            "car_version": f.get("Version") if isinstance(f.get("Version"), str) else None,
+            "locked": f.get("Locked") if isinstance(f.get("Locked"), bool) else None,
+            "sentry_mode": (sentry in ("Armed", "On", "Enabled")) if sentry is not None else None,
+            "tpms_pressure_fl": _num(f.get("TpmsPressureFl")), "tpms_pressure_fr": _num(f.get("TpmsPressureFr")),
+            "tpms_pressure_rl": _num(f.get("TpmsPressureRl")), "tpms_pressure_rr": _num(f.get("TpmsPressureRr")),
+            "is_user_present": False,
+            "software_update": {"status": "", "download_perc": 0, "install_perc": 0, "version": ""}}
+        doors = f.get("DoorState") if isinstance(f.get("DoorState"), dict) else None
+        if doors is not None:
+            vehicle_state.update({"df": 1 if doors.get("DriverFront") else 0, "pf": 1 if doors.get("PassengerFront") else 0,
+                                  "dr": 1 if doors.get("DriverRear") else 0, "pr": 1 if doors.get("PassengerRear") else 0,
+                                  "ft": 1 if doors.get("TrunkFront") else 0, "rt": 1 if doors.get("TrunkRear") else 0})
+
+        return {**self.identity(), "state": "online", "drive_state": drive_state, "charge_state": charge_state,
+                "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": {}}
+
+    def vehicle_data(self):
+        tele = self._assemble()
+        if self.prime:
+            for sec in ("drive_state", "charge_state", "climate_state", "vehicle_state"):
+                for k, v in (self.prime.get(sec) or {}).items():
+                    if tele[sec].get(k) is None:
+                        tele[sec][k] = v
+            if not tele.get("vehicle_config"):
+                tele["vehicle_config"] = self.prime.get("vehicle_config") or {}
+        if tele["charge_state"].get("charging_state") is None:
+            tele["charge_state"]["charging_state"] = "Disconnected"
+        if tele["drive_state"].get("power") is None:
+            tele["drive_state"]["power"] = 0
+        return tele
+
+
+def _bool(v):
+    return v if isinstance(v, bool) else False
+
+
+class Manager:
     def __init__(self):
         self.lock = threading.Lock()
-        self.fields = {}          # field -> latest value
-        self.last_epoch = 0.0     # wall-clock of most recent record
-        self.charge_baseline = None  # kWh (AC+DC) at the start of the current charge session
-        self.last_ts = 0          # last emitted ms timestamp (monotonic guard)
+        self.vehicles = {}          # vin -> Vehicle
+        self.refresh_token = ""     # rotated token (preferred over the config seed)
         self._load()
 
-    # --- persistence -------------------------------------------------------
     def _load(self):
         try:
             with open(STATE_FILE) as fh:
                 d = json.load(fh)
-            self.fields = d.get("fields", {})
-            self.last_epoch = d.get("last_epoch", 0.0)
-            self.charge_baseline = d.get("charge_baseline")
-            self.last_ts = d.get("last_ts", 0)
-            print(f"[shim] warm-started from {STATE_FILE}: {len(self.fields)} fields", flush=True)
+            self.refresh_token = d.get("refresh_token", "")
+            for vin, vd in (d.get("vehicles") or {}).items():
+                self.vehicles[vin] = Vehicle(vin, vd)
+            print(f"[shim] warm-started: {len(self.vehicles)} vehicle(s)", flush=True)
         except (OSError, ValueError):
             print("[shim] no prior state; cold start", flush=True)
 
@@ -103,186 +250,99 @@ class VehicleStore:
         tmp = STATE_FILE + ".tmp"
         try:
             with self.lock:
-                d = {"fields": self.fields, "last_epoch": self.last_epoch,
-                     "charge_baseline": self.charge_baseline, "last_ts": self.last_ts}
+                d = {"refresh_token": self.refresh_token,
+                     "vehicles": {vin: v.dump() for vin, v in self.vehicles.items()}}
             with open(tmp, "w") as fh:
                 json.dump(d, fh)
             os.replace(tmp, STATE_FILE)
         except OSError:
             pass
 
-    # --- ingest ------------------------------------------------------------
+    def _vehicle(self, vin):
+        v = self.vehicles.get(vin)
+        if v is None:
+            v = Vehicle(vin)
+            self.vehicles[vin] = v
+        return v
+
     def ingest(self, obj):
         if obj.get("msg") != "record_payload":
             return
         data = obj.get("data") or {}
+        vin = obj.get("vin") or data.get("Vin")
+        if not (isinstance(vin, str) and _VIN_RE.match(vin)):
+            return
         with self.lock:
-            self.last_epoch = time.time()
-            for k, v in data.items():
-                if k in _META:
-                    continue
-                self.fields[k] = v
-            self._update_charge_session()
+            self._vehicle(vin).ingest(data)
 
-    def _update_charge_session(self):  # call holding lock
-        active = self._charging_active_locked()
-        if active:
-            if self.charge_baseline is None:
-                self.charge_baseline = self._energy_in_locked()
-        else:
-            self.charge_baseline = None
-
-    def _charging_active_locked(self):
-        cs = _strip_state(self.fields.get("DetailedChargeState")) or _strip_state(self.fields.get("ChargeState"))
-        return cs in ("Charging", "Starting")
-
-    def _energy_in_locked(self):
-        ac = _num(self.fields.get("ACChargingEnergyIn")) or 0.0
-        dc = _num(self.fields.get("DCChargingEnergyIn")) or 0.0
-        return ac + dc
-
-    # --- derived state -----------------------------------------------------
-    def _ready_locked(self):
-        # Essentials that always stream while the car is awake. Odometer is intentionally NOT
-        # required: a *parked* car doesn't re-emit it (it only ticks on its timer / while driving),
-        # so requiring it would pin a parked car to "asleep" after a cold start. Odometer flows
-        # into vehicle_data when present and persists across restarts.
-        f = self.fields
-        has_batt = _num(f.get("Soc")) is not None or _num(f.get("BatteryLevel")) is not None
-        has_loc = _parse_loc(f.get("Location"))[0] is not None
-        return has_batt and has_loc
-
-    def state_str(self):
+    def list(self):
         with self.lock:
-            fresh = self.last_epoch and (time.time() - self.last_epoch) < ONLINE_WINDOW
-            return "online" if (fresh and self._ready_locked()) else "asleep"
+            return [v.identity() for v in self.vehicles.values()]
 
-    def ready(self):
+    def by_ext_id(self, ext_id):
         with self.lock:
-            return self._ready_locked()
+            for v in self.vehicles.values():
+                if v.ext_id == ext_id:
+                    return v
+        return None
 
-    def _ts(self):  # monotonic ms timestamp, persisted via last_ts
-        ts = max(int(time.time() * 1000), self.last_ts + 1)
-        self.last_ts = ts
-        return ts
-
-    # --- shape into Tesla vehicle_data ------------------------------------
-    def vehicle_data(self):
-        with self.lock:
-            f = self.fields
-            ts = self._ts()
-
-            # drive_state -------------------------------------------------
-            lat, lon = _parse_loc(f.get("Location"))
-            gear = _strip_state(f.get("Gear"))
-            shift = gear if gear in ("D", "R", "N") else None  # P/Invalid -> null (parked)
-            driving = shift in ("D", "R", "N")
-            # TODO(validate): drive power = PackVoltage * PackCurrent / 1000; sign/scale unconfirmed.
-            pv, pc = _num(f.get("PackVoltage")), _num(f.get("PackCurrent"))
-            power = round(pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else 0
-            drive_state = {
-                "timestamp": ts,
-                "latitude": lat, "longitude": lon,
-                "heading": _num(f.get("GpsHeading")),
-                "speed": _num(f.get("VehicleSpeed")) if driving else None,
-                "power": power,
-                "shift_state": shift,
-            }
-
-            # charge_state ------------------------------------------------
-            charging_state = _strip_state(f.get("DetailedChargeState")) or _strip_state(f.get("ChargeState")) or "Disconnected"
-            ac_p, dc_p = _num(f.get("ACChargingPower")) or 0.0, _num(f.get("DCChargingPower")) or 0.0
-            # TODO(validate): charge_energy_added as session delta off cumulative *ChargingEnergyIn.
-            energy_added = 0
-            if self.charge_baseline is not None:
-                energy_added = round(self._energy_in_locked() - self.charge_baseline, 3)
-            charge_state = {
-                "timestamp": ts,
-                "charging_state": charging_state,
-                "battery_level": _round_int(f.get("Soc") if _num(f.get("Soc")) is not None else f.get("BatteryLevel")),
-                "usable_battery_level": _round_int(f.get("BatteryLevel") if _num(f.get("BatteryLevel")) is not None else f.get("Soc")),
-                "battery_range": _num(f.get("RatedRange")),
-                "est_battery_range": _num(f.get("EstBatteryRange")),
-                "ideal_battery_range": _num(f.get("IdealBatteryRange")),
-                "charge_energy_added": energy_added,
-                "charger_actual_current": _round_int(f.get("ChargeAmps")),
-                "charger_phases": _round_int(f.get("ChargerPhases")),
-                "charger_pilot_current": None,
-                "charger_power": round(ac_p + dc_p, 1),
-                "charger_voltage": _round_int(f.get("ChargerVoltage")),
-                "conn_charge_cable": _strip_state(f.get("ChargingCableType")) or "<invalid>",
-                "fast_charger_present": _bool(f.get("FastChargerPresent")),
-                "fast_charger_brand": "<invalid>",
-                "fast_charger_type": _strip_state(f.get("FastChargerType")) or "<invalid>",
-                "not_enough_power_to_heat": None,
-                "battery_heater_on": False,
-                "scheduled_charging_start_time": None,
-                "time_to_full_charge": _num(f.get("TimeToFullCharge")) or 0,
-            }
-
-            # climate_state ----------------------------------------------
-            climate_state = {
-                "timestamp": ts,
-                "outside_temp": _num(f.get("OutsideTemp")),
-                "inside_temp": _num(f.get("InsideTemp")),
-                "is_climate_on": _bool(f.get("HvacACEnabled")) or _strip_state(f.get("HvacPower")) == "On",
-                "is_preconditioning": False,
-                "climate_keeper_mode": (_strip_state(f.get("ClimateKeeperMode")) or "off").lower(),
-                "fan_status": _round_int(f.get("HvacFanStatus")) or 0,
-                "driver_temp_setting": _num(f.get("HvacLeftTemperatureRequest")),
-                "passenger_temp_setting": _num(f.get("HvacRightTemperatureRequest")),
-                "is_front_defroster_on": False,
-                "is_rear_defroster_on": False,
-                "battery_heater": False,
-                "battery_heater_no_power": None,
-            }
-
-            # vehicle_state ----------------------------------------------
-            doors = f.get("DoorState") if isinstance(f.get("DoorState"), dict) else {}
-            sentry = _strip_state(f.get("SentryMode")) in ("Armed", "On", "Enabled")
-            vehicle_state = {
-                "timestamp": ts,
-                "odometer": _num(f.get("Odometer")),
-                "car_version": f.get("Version") if isinstance(f.get("Version"), str) else "",
-                "locked": _bool(f.get("Locked")),
-                "sentry_mode": sentry,
-                "is_user_present": False,
-                "df": 1 if doors.get("DriverFront") else 0,
-                "pf": 1 if doors.get("PassengerFront") else 0,
-                "dr": 1 if doors.get("DriverRear") else 0,
-                "pr": 1 if doors.get("PassengerRear") else 0,
-                "ft": 1 if doors.get("TrunkFront") else 0,
-                "rt": 1 if doors.get("TrunkRear") else 0,
-                "tpms_pressure_fl": _num(f.get("TpmsPressureFl")),
-                "tpms_pressure_fr": _num(f.get("TpmsPressureFr")),
-                "tpms_pressure_rl": _num(f.get("TpmsPressureRl")),
-                "tpms_pressure_rr": _num(f.get("TpmsPressureRr")),
-                "software_update": {"status": "", "download_perc": 0, "install_perc": 0, "version": ""},
-            }
-
-            return {
-                "id": EID, "vehicle_id": VEHICLE_ID, "vin": VIN,
-                "state": "online", "display_name": DISPLAY_NAME, "in_service": False,
-                "drive_state": drive_state, "charge_state": charge_state,
-                "climate_state": climate_state, "vehicle_state": vehicle_state,
-                "vehicle_config": VEHICLE_CONFIG,
-            }
-
-    def identity(self, state):
-        return {"id": EID, "vehicle_id": VEHICLE_ID, "vin": VIN,
-                "state": state, "display_name": DISPLAY_NAME, "in_service": False}
+    # --- priming -----------------------------------------------------------
+    def prime_once(self):
+        rt = self.refresh_token or REFRESH_SEED
+        if not (CLIENT_ID and rt):
+            print("[shim] priming disabled (no client_id/refresh_token configured)", flush=True)
+            return
+        try:
+            tok = _http_post_form(AUTH_HOST + "/oauth2/v3/token",
+                                  {"grant_type": "refresh_token", "client_id": CLIENT_ID, "refresh_token": rt})
+        except Exception as e:
+            print(f"[shim] prime: token refresh failed: {e}", flush=True)
+            return
+        new_rt = tok.get("refresh_token")
+        if new_rt and new_rt != self.refresh_token:
+            with self.lock:
+                self.refresh_token = new_rt
+            self.save()
+        at = tok.get("access_token")
+        if not at:
+            print("[shim] prime: no access_token returned", flush=True)
+            return
+        try:
+            products = _http_get(FLEET_HOST + "/api/1/products", at).get("response", []) or []
+        except Exception as e:
+            print(f"[shim] prime: /products failed: {e}", flush=True)
+            return
+        primed = 0
+        for p in products:
+            vin = p.get("vin")
+            if not (isinstance(vin, str) and _VIN_RE.match(vin)) or "vehicle_id" not in p:
+                continue
+            with self.lock:
+                veh = self._vehicle(vin)
+                veh.tesla_id = p.get("id")
+                if p.get("display_name"):
+                    veh.display_name = p["display_name"]
+                tid, state = veh.tesla_id, p.get("state")
+            if state != "online" or not tid:
+                print(f"[shim] prime: {vin} is {state} — skip vehicle_data (won't wake it)", flush=True)
+                continue
+            try:
+                ep = "charge_state;climate_state;drive_state;location_data;vehicle_config;vehicle_state;gui_settings"
+                vd = _http_get(FLEET_HOST + f"/api/1/vehicles/{tid}/vehicle_data?endpoints=" + urllib.parse.quote(ep), at)
+                vd = vd.get("response", {})
+            except Exception as e:
+                print(f"[shim] prime: vehicle_data({vin}) failed: {e}", flush=True)
+                continue
+            with self.lock:
+                veh.prime = {k: vd.get(k) for k in
+                             ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config")}
+                veh.last_epoch = time.time()
+            primed += 1
+        self.save()
+        print(f"[shim] primed {primed} online vehicle(s) from Tesla", flush=True)
 
 
-def _round_int(v):
-    n = _num(v)
-    return int(round(n)) if n is not None else None
-
-
-def _bool(v):
-    return v if isinstance(v, bool) else False
-
-
-STORE = VehicleStore()
+MGR = Manager()
 
 
 def _tail():
@@ -311,7 +371,7 @@ def _tail():
                     line = line.strip()
                     if line and line[0] == "{":
                         try:
-                            STORE.ingest(json.loads(line))
+                            MGR.ingest(json.loads(line))
                         except (ValueError, KeyError):
                             pass
         except OSError:
@@ -321,7 +381,7 @@ def _tail():
 def _saver():
     while True:
         time.sleep(SAVE_EVERY)
-        STORE.save()
+        MGR.save()
 
 
 _PATH_DATA = re.compile(r"^/api/1/vehicles/(\d+)/vehicle_data$")
@@ -343,26 +403,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
-        state = STORE.state_str()
-
-        if path == "/api/1/products":
-            self._json(200, {"response": [STORE.identity(state)], "count": 1})
+        if path in ("/api/1/products", "/api/1/vehicles", "/api/1/vehicles/"):
+            lst = MGR.list()
+            self._json(200, {"response": lst, "count": len(lst)})
             return
-        if path in ("/api/1/vehicles", "/api/1/vehicles/"):
-            self._json(200, {"response": [STORE.identity(state)], "count": 1})
-            return
-        if _PATH_ONE.match(path):
-            self._json(200, {"response": STORE.identity(state)})
-            return
-        if _PATH_DATA.match(path):
-            if not STORE.ready():
-                # Fuse-safe "temporarily unavailable, retry": TeslaMate treats 408 as
-                # :vehicle_unavailable and falls back without melting any breaker.
+        m = _PATH_DATA.match(path)
+        if m:
+            v = MGR.by_ext_id(int(m.group(1)))
+            if v is None:
+                self._json(404, {"error": "not_found"})
+            elif not v.ready():
                 self._json(408, {"error": "vehicle unavailable: data not ready", "error_description": ""})
-                return
-            self._json(200, {"response": STORE.vehicle_data()})
+            else:
+                self._json(200, {"response": v.vehicle_data()})
             return
-        # Unknown path: 404 not_found shape (harmless; not on TeslaMate's poll path).
+        m = _PATH_ONE.match(path)
+        if m:
+            v = MGR.by_ext_id(int(m.group(1)))
+            self._json(200 if v else 404, {"response": v.identity()} if v else {"error": "not_found"})
+            return
         self._json(404, {"error": "not_found"})
 
     do_HEAD = do_GET
@@ -371,8 +430,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     threading.Thread(target=_tail, daemon=True).start()
     threading.Thread(target=_saver, daemon=True).start()
+    threading.Thread(target=MGR.prime_once, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"[shim] Fleet-API shim listening on :{PORT} (vin {VIN})", flush=True)
+    print(f"[shim] Fleet-API shim listening on :{PORT}", flush=True)
     srv.serve_forever()
 
 

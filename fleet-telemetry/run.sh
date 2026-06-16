@@ -191,6 +191,10 @@ bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB
 # TeslaMate can point TESLA_API_HOST here (with use_streaming_api=false per car) instead of polling
 # Tesla. State is checkpointed to /data so it warm-starts across restarts. Isolated restart loop.
 export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json"
+# Optional priming credentials (user-supplied; blank = priming off, shim runs telemetry-only).
+export FT_SHIM_CLIENT_ID="$(bashio::config 'teslamate_shim_client_id')"
+export FT_SHIM_REFRESH_TOKEN="$(bashio::config 'teslamate_shim_refresh_token')"
+export FT_SHIM_FLEET_HOST="$(bashio::config 'teslamate_shim_fleet_api_host')"
 ( while true; do
     python3 /opt/webapp/shim.py
     bashio::log.warning "Fleet-API shim exited; restarting in 3s"
