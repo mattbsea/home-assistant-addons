@@ -174,12 +174,15 @@ def build_state():
         if "Location" in fields:
             loc_lat, loc_lon = _parse_location(fields["Location"]["value"])
         last_seen = max((f["received_at"] for f in fields.values()), default=0)
+        # A vehicle can appear in _latest (e.g. a Location-only record) before it has any
+        # Soc/VehicleSpeed history, so _history may not have this vin yet — default safely.
+        hist = history.get(vin) or {"soc": [], "speed": []}
         vehicles.append({
             "vin": vin,
             "fields": fields,
             "location": {"lat": loc_lat, "lon": loc_lon},
-            "soc_history": [round(v, 2) for _, v in history[vin]["soc"]],
-            "speed_history": [round(v, 2) for _, v in history[vin]["speed"]],
+            "soc_history": [round(v, 2) for _, v in hist["soc"]],
+            "speed_history": [round(v, 2) for _, v in hist["speed"]],
             "client_version": client_versions.get(vin),
             "last_seen_epoch": last_seen,
             "online": (now - last_seen) < 600 if last_seen else False,

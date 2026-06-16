@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4
+
+### 🐛 Bug Fixes
+- **Fix dashboard `/api/state` crash (`KeyError`) when a vehicle's first record is location-only.**
+  A vehicle could appear in the latest-values map before it had any SoC/speed history (e.g. the
+  stream's first post-restart record carries only `Location`), making `build_state` raise a
+  `KeyError` and the dashboard return 500. History lookups now default safely.
+
 ## 0.4.3
 
 ### 🐛 Bug Fixes
