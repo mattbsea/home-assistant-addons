@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+### ✨ New Features
+- **Bundled TeslaMate websocket server**: set `enable_teslamate_bridge` to run the
+  [MyTeslaMate websocket server](https://github.com/MyTeslaMate/websocket) *inside* this add-on
+  (on port 8081) right next to the telemetry receiver — no separate container. The built-in glue
+  forwards decoded records to it locally, and TeslaMate streams from it. `teslamate_bridge_url`
+  remains as an optional override to point at an external websocket server instead.
+- The websocket server app is vendored from the upstream image (pinned by digest) and run with the
+  add-on's Node runtime.
+
 ## 0.3.0
 
 ### ✨ New Features

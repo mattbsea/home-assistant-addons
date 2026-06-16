@@ -193,10 +193,14 @@ WebSocket to `telemetry.example.org:443`, which NPM passes through to the add-on
 
 TeslaMate can use a [MyTeslaMate websocket server](https://github.com/MyTeslaMate/websocket) as its
 streaming source. That server is normally fed by a Google Pub/Sub push subscription; to stay fully
-self-hosted, set **`teslamate_bridge_url`** to the websocket server's ingest URL (e.g.
-`http://<host>:8081/`). The add-on then forwards each decoded record to it directly, in the same
-`{"message":{"data":base64(payload)}}` envelope Pub/Sub would use — keep `enable_logger` on, since
-the bridge tails the logger output.
+self-hosted, this add-on can **bundle the websocket server and feed it directly**:
+
+- Set **`enable_teslamate_bridge: true`**. The add-on runs the websocket server on port **8081**
+  and a built-in glue forwards each decoded record to it locally, in the same
+  `{"message":{"data":base64(payload)}}` envelope Pub/Sub would deliver. (Keep `enable_logger` on —
+  the glue tails the logger output.)
+- Or, to use an **external** websocket server instead, leave `enable_teslamate_bridge` off and set
+  **`teslamate_bridge_url`** to its ingest URL (e.g. `http://host:8081/`).
 
 Then point TeslaMate at the websocket server (see the TeslaMate docs, *Streaming via Tesla
 Telemetry*): `TESLA_WSS_HOST=wss://<your-ws-domain>`, `TESLA_WSS_USE_VIN=true`,

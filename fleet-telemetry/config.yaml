@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.3.0"
+version: "0.4.0"
 slug: "fleet_telemetry"
 init: false
 
@@ -27,10 +27,12 @@ ports:
   4443/tcp: 4443
   8080/tcp: 8080
   9090/tcp: 9090
+  8081/tcp: 8081
 ports_description:
   4443/tcp: "Vehicle telemetry (mTLS). Point your NPM passthrough Stream here."
   8080/tcp: "Status/health endpoint"
   9090/tcp: "Prometheus metrics (only used when metrics_enabled is on)"
+  8081/tcp: "TeslaMate streaming websocket (when enable_teslamate_bridge is on). Front with TLS for wss."
 
 # Persistent storage for generated config.json, fetched TLS certs, and GCP credentials
 map:
@@ -69,6 +71,7 @@ options:
   enable_pubsub: false
   gcp_project_id: ""
   gcp_service_account_json: ""
+  enable_teslamate_bridge: false
   teslamate_bridge_url: ""
   extra_config_json: ""
 schema:
@@ -96,5 +99,6 @@ schema:
   enable_pubsub: bool
   gcp_project_id: str?
   gcp_service_account_json: str?
+  enable_teslamate_bridge: bool
   teslamate_bridge_url: str?
   extra_config_json: str?

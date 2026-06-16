@@ -187,17 +187,31 @@ export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
 bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB_PORT})"
 
 # --- TeslaMate bridge (optional) --------------------------------------------
-# Forwards decoded records to a self-hosted MyTeslaMate websocket server (POST /), replacing
-# the Google Pub/Sub push. Also tails the records file; isolated from the telemetry path.
-BRIDGE_URL="$(bashio::config 'teslamate_bridge_url')"
-if [ -n "${BRIDGE_URL}" ] && [ "${BRIDGE_URL}" != "null" ]; then
-    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${BRIDGE_URL}"
+# Forwards decoded records to a MyTeslaMate websocket server (POST /), replacing the Google
+# Pub/Sub push so TeslaMate can stream fully self-hosted. The websocket server can be bundled
+# (runs here on :8081) or external (teslamate_bridge_url). Isolated from the telemetry path.
+TM_TARGET=""
+EXT_URL="$(bashio::config 'teslamate_bridge_url')"
+if [ -n "${EXT_URL}" ] && [ "${EXT_URL}" != "null" ]; then
+    TM_TARGET="${EXT_URL}"
+    bashio::log.info "TeslaMate bridge -> external websocket server ${TM_TARGET}"
+elif bashio::config.true 'enable_teslamate_bridge'; then
+    ( while true; do
+        node /opt/teslamate-ws/index.js
+        bashio::log.warning "TeslaMate websocket server exited; restarting in 5s"
+        sleep 5
+      done ) &
+    TM_TARGET="http://127.0.0.1:8081/"
+    bashio::log.info "Bundled TeslaMate websocket server started on :8081 (front with TLS for wss://)"
+fi
+if [ -n "${TM_TARGET}" ]; then
+    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${TM_TARGET}"
     ( while true; do
         python3 /opt/webapp/bridge.py
         bashio::log.warning "TeslaMate bridge exited; restarting in 5s"
         sleep 5
       done ) &
-    bashio::log.info "TeslaMate bridge forwarding telemetry to ${BRIDGE_URL}"
+    bashio::log.info "TeslaMate bridge forwarding telemetry to ${TM_TARGET}"
 fi
 
 # --- Run the server with cert-refresh supervision ---------------------------
