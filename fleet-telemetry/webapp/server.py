@@ -382,14 +382,65 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("/")
-        if path.endswith("/api/state") or path == "/api/state":
+        if path.endswith("/api/state"):
             self._send(200, json.dumps(build_state()))
-        elif path == "" or path.endswith("/index.html") or path.endswith("/"):
-            self._send(200, PAGE, "text/html; charset=utf-8")
+        elif path.endswith("/api/wizard/state"):
+            self._send(200, json.dumps(_load_wizard_state()))
+        elif path.endswith("/setup"):
+            self._send(200, PAGE_SETUP, "text/html; charset=utf-8")
+        elif path == "" or path.endswith("/index.html"):
+            ws = _load_wizard_state()
+            if not ws.get("completed"):
+                self.send_response(302)
+                self.send_header("Location", "./setup")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            else:
+                self._send(200, PAGE, "text/html; charset=utf-8")
         else:
             self._send(200, PAGE, "text/html; charset=utf-8")
 
     do_HEAD = do_GET
+
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(n) if n > 0 else b""
+        except (ValueError, OSError):
+            body = b""
+        try:
+            payload = json.loads(body) if body else {}
+        except ValueError:
+            return self._send(400, json.dumps({"error": "invalid json"}))
+
+        if path.endswith("/api/wizard/save"):
+            state = _load_wizard_state()
+            # Deep-merge: top-level keys in payload overwrite state; nested dicts merged
+            for k, v in payload.items():
+                if isinstance(v, dict) and isinstance(state.get(k), dict):
+                    state[k] = {**state[k], **v}
+                else:
+                    state[k] = v
+            _save_wizard_state(state)
+            self._send(200, json.dumps({"ok": True}))
+        elif path.endswith("/api/wizard/check"):
+            check = payload.get("check")
+            if check == "pubkey":
+                domain = str(payload.get("domain", "")).strip()
+                domain = re.sub(r'^https?://', '', domain)
+                domain = domain.split("/")[0]  # drop any path component
+                if not domain:
+                    return self._send(400, json.dumps({"error": "domain required"}))
+                self._send(200, json.dumps(_check_pubkey(domain)))
+            elif check == "cert":
+                self._send(200, json.dumps(_check_cert_detail()))
+            elif check == "records":
+                self._send(200, json.dumps(_check_records_status()))
+            else:
+                self._send(400, json.dumps({"error": "unknown check type"}))
+        else:
+            self._send(404, json.dumps({"error": "not found"}))
 
 
 PAGE = r"""<!DOCTYPE html>
