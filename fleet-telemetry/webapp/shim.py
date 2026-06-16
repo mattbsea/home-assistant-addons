@@ -77,8 +77,10 @@ def _strip_state(v):
 
 
 def _synth_id(vin, salt):
-    """Deterministic, stable positive bigint id from a VIN (TeslaMate just echoes it)."""
-    return int(hashlib.sha1((salt + vin).encode()).hexdigest()[:15], 16)
+    """Deterministic, stable id from a VIN (TeslaMate just echoes it back). Kept to 52 bits so it
+    stays within IEEE-754 safe-integer range (< 2^53) — like real Tesla IDs — so any JSON consumer
+    that parses numbers as doubles can't silently round it."""
+    return int(hashlib.sha1((salt + vin).encode()).hexdigest()[:13], 16)
 
 
 def _http_post_form(url, data):

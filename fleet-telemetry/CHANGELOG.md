@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+### 🐛 Bug Fixes
+- **Synthetic vehicle IDs now fit in IEEE-754 safe-integer range (< 2^53)**, like real Tesla IDs, so
+  JSON consumers that parse numbers as doubles can't silently round them. (Elixir/TeslaMate was
+  unaffected, but it's the correct, portable behavior.)
+
 ## 0.6.0
 
 ### ✨ Shim: generic identity + optional self-priming
