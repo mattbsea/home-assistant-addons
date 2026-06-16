@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5
+
+### 🐛 Bug Fixes
+- **`charger_power` is now an integer (kW).** The shim was returning a float which TeslaMate's
+  changeset rejected with "is invalid". Fixed to match the real Fleet API's integer type.
+
 ## 0.6.4
 
 ### ✨ Improvements

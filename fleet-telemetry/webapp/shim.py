@@ -178,7 +178,7 @@ class Vehicle:
                        "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift}
 
         ac_p, dc_p = _num(f.get("ACChargingPower")), _num(f.get("DCChargingPower"))
-        charger_power = round((ac_p or 0) + (dc_p or 0), 1) if (ac_p is not None or dc_p is not None) else None
+        charger_power = int(round((ac_p or 0) + (dc_p or 0))) if (ac_p is not None or dc_p is not None) else None
         energy_added = round(self._energy_in() - self.charge_baseline, 3) if self.charge_baseline is not None else None
         charge_state = {
             "timestamp": ts,
