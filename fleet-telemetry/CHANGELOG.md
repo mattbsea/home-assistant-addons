@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+### 🔒 Security
+- **Dashboard XSS hardening**: HTML-escape every telemetry-derived value rendered in the dashboard
+  (VIN, field names/values, "Other signals", client version, namespace, cert string), and validate
+  the VIN server-side against the standard 17-char format before use. Defense-in-depth — the data
+  arrives over authenticated mTLS, but values are now never trusted as markup.
+
 ## 0.2.0
 
 ### ✨ New Features

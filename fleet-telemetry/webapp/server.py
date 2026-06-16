@@ -9,9 +9,12 @@ unaffected.
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
+
+_VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -66,6 +69,9 @@ def _ingest(obj):
         return
     data = obj.get("data") or {}
     vin = obj.get("vin") or data.get("Vin") or "unknown"
+    # Validate VIN format; fall back to a safe label rather than trusting arbitrary input.
+    if not (isinstance(vin, str) and _VIN_RE.match(vin)):
+        vin = "unknown"
     created = data.get("CreatedAt", "")
     now = time.time()
     meta = obj.get("metadata") or {}
@@ -263,6 +269,7 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
 </div>
 <script>
 const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function ago(epoch){if(!epoch)return"never";const s=Math.max(0,Date.now()/1000-epoch);
  if(s<60)return Math.round(s)+"s ago";if(s<3600)return Math.round(s/60)+"m ago";
  if(s<86400)return Math.round(s/3600)+"h ago";return Math.round(s/86400)+"d ago";}
@@ -291,8 +298,8 @@ async function tick(){
  $("#totalPill").textContent=fmt(st.total_records)+" records";
  $("#updatedPill").textContent="last record "+ago(st.last_record_epoch);
  const c=st.cert||{};
- $("#foot").innerHTML=`uptime ${dur(st.uptime_seconds)} · namespace <b>${st.namespace}</b>`
-   +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${c.not_after})`:"");
+ $("#foot").innerHTML=`uptime ${dur(st.uptime_seconds)} · namespace <b>${esc(st.namespace)}</b>`
+   +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${esc(c.not_after)})`:"");
  if(!st.vehicles.length){return;}
  let html="";
  for(const v of st.vehicles){
@@ -311,7 +318,7 @@ async function tick(){
      +(v.speed_history&&v.speed_history.length>1?spark(v.speed_history,"var(--accent)"):`<div class="sub">${v.online?"parked / idle":"—"}</div>`));
    // Gear
    cards+=card("Gear",`<div class="gear">`+GEARS.map(g=>`<b class="${gear===g?'on':''}">${g}</b>`).join("")
-     +(gear&&!GEARS.includes(gear)?`<b class="on">${gear}</b>`:"")+`</div>`);
+     +(gear&&!GEARS.includes(gear)?`<b class="on">${esc(gear)}</b>`:"")+`</div>`);
    // Odometer
    cards+=card("Odometer",`<div class="big">${fmt(odo,0)}<span class="unit">mi</span></div>`);
    // Location
@@ -326,17 +333,17 @@ async function tick(){
    const known=new Set(["Soc","VehicleSpeed","Gear","Odometer","Location"]);
    const extra=Object.keys(f).filter(k=>!known.has(k));
    if(extra.length){
-     cards+=card("Other signals",extra.map(k=>`<div class="kv"><span>${k}</span><span>${
-       typeof f[k].value==="object"?JSON.stringify(f[k].value):f[k].value}</span></div>`).join(""));
+     cards+=card("Other signals",extra.map(k=>`<div class="kv"><span>${esc(k)}</span><span>${
+       esc(typeof f[k].value==="object"?JSON.stringify(f[k].value):f[k].value)}</span></div>`).join(""));
    }
    // Vehicle meta
    cards+=card("Vehicle",
-     `<div class="kv"><span>VIN</span><span>${v.vin}</span></div>`
+     `<div class="kv"><span>VIN</span><span>${esc(v.vin)}</span></div>`
      +`<div class="kv"><span>Status</span><span style="color:${v.online?'var(--good)':'var(--bad)'}">${v.online?'online':'offline'}</span></div>`
      +`<div class="kv"><span>Last record</span><span>${ago(v.last_seen_epoch)}</span></div>`
-     +`<div class="kv"><span>Client</span><span>${v.client_version||'—'}</span></div>`
+     +`<div class="kv"><span>Client</span><span>${esc(v.client_version||'—')}</span></div>`
      +`<div class="kv"><span>Signals</span><span>${Object.keys(f).length}</span></div>`);
-   html+=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${v.vin}</h2><div class="grid">${cards}</div>`;
+   html+=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.vin)}</h2><div class="grid">${cards}</div>`;
  }
  $("#content").innerHTML=html;
 }
