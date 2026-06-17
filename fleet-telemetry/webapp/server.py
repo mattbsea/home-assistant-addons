@@ -456,7 +456,7 @@ def _send_telemetry_config(domain, region):
     # Fetch vehicle list
     try:
         req = urllib.request.Request(
-            fleet_host + "/api/1/products",
+            fleet_host + "/api/1/vehicles",
             headers={"Authorization": "Bearer " + at},
         )
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -469,24 +469,31 @@ def _send_telemetry_config(domain, region):
         if not vin:
             continue
         tid = p.get("id")
-        try:
-            cbody = json.dumps(config).encode()
-            req = urllib.request.Request(
-                fleet_host + f"/api/1/vehicles/{vin}/fleet_telemetry_config",
-                data=cbody, method="POST",
-                headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=20) as r:
-                resp = json.load(r)
-            results.append({"vin": vin, "ok": True, "response": resp})
-        except urllib.error.HTTPError as e:
+        last_err = ""
+        sent = False
+        for vehicle_tag in (vin, str(tid)):
             try:
-                body = e.read(2048).decode("utf-8", errors="replace")
-            except Exception:
-                body = ""
-            results.append({"vin": vin, "ok": False, "error": f"HTTP {e.code}: {body}"})
-        except Exception as e:
-            results.append({"vin": vin, "ok": False, "error": str(e)})
+                cbody = json.dumps(config).encode()
+                req = urllib.request.Request(
+                    fleet_host + f"/api/1/vehicles/{vehicle_tag}/fleet_telemetry_config",
+                    data=cbody, method="POST",
+                    headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    resp = json.load(r)
+                results.append({"vin": vin, "ok": True, "vehicle_tag": vehicle_tag, "response": resp})
+                sent = True
+                break
+            except urllib.error.HTTPError as e:
+                try:
+                    body = e.read(2048).decode("utf-8", errors="replace")
+                except Exception:
+                    body = ""
+                last_err = f"HTTP {e.code} (tag={vehicle_tag}): {body[:300]}"
+            except Exception as e:
+                last_err = f"{e} (tag={vehicle_tag})"
+        if not sent:
+            results.append({"vin": vin, "ok": False, "error": last_err})
     if not results:
         return {"ok": False, "error": "No vehicles found in your Tesla account"}
     return {"ok": all(r["ok"] for r in results), "results": results}
