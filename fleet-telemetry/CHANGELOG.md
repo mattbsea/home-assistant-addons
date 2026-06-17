@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.14
+
+### Fixed
+- **"Send to Vehicle" no longer fails with `unknown field NetworkInterface`.** v0.10.13 added
+  `NetworkInterface` to the streamed telemetry config, but that name is not part of Tesla's
+  telemetry `Field` enum, so the vehicle rejected the entire `fleet_telemetry_config` payload.
+  Removed it from the config. The other seven fields restored in v0.10.13 are valid and remain.
+  `NetworkInterface` had no `vehicle_data` prime source either, so the dashboard "Network" row was
+  never going to populate — no functionality is lost. **Re-send the vehicle config (wizard step 13).**
+
 ## 0.10.13
 
 ### Fixed

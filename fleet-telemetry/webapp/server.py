@@ -579,7 +579,6 @@ _TELEMETRY_FIELDS = {
     "Odometer":                  {"interval_seconds": 60},
     "Version":                   {"interval_seconds": 3600},
     "VehicleName":               {"interval_seconds": 3600},
-    "NetworkInterface":          {"interval_seconds": 300},
     "LocatedAtHome":             {"interval_seconds": 60},
     "LocatedAtWork":             {"interval_seconds": 60},
     "LocatedAtFavorite":         {"interval_seconds": 60},
