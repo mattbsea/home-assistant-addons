@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.9
+
+### Fixed
+- **Step 9 "Create Stream" hung indefinitely.** `server.py` referenced a `TELEMETRY_PORT` constant
+  that was never defined (it only existed as a shell variable in `run.sh`), so the stream-creation
+  and host-ports endpoints raised a `NameError` and returned no response — the wizard sat on
+  "Creating the Stream in NPM…". Defined `TELEMETRY_PORT` (default 4443, overridable via
+  `FT_TELEMETRY_PORT`, exported from `run.sh`).
+
 ## 0.10.8
 
 ### Changed

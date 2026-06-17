@@ -52,6 +52,7 @@ fleet_host_for() {
 # static paths; credentials are read from the config file by the Python process itself.
 : > "${RECORDS_FILE}" 2>/dev/null || true
 export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" FT_PUBKEY_PORT="${PUBKEY_PORT}" \
+       FT_TELEMETRY_PORT="${TELEMETRY_PORT}" \
        FT_CERT_FILE="${CERTS_DIR}/server.crt" \
        FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
        FT_WIZARD_STATE="${DATA_DIR}/wizard-state.json" \

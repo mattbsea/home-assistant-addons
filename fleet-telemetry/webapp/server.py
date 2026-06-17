@@ -30,6 +30,8 @@ CERT_FILE = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
 PORT = int(os.environ.get("FT_WEB_PORT", "8099"))
 # Internet-facing listener (via the NPM proxy host) that serves ONLY the Tesla 3p public key.
 PUBKEY_PORT = int(os.environ.get("FT_PUBKEY_PORT", "8100"))
+# The fleet-telemetry binary's internal mTLS listen port (host-mapped; NPM Stream forwards here).
+TELEMETRY_PORT = int(os.environ.get("FT_TELEMETRY_PORT", "4443"))
 # The shim's persisted snapshot (telemetry + a real-Fleet-API "prime"); we read it so the dashboard
 # shows the same complete picture the shim serves TeslaMate, even for fields telemetry doesn't stream.
 SHIM_STATE_FILE = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
