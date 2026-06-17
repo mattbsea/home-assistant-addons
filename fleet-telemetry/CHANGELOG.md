@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.4
+
+### Fixed
+- **Public-key check no longer fails on split-horizon DNS / NAT hairpin.** Inside many LANs the
+  public domain resolves to a private IP, which made the step-6 reachability test reject it with
+  "Domain must resolve to a public IP address". The private-IP case is now a non-blocking
+  **warning**; the check still fetches the key and additionally verifies the served key matches the
+  one the add-on generated. A note reminds you to confirm the domain is reachable from the public
+  internet so Tesla can fetch it.
+
 ## 0.10.3
 
 ### Changed

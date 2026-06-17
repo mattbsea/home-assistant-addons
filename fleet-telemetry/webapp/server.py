@@ -415,6 +415,13 @@ def _strip_secret_masks(patch):
     return patch
 
 
+def _pem_body(pem):
+    """Normalize a PEM public key to its base64 body (no headers/whitespace) for comparison."""
+    if not pem:
+        return ""
+    return "".join(line.strip() for line in pem.splitlines() if "-----" not in line)
+
+
 def _check_pubkey(domain):
     import ipaddress
     import socket
@@ -422,28 +429,51 @@ def _check_pubkey(domain):
     # Only valid hostname characters — no path, port, userinfo, or scheme
     if not re.match(r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$", domain):
         return {"ok": False, "error": "Invalid domain — must be a plain hostname like telemetry.example.org"}
-    # Resolve and reject private/loopback addresses
+    # Resolve the domain. A private/LAN IP is NOT a failure — split-horizon DNS or NAT hairpin
+    # commonly resolves your public domain to a local IP from inside the network. We note it as a
+    # warning and still fetch (and verify the served key matches ours), which proves NPM is serving
+    # the right key; public reachability for Tesla is the user's DNS/port-forward responsibility.
+    local_only = False
     try:
         addrs = socket.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP)
+        resolved = []
+        for _, _, _, _, addr in addrs:
+            try:
+                ip = ipaddress.ip_address(addr[0])
+                resolved.append(ip)
+            except ValueError:
+                pass
+        if resolved and all(ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                            for ip in resolved):
+            local_only = True
     except socket.gaierror:
-        return {"ok": False, "error": "Domain does not resolve — check DNS"}
-    for _, _, _, _, addr in addrs:
-        try:
-            ip = ipaddress.ip_address(addr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                return {"ok": False, "error": "Domain must resolve to a public IP address"}
-        except ValueError:
-            pass
+        return {"ok": False, "error": "Domain does not resolve — check DNS for this domain."}
+
+    warning = ("Inside your network this domain resolves to a private/LAN IP (split-horizon DNS or "
+               "NAT hairpin). The key is served correctly here — just make sure the domain is also "
+               "reachable from the public internet so Tesla can fetch it.") if local_only else None
+
     url = f"https://{domain}/.well-known/appspecific/com.tesla.3p.public-key.pem"
     try:
         ctx = ssl.create_default_context()
         req = urllib.request.urlopen(url, context=ctx, timeout=10)
-        body = req.read(4096).decode("utf-8", errors="replace")
-        if "BEGIN PUBLIC KEY" in body or "BEGIN EC PUBLIC KEY" in body:
-            return {"ok": True, "url": url}
-        return {"ok": False, "error": "URL reachable but content is not an EC public key PEM"}
+        body = req.read(8192).decode("utf-8", errors="replace")
     except Exception as exc:
-        return {"ok": False, "error": f"Could not fetch public key: {exc}"}
+        return {"ok": False, "error": f"Could not fetch the public key at {url}: {exc}", "warning": warning}
+
+    if "BEGIN PUBLIC KEY" not in body and "BEGIN EC PUBLIC KEY" not in body:
+        return {"ok": False, "error": "URL reachable but the content is not an EC public key PEM.", "warning": warning}
+
+    # Confirm the served key is the one this add-on generated (catches a stale/wrong proxy host).
+    ours = _public_key_pem()
+    matches = bool(ours) and _pem_body(ours.decode("utf-8", "replace")) == _pem_body(body)
+    result = {"ok": True, "url": url, "matches": matches}
+    if warning:
+        result["warning"] = warning
+    if ours and not matches:
+        result["warning"] = ((result.get("warning") + " ") if result.get("warning") else "") + \
+            "Note: the served key does not match the add-on's generated key — re-create the proxy host if you regenerated the keypair."
+    return result
 
 
 def _check_cert_detail():
@@ -1579,8 +1609,13 @@ function markDone(n){
 
 function checkResultHtml(r){
   if(!r)return"";
-  if(r.ok)return`<div class="result ok">✓ ${r.subject?esc(r.subject)+(r.days_left!=null?" · "+r.days_left+" days left":""):r.url?esc(r.url):"Check passed"}</div>`;
-  return`<div class="result err">✗ ${esc(r.error||"Check failed")}</div>`;
+  const warn=r.warning?`<div class="result info" style="margin-top:8px">ⓘ ${esc(r.warning)}</div>`:"";
+  if(r.ok){
+    const head=r.subject?esc(r.subject)+(r.days_left!=null?" · "+r.days_left+" days left":""):r.url?esc(r.url):"Check passed";
+    const m=(r.matches===true)?" · key matches ✓":"";
+    return`<div class="result ok">✓ ${head}${m}</div>${warn}`;
+  }
+  return`<div class="result err">✗ ${esc(r.error||"Check failed")}</div>${warn}`;
 }
 
 function configResultHtml(r){
