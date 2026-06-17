@@ -1306,7 +1306,7 @@ h1{font-size:18px;margin:0;font-weight:650}
 .kv:last-child{border-bottom:0}.kv span:first-child{color:var(--mut)}
 .kv i{font-style:normal;color:var(--mut);font-size:11px;margin-left:3px}
 @keyframes kvpulse{0%,8%{color:var(--good);font-weight:700;font-size:14.5px}100%{color:inherit;font-weight:inherit;font-size:inherit}}
-.kv-pulse>span:last-child{animation:kvpulse 5s ease-out forwards}
+.kv-pulse>span:last-child{animation:kvpulse 2s ease-out forwards}
 h2{font-size:15px;margin:18px 0 10px}
 .spark{width:100%;height:46px;display:block;margin-top:8px}
 a{color:var(--accent)}
@@ -1406,7 +1406,11 @@ function buildCards(v){
    +spark(sh,batColor(soc||0))
    +row("Range",nf(d(N('RatedRange')!=null?N('RatedRange'):N('IdealBatteryRange'))),distUnit)
    +row("Energy left",nf(N('EnergyRemaining'),1),"kWh")
-   +row("Charge limit",nf(N('ChargeLimitSoc')),"%"));
+   +row("Charge limit",nf(N('ChargeLimitSoc')),"%")
+   +row("Pack voltage",nf(N('PackVoltage'),1),"V")
+   +row("Pack current",nf(N('PackCurrent'),1),"A")
+   +row("Battery heater",onoff('BatteryHeaterOn'))
+   +row("Low power to heat",B('NotEnoughPowerToHeat')==null?null:(B('NotEnoughPowerToHeat')?"yes":"no")));
 
  // Charging — full detail only while actually charging; otherwise compact state.
  const chState=S('DetailedChargeState')||S('ChargeState');
@@ -1418,6 +1422,8 @@ function buildCards(v){
      +row("Voltage",nf(N('ChargerVoltage')),"V")
      +row("Added (AC)",nf(N('ACChargingEnergyIn'),1),"kWh")
      +row("Added (DC)",nf(N('DCChargingEnergyIn'),1),"kWh")
+     +row("Requested current",nf(N('ChargeCurrentRequest')),"A")
+     +row("Max current",nf(N('ChargeCurrentRequestMax')),"A")
      +row("Time to full",nf(N('TimeToFullCharge'),1),"h")
      +row("Cable",S('ChargingCableType'))
      +row("Fast charger",S('FastChargerType'));
@@ -1433,16 +1439,35 @@ function buildCards(v){
    +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
    +row("Gear",gear)
    +row("Heading",nf(N('GpsHeading')),"°")
-   +row("Odometer",nf(d(N('Odometer'))),distUnit)
-   +row("Destination",S('Destination'))
-   +(N('MilesToArrival')!=null&&N('MilesToArrival')>0.1?row("ETA",`${nf(N('MilesToArrival'))} mi · ${Math.round(N('MinutesToArrival'))} min`):""));
+   +row("Odometer",nf(d(N('Odometer'))),distUnit));
+
+ // Navigation / trip (active route)
+ const navName=S('DestinationName');
+ const navLoc=(()=>{const x=raw('DestinationLocation');
+   if(x&&typeof x==="object"){const la=x.latitude!=null?x.latitude:x.Latitude;const lo=x.longitude!=null?x.longitude:x.Longitude;
+     if(la!=null&&lo!=null&&!Number.isNaN(Number(la))&&!Number.isNaN(Number(lo)))return{la:Number(la),lo:Number(lo)};}
+   if(typeof x==="string"&&x.includes(",")){const p=x.split(",");if(p.length===2&&!Number.isNaN(Number(p[0]))&&!Number.isNaN(Number(p[1])))return{la:Number(p[0]),lo:Number(p[1])};}
+   return null;})();
+ const miles=N('MilesToArrival');
+ let navInner=row("Destination",navName);
+ if(navLoc)navInner+=`<div class="kv"><span>Coordinates</span><span><a href="https://www.openstreetmap.org/?mlat=${navLoc.la}&mlon=${navLoc.lo}#map=14/${navLoc.la}/${navLoc.lo}" target="_blank">${navLoc.la.toFixed(5)}, ${navLoc.lo.toFixed(5)}</a></span></div>`;
+ if(miles!=null&&miles>0.1)navInner+=row("ETA",`${nf(d(miles))} ${distUnit} · ${Math.round(N('MinutesToArrival'))} min`);
+ navInner+=row("Traffic delay",nf(N('RouteTrafficMinutesDelay')),"min")
+   +row("Energy at arrival",nf(N('ExpectedEnergyPercentAtTripArrival')),"%")
+   +row("Route updated",(()=>{const t=raw('RouteLastUpdated');if(t==null||t==="<invalid>")return null;const n=Number(t);return Number.isNaN(n)?String(t):ago(n>1e12?n/1000:n);})());
+ cards+=mcard("Navigation",navInner);
 
  // Climate
  cards+=mcard("Climate",
    row("Inside",tc('InsideTemp'),tu)
    +row("Outside",tc('OutsideTemp'),tu)
+   +row("Driver set",tc('HvacLeftTemperatureRequest'),tu)
+   +row("Passenger set",tc('HvacRightTemperatureRequest'),tu)
    +row("A/C",onoff('HvacACEnabled'))
    +row("HVAC",S('HvacPower'))
+   +row("Preconditioning",onoff('PreconditioningEnabled'))
+   +row("Defrost",S('DefrostMode'))
+   +row("Rear defrost",onoff('RearDefrostEnabled'))
    +row("Climate keeper",S('ClimateKeeperMode'))
    +row("Cabin overheat",S('CabinOverheatProtectionMode'))
    +row("Fan",(v=>{if(v==null)return null;if(typeof v==='number')return v===0?'Off':'Speed '+v;return String(v).replace(/([A-Za-z])(\d)/g,'$1 $2');})(S('HvacFanStatus'))));
@@ -1475,6 +1500,10 @@ function buildCards(v){
  cards+=card("Vehicle",
    row("Name",typeof raw('VehicleName')==="string"?raw('VehicleName'):null)
    +row("VIN",v.vin)
+   +row("Model",S('CarType'))
+   +row("Trim",S('Trim'))
+   +row("Color",S('ExteriorColor'))
+   +row("Wheels",S('Wheels'))
    +row("Software",typeof raw('Version')==="string"?raw('Version'):null)
    +row("Network",typeof raw('NetworkInterface')==="string"?raw('NetworkInterface'):null)
    +row("Status",v.online?"online":"offline")
@@ -1483,7 +1512,7 @@ function buildCards(v){
    +row("Signals",Object.keys(f).length));
 
  // Other — only genuinely ungrouped signals (future-proofing)
- const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","VehicleName","Version","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
+ const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
  const extra=Object.keys(f).filter(k=>!grouped.has(k));
  if(extra.length){cards+=card("Other signals",extra.map(k=>row(k,typeof raw(k)==="object"?JSON.stringify(raw(k)):(pretty(k,raw(k))!=null?pretty(k,raw(k)):raw(k)))).join(""));}
 
@@ -2051,6 +2080,7 @@ function renderStep17(){
   <ol>
     <li>Open this link on the phone — it launches the Tesla app's <b>Add Virtual Key</b> prompt:</li>
   </ol>
+  <p style="margin:6px 0 10px"><a href="https://tesla.com/_ak/${esc(dom)}" target="_blank" rel="noopener" style="font-size:14px;word-break:break-all">https://tesla.com/_ak/${esc(dom)}</a></p>
   ${codebox("https://tesla.com/_ak/"+dom,"pair-url")}
   <p style="color:var(--mut);font-size:12.5px;margin:8px 0 0">Approve adding the key to your vehicle. Repeat for each car. (Tip: email yourself the link or use a QR generator to open it on the phone.)</p>
 </div>

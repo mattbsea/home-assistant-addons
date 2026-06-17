@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.11
+
+### Changed
+- **Dashboard: categorized the "Other signals" fields into proper tiles.** Pack voltage/current,
+  battery heater and low-power-to-heat now sit in Battery; requested/max charge current in Charging;
+  driver/passenger set temps, preconditioning, defrost and rear defrost in Climate; model, trim,
+  color and wheels in Vehicle. Added a new **Navigation** tile (destination, ETA, traffic delay,
+  energy at arrival, route updated) and it **parses `DestinationLocation`'s lat/lon JSON** into a
+  clickable map link. "Other signals" now only shows genuinely unknown fields.
+- **Wizard: the `tesla.com/_ak/<domain>` pairing link is now clickable** (opens in a new tab), in
+  addition to the copy box.
+- **Dashboard: the value-changed pulse now fades over 2s instead of 5s.**
+
 ## 0.10.10
 
 ### Added
