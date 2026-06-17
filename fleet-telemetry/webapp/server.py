@@ -408,9 +408,6 @@ _TELEMETRY_FIELDS = {
     "TpmsPressureFr":            {"interval_seconds": 300},
     "TpmsPressureRl":            {"interval_seconds": 300},
     "TpmsPressureRr":            {"interval_seconds": 300},
-    "Destination":               {"interval_seconds": 30},
-    "MilesToArrival":            {"interval_seconds": 30},
-    "MinutesToArrival":          {"interval_seconds": 30},
 }
 
 
@@ -1358,9 +1355,6 @@ function renderStep9(){
     "TpmsPressureFr":            {"interval_seconds": 300},
     "TpmsPressureRl":            {"interval_seconds": 300},
     "TpmsPressureRr":            {"interval_seconds": 300},
-    "Destination":               {"interval_seconds": 30},
-    "MilesToArrival":            {"interval_seconds": 30},
-    "MinutesToArrival":          {"interval_seconds": 30}
   }
 }`;
   const domainVal=W.inputs.domain||"";
