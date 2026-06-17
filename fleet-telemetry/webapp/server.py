@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 import ssl
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -478,6 +479,12 @@ def _send_telemetry_config(domain, region):
             with urllib.request.urlopen(req, timeout=20) as r:
                 resp = json.load(r)
             results.append({"vin": vin, "ok": True, "response": resp})
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read(2048).decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            results.append({"vin": vin, "ok": False, "error": f"HTTP {e.code}: {body}"})
         except Exception as e:
             results.append({"vin": vin, "ok": False, "error": str(e)})
     if not results:
