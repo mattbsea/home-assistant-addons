@@ -453,6 +453,33 @@ def _send_telemetry_config(domain, region):
     except (OSError, IOError):
         pass
     config = {"hostname": domain, "port": 443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
+    # Verify partner account registration (required for fleet_telemetry_config)
+    try:
+        req = urllib.request.Request(
+            fleet_host + "/api/1/partner_accounts",
+            headers={"Authorization": "Bearer " + at},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            pa = json.load(r)
+        registered_domain = (pa.get("response") or {}).get("domain", "")
+        if registered_domain.lower().rstrip(".") != domain.lower().rstrip("."):
+            # Auto-register the partner account for this domain
+            rbody = json.dumps({"domain": domain}).encode()
+            req2 = urllib.request.Request(
+                fleet_host + "/api/1/partner_accounts",
+                data=rbody, method="POST",
+                headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req2, timeout=20) as r2:
+                pa2 = json.load(r2)
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read(1024).decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        return {"ok": False, "error": f"Partner account check failed HTTP {e.code}: {body[:300]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"Partner account check failed: {e}"}
     # Fetch vehicle list
     try:
         req = urllib.request.Request(
