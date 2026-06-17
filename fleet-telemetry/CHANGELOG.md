@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.13
+
+### Fixed
+- **Restored telemetry fields the dashboard expects but the refactor had dropped.** Added back to
+  the vehicle telemetry config (and the cold-start prime where available): `ChargeRateMilePerHour`
+  (charging mi/h), `ChargePortLatch`, `CabinOverheatProtectionMode`, `VehicleName`,
+  `NetworkInterface`, and `LocatedAtHome` / `LocatedAtWork` / `LocatedAtFavorite` (the 🏠/🏢/⭐ map
+  label). These rows were always blank because the fields were never requested from the vehicle.
+  **Re-send the vehicle config (wizard step 13) to start streaming them.**
+  (`ChargeState` is intentionally a fallback for the streamed `DetailedChargeState`; `EnergyRemaining`
+  has no telemetry source and stays hidden.)
+
 ## 0.10.12
 
 ### Fixed

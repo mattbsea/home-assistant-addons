@@ -197,6 +197,7 @@ def _prime_to_fields(p):
     put("DetailedChargeState", cs.get("charging_state"))
     put("ChargerVoltage", cs.get("charger_voltage"))
     put("ChargeAmps", cs.get("charger_actual_current"))
+    put("ChargeRateMilePerHour", cs.get("charge_rate"))
     put("TimeToFullCharge", cs.get("time_to_full_charge"))
     put("ChargingCableType", cs.get("conn_charge_cable"))
     put("FastChargerType", cs.get("fast_charger_type"))
@@ -208,6 +209,7 @@ def _prime_to_fields(p):
     put("ChargeCurrentRequestMax", cs.get("charge_current_request_max"))
     if isinstance(cs.get("charge_port_door_open"), bool):
         put("ChargePortDoorOpen", cs["charge_port_door_open"])
+    put("ChargePortLatch", cs.get("charge_port_latch"))
     if isinstance(cs.get("battery_heater_on"), bool):
         put("BatteryHeaterOn", cs["battery_heater_on"])
     if isinstance(cs.get("not_enough_power_to_heat"), bool):
@@ -215,6 +217,7 @@ def _prime_to_fields(p):
     put("InsideTemp", cl.get("inside_temp"))
     put("OutsideTemp", cl.get("outside_temp"))
     put("ClimateKeeperMode", cl.get("climate_keeper_mode"))
+    put("CabinOverheatProtectionMode", cl.get("cabin_overheat_protection"))
     if isinstance(cl.get("is_climate_on"), bool):
         put("HvacACEnabled", cl["is_climate_on"])
     if isinstance(cl.get("is_preconditioning"), bool):
@@ -241,6 +244,7 @@ def _prime_to_fields(p):
     put("MinutesToArrival", ds.get("active_route_minutes_to_arrival"))
     put("Odometer", vs.get("odometer"))
     put("Version", vs.get("car_version"))
+    put("VehicleName", vs.get("vehicle_name"))
     if isinstance(vs.get("locked"), bool):
         put("Locked", vs["locked"])
     if isinstance(vs.get("sentry_mode"), bool):
@@ -547,6 +551,7 @@ _TELEMETRY_FIELDS = {
     "DCChargingEnergyIn":        {"interval_seconds": 30},
     "ChargeAmps":                {"interval_seconds": 30},
     "ChargerVoltage":            {"interval_seconds": 30},
+    "ChargeRateMilePerHour":     {"interval_seconds": 30},
     "ChargerPhases":             {"interval_seconds": 60},
     "ChargeLimitSoc":            {"interval_seconds": 60},
     "TimeToFullCharge":          {"interval_seconds": 60},
@@ -556,6 +561,7 @@ _TELEMETRY_FIELDS = {
     "ChargeCurrentRequest":      {"interval_seconds": 30},
     "ChargeCurrentRequestMax":   {"interval_seconds": 60},
     "ChargePortDoorOpen":        {"interval_seconds": 30},
+    "ChargePortLatch":           {"interval_seconds": 60},
     "BatteryHeaterOn":           {"interval_seconds": 30},
     "NotEnoughPowerToHeat":      {"interval_seconds": 30},
     "InsideTemp":                {"interval_seconds": 60},
@@ -566,11 +572,17 @@ _TELEMETRY_FIELDS = {
     "HvacLeftTemperatureRequest":  {"interval_seconds": 60},
     "HvacRightTemperatureRequest": {"interval_seconds": 60},
     "ClimateKeeperMode":         {"interval_seconds": 60},
+    "CabinOverheatProtectionMode": {"interval_seconds": 60},
     "PreconditioningEnabled":    {"interval_seconds": 30},
     "DefrostMode":               {"interval_seconds": 30},
     "RearDefrostEnabled":        {"interval_seconds": 30},
     "Odometer":                  {"interval_seconds": 60},
     "Version":                   {"interval_seconds": 3600},
+    "VehicleName":               {"interval_seconds": 3600},
+    "NetworkInterface":          {"interval_seconds": 300},
+    "LocatedAtHome":             {"interval_seconds": 60},
+    "LocatedAtWork":             {"interval_seconds": 60},
+    "LocatedAtFavorite":         {"interval_seconds": 60},
     "Locked":                    {"interval_seconds": 60},
     "SentryMode":                {"interval_seconds": 60},
     "DoorState":                 {"interval_seconds": 60},
