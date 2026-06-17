@@ -499,7 +499,7 @@ def _send_telemetry_config(domain, region):
             ca_chain = "\n".join(certs[1:])
     except (OSError, IOError):
         pass
-    config = {"hostname": domain, "port": 443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
+    config = {"hostname": domain, "port": 4443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
 
     # The app private key signs the JWS payload inside tesla-http-proxy.
     key_file = "/share/tesla-fleet/private-key.pem"
@@ -1314,7 +1314,7 @@ function renderStep9(){
   const host=hosts[region];
   const cfg=`{
   "hostname": "${domain}",
-  "port": 443,
+  "port": 4443,
   "ca": "<Let's Encrypt R3+R10 chain — see note below>",
   "fields": {
     "VehicleSpeed":              {"interval_seconds": 10},

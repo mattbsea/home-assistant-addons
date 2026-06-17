@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.6
+
+### Fixed
+- **Telemetry config now uses port 4443** (direct mTLS, bypassing NPM). Port 443 routed through
+  NPM's HTTPS proxy, which terminates TLS and breaks mTLS. Port 4443 is forwarded at the router
+  level directly to the add-on, preserving the end-to-end TLS required for vehicle connections.
+
 ## 0.9.1
 
 ### Changed
