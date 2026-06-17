@@ -222,7 +222,7 @@ class Vehicle:
         # PackCurrent sign: negative = discharging (driving), positive = charging (regen).
         # Fleet API drive_state.power convention: positive = consuming, negative = regenerating.
         # So negate the product to match what TeslaMate expects.
-        power = round(-pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else (None if driving else 0)
+        power = int(round(-pv * pc / 1000.0)) if (driving and pv is not None and pc is not None) else (None if driving else 0)
         drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": _num(f.get("GpsHeading")),
                        "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift,
                        "active_route_destination": f.get("DestinationName") or f.get("Destination") or None,
