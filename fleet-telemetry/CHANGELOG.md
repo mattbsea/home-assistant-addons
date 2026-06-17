@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1
+
+### Fixed
+- **Fresh-install startup crash.** The bashio interpreter runs scripts with
+  `errexit`/`nounset`/`pipefail` enabled; on a fresh install (no config file yet) the supervision
+  loop's first benign non-zero test silently killed `run.sh` right after the wizard started, so
+  the add-on exited (state "error") before the wizard was usable. `run.sh` now explicitly disables
+  those strict modes (it handles its own errors), so the wizard stays up on a clean install.
+
 ## 0.10.0
 
 ### Changed (breaking — re-run setup)

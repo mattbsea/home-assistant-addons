@@ -1,6 +1,10 @@
 #!/usr/bin/with-contenv bashio
-# NB: deliberately no `set -e`/`set -o pipefail`. bashio helpers run internal pipelines whose
-# benign non-zero stages would abort startup under those options. Each step handles its own errors.
+# The bashio interpreter (/usr/bin/bashio) enables `set -o errexit errtrace nounset pipefail`.
+# This script deliberately turns them OFF: it relies on benign non-zero stages (e.g.
+# `[ -f "$CFG" ] && …` when the config file doesn't exist yet on a fresh install) and handles its
+# own errors. Left on, the first such failure silently kills the script before the supervision
+# loop, taking the setup wizard down with it (the bug that broke fresh-install startup).
+set +e +u +E +o pipefail
 #
 # Wizard-driven model: this add-on has NO Configuration-page options. The setup wizard (served by
 # the web UI on the ingress port) writes /data/wizard-config.json. Startup is INVERTED — the web
