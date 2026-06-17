@@ -183,7 +183,11 @@ export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
        FT_SHIM_CLIENT_ID="$(bashio::config 'teslamate_shim_client_id')" \
        FT_SHIM_REFRESH_TOKEN="$(bashio::config 'teslamate_shim_refresh_token')" \
        FT_SHIM_FLEET_HOST="$(bashio::config 'teslamate_shim_fleet_api_host')" \
-       FT_SHIM_AUTH_HOST="https://auth.tesla.com"
+       FT_SHIM_AUTH_HOST="https://auth.tesla.com" \
+       FT_DEV_CLIENT_ID="$(bashio::config 'developer_client_id')" \
+       FT_DEV_REFRESH_TOKEN="$(bashio::config 'developer_refresh_token')" \
+       FT_DEV_FLEET_HOST="$(bashio::config 'developer_fleet_api_host')" \
+       FT_DEV_STATE="${DATA_DIR}/dev-token.json"
 ( while true; do
     python3 /opt/webapp/server.py
     bashio::log.warning "dashboard exited; restarting in 3s"

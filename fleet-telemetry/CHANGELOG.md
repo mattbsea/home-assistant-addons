@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.7
+
+### Added
+- **Dedicated developer credential options** (`developer_client_id`, `developer_refresh_token`,
+  `developer_fleet_api_host`) in the add-on Configuration tab. These are used exclusively for
+  partner-level Tesla API operations: sending `fleet_telemetry_config` to vehicles and managing
+  the partner account registration. The TeslaMate shim credentials (`teslamate_shim_*`) remain
+  separate — they are user-authorization tokens for vehicle data polling, which have different
+  scope/privilege than the developer tokens needed to configure fleet telemetry. Rotated developer
+  refresh tokens are persisted to `/data/dev-token.json` so re-sends don't need to re-enter the
+  seed token. If no developer credentials are configured, the add-on falls back to the shim
+  credentials (existing behavior).
+
 ## 0.8.2
 
 ### Bug Fixes

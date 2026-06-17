@@ -411,21 +411,34 @@ _TELEMETRY_FIELDS = {
 }
 
 
+_DEV_STATE_FILE = os.environ.get("FT_DEV_STATE", "/data/dev-token.json")
+
+
 def _send_telemetry_config(domain, region):
-    client_id = os.environ.get("FT_SHIM_CLIENT_ID", "")
+    # Prefer dedicated developer credentials; fall back to shim credentials.
+    client_id = os.environ.get("FT_DEV_CLIENT_ID", "") or os.environ.get("FT_SHIM_CLIENT_ID", "")
     if not client_id:
-        return {"ok": False, "error": "Tesla client_id not configured in add-on options"}
-    rt = os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
-    try:
-        with open(SHIM_STATE_FILE) as fh:
-            ss = json.load(fh)
-        rt = ss.get("refresh_token") or rt
-    except (OSError, ValueError):
-        pass
+        return {"ok": False, "error": "No Tesla client_id configured — set developer_client_id in add-on options"}
+    rt_seed = os.environ.get("FT_DEV_REFRESH_TOKEN", "") or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+    # Prefer rotated token from dev state file; fall back to shim state
+    rt = rt_seed
+    for state_file in (_DEV_STATE_FILE, SHIM_STATE_FILE):
+        try:
+            with open(state_file) as fh:
+                ss = json.load(fh)
+            if ss.get("refresh_token"):
+                rt = ss["refresh_token"]
+                break
+        except (OSError, ValueError):
+            pass
     if not rt:
-        return {"ok": False, "error": "Tesla refresh_token not configured in add-on options"}
+        return {"ok": False, "error": "No Tesla refresh_token configured — set developer_refresh_token in add-on options"}
     auth_host = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
-    fleet_host = _FLEET_HOSTS.get(region, _FLEET_HOSTS["na"])
+    # Use configured developer fleet host, then region map, then shim host
+    fleet_host = (os.environ.get("FT_DEV_FLEET_HOST", "") or
+                  _FLEET_HOSTS.get(region) or
+                  os.environ.get("FT_SHIM_FLEET_HOST", "") or
+                  _FLEET_HOSTS["na"])
     # Token refresh
     try:
         body = urllib.parse.urlencode(
@@ -442,6 +455,16 @@ def _send_telemetry_config(domain, region):
     at = tok.get("access_token")
     if not at:
         return {"ok": False, "error": "No access_token returned from Tesla auth"}
+    # Persist rotated refresh token so next call doesn't need the seed
+    new_rt = tok.get("refresh_token")
+    if new_rt and new_rt != rt:
+        try:
+            tmp = _DEV_STATE_FILE + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump({"refresh_token": new_rt}, fh)
+            os.replace(tmp, _DEV_STATE_FILE)
+        except OSError:
+            pass
     # Read CA chain from cert file (everything after the leaf cert)
     ca_chain = ""
     try:
