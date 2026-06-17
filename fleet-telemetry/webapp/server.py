@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 import ssl
+import urllib.parse
 import urllib.request
 
 _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
@@ -344,6 +345,146 @@ def _check_records_status():
     }
 
 
+_FLEET_HOSTS = {
+    "na": "https://fleet-api.prd.na.vn.cloud.tesla.com",
+    "eu": "https://fleet-api.prd.eu.vn.cloud.tesla.com",
+    "cn": "https://fleet-api.prd.cn.vn.cloud.tesla.com",
+}
+_TELEMETRY_FIELDS = {
+    "VehicleSpeed":              {"interval_seconds": 10},
+    "Location":                  {"interval_seconds": 30},
+    "GpsHeading":                {"interval_seconds": 10},
+    "Soc":                       {"interval_seconds": 30},
+    "BatteryLevel":              {"interval_seconds": 30},
+    "Gear":                      {"interval_seconds": 5},
+    "PackVoltage":               {"interval_seconds": 10},
+    "PackCurrent":               {"interval_seconds": 10},
+    "RatedRange":                {"interval_seconds": 60},
+    "EstBatteryRange":           {"interval_seconds": 60},
+    "IdealBatteryRange":         {"interval_seconds": 60},
+    "DetailedChargeState":       {"interval_seconds": 30},
+    "ACChargingPower":           {"interval_seconds": 30},
+    "DCChargingPower":           {"interval_seconds": 30},
+    "ACChargingEnergyIn":        {"interval_seconds": 30},
+    "DCChargingEnergyIn":        {"interval_seconds": 30},
+    "ChargeAmps":                {"interval_seconds": 30},
+    "ChargerVoltage":            {"interval_seconds": 30},
+    "ChargerPhases":             {"interval_seconds": 60},
+    "ChargeLimitSoc":            {"interval_seconds": 60},
+    "TimeToFullCharge":          {"interval_seconds": 60},
+    "ChargingCableType":         {"interval_seconds": 60},
+    "FastChargerPresent":        {"interval_seconds": 60},
+    "FastChargerType":           {"interval_seconds": 60},
+    "ChargeCurrentRequest":      {"interval_seconds": 30},
+    "ChargeCurrentRequestMax":   {"interval_seconds": 60},
+    "ChargePortDoorOpen":        {"interval_seconds": 30},
+    "BatteryHeaterOn":           {"interval_seconds": 30},
+    "NotEnoughPowerToHeat":      {"interval_seconds": 30},
+    "InsideTemp":                {"interval_seconds": 60},
+    "OutsideTemp":               {"interval_seconds": 60},
+    "HvacACEnabled":             {"interval_seconds": 60},
+    "HvacPower":                 {"interval_seconds": 60},
+    "HvacFanStatus":             {"interval_seconds": 60},
+    "HvacLeftTemperatureRequest":  {"interval_seconds": 60},
+    "HvacRightTemperatureRequest": {"interval_seconds": 60},
+    "ClimateKeeperMode":         {"interval_seconds": 60},
+    "PreconditioningEnabled":    {"interval_seconds": 30},
+    "DefrostMode":               {"interval_seconds": 30},
+    "RearDefrostEnabled":        {"interval_seconds": 30},
+    "Odometer":                  {"interval_seconds": 60},
+    "Version":                   {"interval_seconds": 3600},
+    "Locked":                    {"interval_seconds": 60},
+    "SentryMode":                {"interval_seconds": 60},
+    "DoorState":                 {"interval_seconds": 60},
+    "FdWindow":                  {"interval_seconds": 60},
+    "FpWindow":                  {"interval_seconds": 60},
+    "RdWindow":                  {"interval_seconds": 60},
+    "RpWindow":                  {"interval_seconds": 60},
+    "TpmsPressureFl":            {"interval_seconds": 300},
+    "TpmsPressureFr":            {"interval_seconds": 300},
+    "TpmsPressureRl":            {"interval_seconds": 300},
+    "TpmsPressureRr":            {"interval_seconds": 300},
+    "Destination":               {"interval_seconds": 30},
+    "MilesToArrival":            {"interval_seconds": 30},
+    "MinutesToArrival":          {"interval_seconds": 30},
+}
+
+
+def _send_telemetry_config(domain, region):
+    client_id = os.environ.get("FT_SHIM_CLIENT_ID", "")
+    if not client_id:
+        return {"ok": False, "error": "Tesla client_id not configured in add-on options"}
+    rt = os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+    try:
+        with open(SHIM_STATE_FILE) as fh:
+            ss = json.load(fh)
+        rt = ss.get("refresh_token") or rt
+    except (OSError, ValueError):
+        pass
+    if not rt:
+        return {"ok": False, "error": "Tesla refresh_token not configured in add-on options"}
+    auth_host = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
+    fleet_host = _FLEET_HOSTS.get(region, _FLEET_HOSTS["na"])
+    # Token refresh
+    try:
+        body = urllib.parse.urlencode(
+            {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": rt}
+        ).encode()
+        req = urllib.request.Request(
+            auth_host + "/oauth2/v3/token", data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            tok = json.load(r)
+    except Exception as e:
+        return {"ok": False, "error": f"Token refresh failed: {e}"}
+    at = tok.get("access_token")
+    if not at:
+        return {"ok": False, "error": "No access_token returned from Tesla auth"}
+    # Read CA chain from cert file (everything after the leaf cert)
+    ca_chain = ""
+    try:
+        with open(CERT_FILE) as fh:
+            pem = fh.read()
+        certs = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", pem, re.DOTALL)
+        if len(certs) > 1:
+            ca_chain = "\n".join(certs[1:])
+    except (OSError, IOError):
+        pass
+    config = {"hostname": domain, "port": 443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
+    # Fetch vehicle list
+    try:
+        req = urllib.request.Request(
+            fleet_host + "/api/1/products",
+            headers={"Authorization": "Bearer " + at},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            products = json.load(r).get("response", []) or []
+    except Exception as e:
+        return {"ok": False, "error": f"Could not fetch vehicle list: {e}"}
+    results = []
+    for p in products:
+        vin = p.get("vin")
+        if not vin:
+            continue
+        tid = p.get("id")
+        try:
+            cbody = json.dumps(config).encode()
+            req = urllib.request.Request(
+                fleet_host + f"/api/1/vehicles/{tid}/fleet_telemetry_config",
+                data=cbody, method="POST",
+                headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as r:
+                resp = json.load(r)
+            results.append({"vin": vin, "ok": True, "response": resp})
+        except Exception as e:
+            results.append({"vin": vin, "ok": False, "error": str(e)})
+    if not results:
+        return {"ok": False, "error": "No vehicles found in your Tesla account"}
+    return {"ok": all(r["ok"] for r in results), "results": results}
+
+
 def build_state():
     now = time.time()
     with _lock:
@@ -479,6 +620,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(_check_cert_detail()))
             elif check == "records":
                 self._send(200, json.dumps(_check_records_status()))
+            elif check == "send_telemetry_config":
+                domain = str(payload.get("domain", "")).strip().lstrip("https://").lstrip("http://").split("/")[0]
+                region = str(payload.get("region", "na")).strip()
+                self._send(200, json.dumps(_send_telemetry_config(domain, region)))
             else:
                 self._send(400, json.dumps({"error": "unknown check type"}))
         else:

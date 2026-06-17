@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+### Added
+- **`send_telemetry_config` wizard check endpoint.** `POST /api/wizard/check` with
+  `{"check":"send_telemetry_config","domain":"...","region":"na"}` uses the stored Tesla credentials
+  to refresh an access token, then POSTs the full 57-field `fleet_telemetry_config` to every vehicle
+  in the account. CA chain is read from the existing NPM cert file and injected automatically.
+
 ## 0.8.0
 
 ### Added
