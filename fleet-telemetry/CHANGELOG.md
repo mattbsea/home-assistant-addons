@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.9
+
+### Bug Fixes
+- **Charging state no longer stuck at stale "Disconnected" after add-on restart.** On warm-start,
+  `DetailedChargeState` and `ChargeState` are now cleared from the reloaded fields, joining the
+  movement fields (`Gear`, `VehicleSpeed`, etc.) dropped in v0.7.8. Without this, a shim restarted
+  while the car was driving would warm-start with `DetailedChargeState=Disconnected`, and the prime
+  (fetched fresh from Tesla on each startup) could not override it — because the prime fill-in only
+  applies when the assembled value is `null`. TeslaMate would therefore see `charging_state:
+  Disconnected` even while the car was actively charging on arrival, missing the entire charging
+  session until the first new stream record arrived. Clearing these on warm-start lets the fresh
+  prime supply the correct `charging_state` immediately.
+
 ## 0.7.8
 
 ### Bug Fixes
