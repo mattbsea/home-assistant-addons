@@ -271,10 +271,18 @@ def _load_wizard_state():
 
 
 def _save_wizard_state(data):
-    tmp = WIZARD_STATE_FILE + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(data, fh)
-    os.replace(tmp, WIZARD_STATE_FILE)
+    dirpath = os.path.dirname(WIZARD_STATE_FILE) or "."
+    fd, tmp = tempfile.mkstemp(dir=dirpath, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, WIZARD_STATE_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _check_pubkey(domain):
