@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.7
+
+### Changed
+- **Auto-detect the add-on's host-mapped ports for the NPM forward target.** The stream and
+  public-key proxy host now forward to the actual host port the add-on is mapped to (read live from
+  the Supervisor `/addons/self/info` Network settings) instead of assuming a 1:1 mapping — so it's
+  correct even if you remap ports in the Network tab. Step 9 now shows the exact forward target
+  (`<forward_host>:<host_port>`), and notes the host is your NPM setting while the port is detected
+  from the add-on settings.
+
 ## 0.10.6
 
 ### Added

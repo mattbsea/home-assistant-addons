@@ -669,6 +669,25 @@ def _npm_find_proxy_host(base, token, domain):
     return None
 
 
+def _addon_host_port(internal_port):
+    """Host-side port mapped to <internal_port>/tcp, read live from the add-on's Network settings via
+    the Supervisor. NPM forwards to the HOST port, which the user can remap in the Network tab — so
+    we never assume 1:1. Falls back to the internal port if the mapping is unknown/unexposed."""
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token:
+        return internal_port
+    try:
+        _status, body = _http_json("GET", "http://supervisor/addons/self/info",
+                                   headers={"Authorization": "Bearer " + token}, timeout=10)
+        net = (body.get("data") or {}).get("network") if isinstance(body, dict) else None
+        mapped = net.get(f"{internal_port}/tcp") if isinstance(net, dict) else None
+        if isinstance(mapped, int) and mapped > 0:
+            return mapped
+    except Exception:
+        pass
+    return internal_port
+
+
 def _create_pubkey_proxy_host(cfg):
     """Create (or reuse) an NPM proxy host that serves the public key over HTTPS for pubkey_domain.
 
@@ -714,7 +733,7 @@ def _create_pubkey_proxy_host(cfg):
         "domain_names": [domain],
         "forward_scheme": "http",
         "forward_host": forward_host,
-        "forward_port": PUBKEY_PORT,
+        "forward_port": _addon_host_port(PUBKEY_PORT),
         "certificate_id": cert_id,
         "ssl_forced": True,
         "block_exploits": True,
@@ -774,10 +793,11 @@ def _create_telemetry_stream(cfg):
     if existing:
         return {"ok": True, "id": existing, "reused": True, "incoming_port": port}
 
+    fwd_port = _addon_host_port(TELEMETRY_PORT)   # host port mapped to the add-on (from Network settings)
     payload = {
         "incoming_port": port,
         "forwarding_host": forward_host,
-        "forwarding_port": TELEMETRY_PORT,   # add-on's internal mTLS port (host-mapped 1:1)
+        "forwarding_port": fwd_port,
         "tcp_forwarding": True,
         "udp_forwarding": False,
         "certificate_id": 0,                 # passthrough — do NOT terminate TLS (mTLS-only server)
@@ -788,7 +808,8 @@ def _create_telemetry_stream(cfg):
     if not stream_id:
         return {"ok": False, "error": f"Stream creation failed (HTTP {sstatus}): {str(sbody)[:300]}. "
                                       f"Confirm port {port} is forwarded from your router to NPM."}
-    return {"ok": True, "id": stream_id, "incoming_port": port}
+    return {"ok": True, "id": stream_id, "incoming_port": port,
+            "forwarding_host": forward_host, "forwarding_port": fwd_port}
 
 
 # ---------------------------------------------------------------------------
@@ -1139,6 +1160,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(_load_wizard_state()))
         elif path.endswith("/api/wizard/config"):
             self._send(200, json.dumps(_redacted_config()))
+        elif path.endswith("/api/wizard/hostports"):
+            # Host-side ports the add-on is mapped to (from the Network settings) — what NPM forwards to.
+            self._send(200, json.dumps({
+                "telemetry_host_port": _addon_host_port(TELEMETRY_PORT),
+                "pubkey_host_port": _addon_host_port(PUBKEY_PORT),
+            }))
         elif path.endswith("/setup"):
             self._send(200, PAGE_SETUP, "text/html; charset=utf-8")
         elif path == "" or path.endswith("/index.html"):
@@ -1619,6 +1646,7 @@ function ago(e){if(!e)return"never";const s=Math.max(0,Date.now()/1000-e);
 // (persisted to /api/wizard/config; secrets come back masked as the SECRET sentinel).
 let W={user_type:null,completed:false,current_step:1,steps:{},inputs:{}};
 let C={};
+let HP={telemetry_host_port:4443,pubkey_host_port:8100};  // add-on host-mapped ports (from Supervisor)
 const SECRET="__SET__";
 let pollTimer=null;
 
@@ -1853,17 +1881,17 @@ function renderStep9(){
   <p style="color:var(--mut);font-size:12px;margin:8px 0 0">Can be any port (not required to be 443) — that keeps 443 free for the public-key proxy host.</p>
 </div>
 <div class="card"><h3>Create the Stream</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough on port <b>${esc(String(tport))}</b> → your HA host <code>:4443</code>, with <b>no SSL termination</b>.</p>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough from public port <b>${esc(String(tport))}</b> → <code>${esc(gc("npm.forward_host","&lt;HA host&gt;"))}:${esc(String(HP.telemetry_host_port||4443))}</code>, with <b>no SSL termination</b>. The forward host is your NPM connection setting; the port is auto-detected from this add-on's Network settings (so it's correct even if you remapped it).</p>
   <button class="btn btn-outline" onclick="createStream()">${sid!=null?"Re-create Stream":"Create Stream in NPM"}</button>
-  <div id="streamResult">${res?(res.ok?`<div class="result ok">✓ Stream ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""} · port ${esc(String(res.incoming_port||tport))} → :4443</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(sid!=null?`<div class="result ok">✓ Stream id ${esc(String(sid))}</div>`:"")}</div>
+  <div id="streamResult">${res?(res.ok?`<div class="result ok">✓ Stream ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""} · ${esc(String(res.incoming_port||tport))} → ${esc(String(res.forwarding_host||""))}:${esc(String(res.forwarding_port||HP.telemetry_host_port||4443))}</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(sid!=null?`<div class="result ok">✓ Stream id ${esc(String(sid))}</div>`:"")}</div>
   <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Make sure your router forwards port <b>${esc(String(tport))}</b> to NPM.</p>
 </div>
 <details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--mut);font-size:12.5px">Prefer to create the Stream manually?</summary>
   <div class="card" style="margin-top:8px"><ol>
     <li>NPM → <b>Streams</b> → <b>Add Stream</b></li>
     <li>Incoming port: <b>${esc(String(tport))}</b></li>
-    <li>Forward host: your Home Assistant IP</li>
-    <li>Forward port: <b>4443</b> (the add-on)</li>
+    <li>Forward host: <b>${esc(gc("npm.forward_host","your Home Assistant IP"))}</b></li>
+    <li>Forward port: <b>${esc(String(HP.telemetry_host_port||4443))}</b> (this add-on's mapped host port)</li>
     <li>TCP on; <b>do NOT</b> enable SSL termination</li>
   </ol>${markDone(9)}</div>
 </details>`;
@@ -2169,6 +2197,7 @@ function updateNav(){
     if(data&&typeof data==="object")W=Object.assign({user_type:null,completed:false,current_step:1,steps:{},inputs:{}},data);
   }catch(e){}
   await reloadConfig();
+  try{const hp=await api("GET","api/wizard/hostports");if(hp&&typeof hp==="object")HP=hp;}catch(e){}
   render();
 })();
 </script>
