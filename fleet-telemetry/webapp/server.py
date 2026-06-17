@@ -1682,6 +1682,13 @@ async function saveField(path,val,isSecret){if(isSecret&&!val)return;await saveC
 // Live (per-keystroke) LOCAL update so the Next button reflects typing immediately. No network —
 // persistence still happens on `change` (blur) via saveField. Bound to `oninput`.
 function setField(path,val,isSecret){if(!(isSecret&&!val))deepMerge(C,patchFrom(path,val));updateNav();}
+// Step 9 telemetry port: update C + the live "public port" displays in place (no re-render, so the
+// input keeps focus while typing).
+function onTelPort(v){
+  const p=parseInt(String(v).trim(),10)||4443;
+  setField("tesla.telemetry_port",p);
+  document.querySelectorAll(".js-tport").forEach(el=>{el.textContent=p;});
+}
 
 function visibleSteps(){
   const ut=W.user_type;
@@ -1877,19 +1884,19 @@ function renderStep9(){
   <label class="flbl">Telemetry domain</label>
   <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(tdom)}" oninput="setField('tesla.telemetry_domain',this.value.trim());setField('npm.cert_domain',this.value.trim())" onchange="saveField('tesla.telemetry_domain',this.value.trim());saveField('npm.cert_domain',this.value.trim())">
   <label class="flbl">Public telemetry port</label>
-  <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" oninput="setField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
+  <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" oninput="onTelPort(this.value)" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
   <p style="color:var(--mut);font-size:12px;margin:8px 0 0">Can be any port (not required to be 443) — that keeps 443 free for the public-key proxy host.</p>
 </div>
 <div class="card"><h3>Create the Stream</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough from public port <b>${esc(String(tport))}</b> → <code>${esc(gc("npm.forward_host","&lt;HA host&gt;"))}:${esc(String(HP.telemetry_host_port||4443))}</code>, with <b>no SSL termination</b>. The forward host is your NPM connection setting; the port is auto-detected from this add-on's Network settings (so it's correct even if you remapped it).</p>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough from public port <b class="js-tport">${esc(String(tport))}</b> → <code>${esc(gc("npm.forward_host","&lt;HA host&gt;"))}:${esc(String(HP.telemetry_host_port||4443))}</code>, with <b>no SSL termination</b>. The forward host is your NPM connection setting; the port is auto-detected from this add-on's Network settings (so it's correct even if you remapped it).</p>
   <button class="btn btn-outline" onclick="createStream()">${sid!=null?"Re-create Stream":"Create Stream in NPM"}</button>
   <div id="streamResult">${res?(res.ok?`<div class="result ok">✓ Stream ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""} · ${esc(String(res.incoming_port||tport))} → ${esc(String(res.forwarding_host||""))}:${esc(String(res.forwarding_port||HP.telemetry_host_port||4443))}</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(sid!=null?`<div class="result ok">✓ Stream id ${esc(String(sid))}</div>`:"")}</div>
-  <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Make sure your router forwards port <b>${esc(String(tport))}</b> to NPM.</p>
+  <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Make sure your router forwards port <b class="js-tport">${esc(String(tport))}</b> to NPM.</p>
 </div>
 <details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--mut);font-size:12.5px">Prefer to create the Stream manually?</summary>
   <div class="card" style="margin-top:8px"><ol>
     <li>NPM → <b>Streams</b> → <b>Add Stream</b></li>
-    <li>Incoming port: <b>${esc(String(tport))}</b></li>
+    <li>Incoming port: <b class="js-tport">${esc(String(tport))}</b></li>
     <li>Forward host: <b>${esc(gc("npm.forward_host","your Home Assistant IP"))}</b></li>
     <li>Forward port: <b>${esc(String(HP.telemetry_host_port||4443))}</b> (this add-on's mapped host port)</li>
     <li>TCP on; <b>do NOT</b> enable SSL termination</li>

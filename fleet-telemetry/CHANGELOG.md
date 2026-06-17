@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.8
+
+### Changed
+- **Step 9 "Create the Stream" text updates live as you change the telemetry port.** The displayed
+  public port (in the description, router-forward note, and manual instructions) now updates on each
+  keystroke without re-rendering the step, so it always reflects the value in the port field.
+
 ## 0.10.7
 
 ### Changed
