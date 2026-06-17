@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+### Changed
+- **`fleet_telemetry_config` now uses the correct signing flow.** The endpoint requires JWS command
+  signing via `tesla-http-proxy` — a plain Bearer-token POST always returns a generic 404. The
+  function now uses the `teslamate_shim_*` refresh token (user-context, `grant_type=refresh_token`)
+  instead of the developer client credentials, routes the request through a locally spawned
+  `tesla-http-proxy` instance that signs the payload with the app EC private key, and targets
+  the bulk `POST /api/1/vehicles/fleet_telemetry_config` endpoint with a `vins` array. The
+  `developer_*` credential options remain in the configuration for partner account operations.
+
+### Added
+- **Bundled `tesla-http-proxy` binary** (`vehicle-command v0.4.1`, built from source in a Go
+  multi-stage Dockerfile stage). The binary is installed at `/usr/local/bin/tesla-http-proxy`.
+- **`share:ro` volume mount** — the add-on now reads the app EC private key from
+  `/share/tesla-fleet/private-key.pem`. Place your Tesla developer private key there before
+  triggering `send_telemetry_config`.
+
 ## 0.8.8
 
 ### Added

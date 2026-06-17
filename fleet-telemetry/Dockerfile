@@ -7,6 +7,16 @@ ARG BUILD_FROM
 # statically linked in, so the runtime base only needs libstdc++6.
 FROM tesla/fleet-telemetry:v0.9.0 AS upstream
 
+# Build tesla-http-proxy from source (vehicle-command v0.4.1). The binary acts as a local signing
+# proxy: it inserts JWS signatures into fleet_telemetry_config (and other signed-command endpoints)
+# using the app's EC private key, so we never need to implement JWS signing ourselves.
+FROM golang:1.23-alpine AS proxy_builder
+RUN apk add --no-cache git
+RUN git clone --depth 1 --branch v0.4.1 \
+        https://github.com/teslamotors/vehicle-command /src
+WORKDIR /src
+RUN go build -o /tesla-http-proxy ./cmd/tesla-http-proxy
+
 # MyTeslaMate websocket server (bundled, optional). We vendor the upstream "master" source — the
 # HTTP-receiver variant (POST / accepts the Pub/Sub-push envelope; NO google-cloud subscriber) — and
 # npm-install its pure-JS deps here. The published Docker image is the Pub/Sub-pull variant and is
@@ -37,6 +47,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=upstream /fleet-telemetry /usr/local/bin/fleet-telemetry
+COPY --from=proxy_builder /tesla-http-proxy /usr/local/bin/tesla-http-proxy
 COPY --from=teslamate_ws /opt/teslamate-ws /opt/teslamate-ws
 
 COPY run.sh /run.sh

@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.8.8"
+version: "0.9.0"
 slug: "fleet_telemetry"
 init: false
 
@@ -39,6 +39,7 @@ ports_description:
 # Persistent storage for generated config.json, fetched TLS certs, and GCP credentials
 map:
   - data:rw
+  - share:ro
 
 # Used for bashio::info.timezone; entities are not published directly by this add-on
 hassio_api: true

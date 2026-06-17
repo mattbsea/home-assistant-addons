@@ -10,7 +10,10 @@ unaffected.
 import json
 import os
 import re
+import shutil
+import socket
 import subprocess
+import tempfile
 import threading
 import time
 import ssl
@@ -412,22 +415,36 @@ _TELEMETRY_FIELDS = {
 
 
 def _send_telemetry_config(domain, region):
-    client_id = os.environ.get("FT_DEV_CLIENT_ID", "")
-    client_secret = os.environ.get("FT_DEV_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        return {"ok": False, "error": "developer_client_id and developer_client_secret must be set in add-on options"}
+    # fleet_telemetry_config is a signed vehicle command — it requires the app EC private key via
+    # tesla-http-proxy. A plain Bearer-token POST always returns a generic 404.
+    client_id = os.environ.get("FT_SHIM_CLIENT_ID", "")
+    if not client_id:
+        return {"ok": False, "error": "teslamate_shim_client_id must be set in add-on options"}
+
+    # Load shim state once for both the refresh token and the VIN list.
+    state = {}
+    try:
+        with open(SHIM_STATE_FILE) as fh:
+            state = json.load(fh)
+    except (OSError, IOError, json.JSONDecodeError):
+        pass
+
+    rt = state.get("refresh_token", "") or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+    if not rt:
+        return {"ok": False, "error": "No refresh token available — set teslamate_shim_refresh_token in add-on options"}
+
+    vins = list(state.get("vehicles", {}).keys())
+    if not vins:
+        return {"ok": False, "error": "No VINs in shim state — wait for the shim to prime after add-on start, then retry"}
+
     auth_host = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
-    fleet_host = (os.environ.get("FT_DEV_FLEET_HOST", "") or
-                  _FLEET_HOSTS.get(region) or
-                  os.environ.get("FT_SHIM_FLEET_HOST", "") or
-                  _FLEET_HOSTS["na"])
-    # Client credentials grant — developer authenticates as themselves, no user token needed
+
+    # Obtain user-context access token via refresh_token grant.
     try:
         body = urllib.parse.urlencode({
-            "grant_type": "client_credentials",
+            "grant_type": "refresh_token",
             "client_id": client_id,
-            "client_secret": client_secret,
-            "scope": "vehicle_device_data openid",
+            "refresh_token": rt,
         }).encode()
         req = urllib.request.Request(
             auth_host + "/oauth2/v3/token", data=body,
@@ -443,10 +460,24 @@ def _send_telemetry_config(domain, region):
         return {"ok": False, "error": f"Token request failed HTTP {e.code}: {body2[:300]}"}
     except Exception as e:
         return {"ok": False, "error": f"Token request failed: {e}"}
+
     at = tok.get("access_token")
     if not at:
         return {"ok": False, "error": f"No access_token returned: {tok}"}
-    # Read CA chain from cert file (everything after the leaf cert)
+
+    # Persist the rotated refresh token so future calls use the current one.
+    new_rt = tok.get("refresh_token")
+    if new_rt and new_rt != rt:
+        try:
+            state["refresh_token"] = new_rt
+            tmp = SHIM_STATE_FILE + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(state, fh)
+            os.replace(tmp, SHIM_STATE_FILE)
+        except Exception:
+            pass
+
+    # Build the fleet_telemetry_config payload (CA chain from the add-on's TLS cert).
     ca_chain = ""
     try:
         with open(CERT_FILE) as fh:
@@ -457,77 +488,84 @@ def _send_telemetry_config(domain, region):
     except (OSError, IOError):
         pass
     config = {"hostname": domain, "port": 443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
-    # Verify partner account registration (required for fleet_telemetry_config)
+
+    # The app private key signs the JWS payload inside tesla-http-proxy.
+    key_file = "/share/tesla-fleet/private-key.pem"
+    if not os.path.exists(key_file):
+        return {"ok": False, "error": f"App private key not found at {key_file} — place your EC private key there"}
+
+    # Generate an ephemeral TLS cert for the local proxy (must differ from the app signing key).
+    tmpdir = tempfile.mkdtemp(prefix="ft-proxy-")
+    proxy_key = os.path.join(tmpdir, "proxy.key")
+    proxy_cert = os.path.join(tmpdir, "proxy.crt")
     try:
-        req = urllib.request.Request(
-            fleet_host + "/api/1/partner_accounts",
-            headers={"Authorization": "Bearer " + at},
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "ec",
+             "-pkeyopt", "ec_paramgen_curve:P-256",
+             "-keyout", proxy_key, "-out", proxy_cert,
+             "-days", "1", "-nodes", "-subj", "/CN=127.0.0.1",
+             "-addext", "subjectAltName=IP:127.0.0.1"],
+            check=True, capture_output=True, timeout=15,
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            pa = json.load(r)
-        registered_domain = (pa.get("response") or {}).get("domain", "")
-        if registered_domain.lower().rstrip(".") != domain.lower().rstrip("."):
-            # Auto-register the partner account for this domain
-            rbody = json.dumps({"domain": domain}).encode()
-            req2 = urllib.request.Request(
-                fleet_host + "/api/1/partner_accounts",
-                data=rbody, method="POST",
-                headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req2, timeout=20) as r2:
-                pa2 = json.load(r2)
-    except urllib.error.HTTPError as e:
-        try:
-            body = e.read(1024).decode("utf-8", errors="replace")
-        except Exception:
-            body = ""
-        return {"ok": False, "error": f"Partner account check failed HTTP {e.code}: {body[:300]}"}
     except Exception as e:
-        return {"ok": False, "error": f"Partner account check failed: {e}"}
-    # Fetch vehicle list
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return {"ok": False, "error": f"Failed to generate proxy TLS cert: {e}"}
+
+    # Find a free local port.
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        proxy_port = s.getsockname()[1]
+
+    proxy_proc = None
     try:
-        req = urllib.request.Request(
-            fleet_host + "/api/1/vehicles",
-            headers={"Authorization": "Bearer " + at},
+        proxy_proc = subprocess.Popen(
+            ["/usr/local/bin/tesla-http-proxy",
+             "-key-file", key_file,
+             "-cert", proxy_cert,
+             "-tls-key", proxy_key,
+             "-port", str(proxy_port),
+             "-host", "localhost"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            products = json.load(r).get("response", []) or []
-    except Exception as e:
-        return {"ok": False, "error": f"Could not fetch vehicle list: {e}"}
-    results = []
-    for p in products:
-        vin = p.get("vin")
-        if not vin:
-            continue
-        tid = p.get("id")
-        last_err = ""
-        sent = False
-        for vehicle_tag in (vin, str(tid)):
+        # Wait up to 10 s for the proxy to start accepting connections.
+        deadline = time.time() + 10
+        while time.time() < deadline:
             try:
-                cbody = json.dumps(config).encode()
-                req = urllib.request.Request(
-                    fleet_host + f"/api/1/vehicles/{vehicle_tag}/fleet_telemetry_config",
-                    data=cbody, method="POST",
-                    headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    resp = json.load(r)
-                results.append({"vin": vin, "ok": True, "vehicle_tag": vehicle_tag, "response": resp})
-                sent = True
-                break
-            except urllib.error.HTTPError as e:
-                try:
-                    body = e.read(2048).decode("utf-8", errors="replace")
-                except Exception:
-                    body = ""
-                last_err = f"HTTP {e.code} (tag={vehicle_tag}): {body[:300]}"
-            except Exception as e:
-                last_err = f"{e} (tag={vehicle_tag})"
-        if not sent:
-            results.append({"vin": vin, "ok": False, "error": last_err})
-    if not results:
-        return {"ok": False, "error": "No vehicles found in your Tesla account"}
-    return {"ok": all(r["ok"] for r in results), "results": results}
+                with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.2):
+                    break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            return {"ok": False, "error": "tesla-http-proxy did not start within 10 seconds"}
+
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.load_verify_locations(proxy_cert)
+
+        payload = json.dumps({"vins": vins, "config": config}).encode()
+        req = urllib.request.Request(
+            f"https://127.0.0.1:{proxy_port}/api/1/vehicles/fleet_telemetry_config",
+            data=payload, method="POST",
+            headers={
+                "Authorization": "Bearer " + at,
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as r:
+                resp = json.load(r)
+            return {"ok": True, "vins": vins, "response": resp}
+        except urllib.error.HTTPError as e:
+            try:
+                body2 = e.read(2048).decode("utf-8", errors="replace")
+            except Exception:
+                body2 = ""
+            return {"ok": False, "error": f"fleet_telemetry_config failed HTTP {e.code}: {body2[:500]}"}
+        except Exception as e:
+            return {"ok": False, "error": f"fleet_telemetry_config request failed: {e}"}
+    finally:
+        if proxy_proc and proxy_proc.poll() is None:
+            proxy_proc.kill()
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def build_state():
