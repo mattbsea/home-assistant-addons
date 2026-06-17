@@ -471,7 +471,7 @@ def _send_telemetry_config(domain, region):
         try:
             cbody = json.dumps(config).encode()
             req = urllib.request.Request(
-                fleet_host + f"/api/1/vehicles/{tid}/fleet_telemetry_config",
+                fleet_host + f"/api/1/vehicles/{vin}/fleet_telemetry_config",
                 data=cbody, method="POST",
                 headers={"Authorization": "Bearer " + at, "Content-Type": "application/json"},
             )
