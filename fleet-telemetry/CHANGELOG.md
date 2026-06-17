@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.7
+
+### Changed
+- **Wizard step 9 now has a configurable port field** (default 4443). The port is saved to
+  wizard state, shown in the example JSON preview, and passed through to the vehicle config.
+
 ## 0.9.6
 
 ### Fixed

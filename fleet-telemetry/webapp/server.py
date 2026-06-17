@@ -426,7 +426,7 @@ _TELEMETRY_FIELDS = {
 }
 
 
-def _send_telemetry_config(domain, region):
+def _send_telemetry_config(domain, region, port=4443):
     # fleet_telemetry_config is a signed vehicle command — it requires the app EC private key via
     # tesla-http-proxy. A plain Bearer-token POST always returns a generic 404.
     client_id = os.environ.get("FT_SHIM_CLIENT_ID", "")
@@ -499,7 +499,7 @@ def _send_telemetry_config(domain, region):
             ca_chain = "\n".join(certs[1:])
     except (OSError, IOError):
         pass
-    config = {"hostname": domain, "port": 4443, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
+    config = {"hostname": domain, "port": port, "ca": ca_chain, "fields": _TELEMETRY_FIELDS}
 
     # The app private key signs the JWS payload inside tesla-http-proxy.
     key_file = "/share/tesla-fleet/private-key.pem"
@@ -718,7 +718,11 @@ class Handler(BaseHTTPRequestHandler):
             elif check == "send_telemetry_config":
                 domain = str(payload.get("domain", "")).strip().lstrip("https://").lstrip("http://").split("/")[0]
                 region = str(payload.get("region", "na")).strip()
-                self._send(200, json.dumps(_send_telemetry_config(domain, region)))
+                try:
+                    port = int(payload.get("port", 4443))
+                except (TypeError, ValueError):
+                    port = 4443
+                self._send(200, json.dumps(_send_telemetry_config(domain, region, port)))
             else:
                 self._send(400, json.dumps({"error": "unknown check type"}))
         else:
@@ -1309,12 +1313,13 @@ function renderStep8(){
 
 function renderStep9(){
   const domain=W.inputs.domain||"&lt;your-domain&gt;";
+  const port=W.inputs.port||4443;
   const region=W.inputs.region||"na";
   const hosts={na:"https://fleet-api.prd.na.vn.cloud.tesla.com",eu:"https://fleet-api.prd.eu.vn.cloud.tesla.com",cn:"https://fleet-api.prd.cn.vn.cloud.tesla.com"};
   const host=hosts[region];
   const cfg=`{
   "hostname": "${domain}",
-  "port": 4443,
+  "port": ${port},
   "ca": "<Let's Encrypt R3+R10 chain — see note below>",
   "fields": {
     "VehicleSpeed":              {"interval_seconds": 10},
@@ -1380,14 +1385,16 @@ function renderStep9(){
   }
 }`;
   const domainVal=W.inputs.domain||"";
+  const portVal=W.inputs.port||4443;
   const res=W.inputs.telemetry_config_result||null;
   return`
 <h2>Configure Vehicle Telemetry</h2>
 <p class="subtitle">Tell your Tesla vehicle where to stream data. This sends the configuration directly from the add-on using your stored credentials.</p>
-<div class="card"><h3>Telemetry domain</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">The public hostname your vehicle will connect to — must match your TLS certificate.</p>
-  <div class="input-row">
-    <input type="text" id="telDomainInput" placeholder="telemetry.example.org" value="${esc(domainVal)}">
+<div class="card"><h3>Telemetry endpoint</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">The public hostname and port your vehicle will connect to.</p>
+  <div class="input-row" style="gap:8px">
+    <input type="text" id="telDomainInput" placeholder="telemetry.example.org" value="${esc(domainVal)}" style="flex:1">
+    <input type="number" id="telPortInput" placeholder="4443" value="${esc(String(portVal))}" style="width:90px;flex:none">
   </div>
 </div>
 <div class="region-sel">
@@ -1396,7 +1403,7 @@ function renderStep9(){
   <button class="region-btn${region==="cn"?" sel":""}" onclick="setRegion('cn')">China</button>
 </div>
 <div class="card"><h3>What will be sent</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">57 telemetry fields · port 443 · CA chain from your TLS cert. VINs and credentials are read automatically from the add-on.</p>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">57 telemetry fields · port ${portVal} · CA chain from your TLS cert. VINs and credentials are read automatically from the add-on.</p>
   ${codebox(cfg,"cfg-json")}
 </div>
 <div class="card"><h3>Send configuration</h3>
@@ -1511,16 +1518,18 @@ async function checkCert(){
 async function sendTelemetryConfig(){
   const el=document.getElementById("telCfgResult");
   const inp=document.getElementById("telDomainInput");
+  const portInp=document.getElementById("telPortInput");
   const raw=inp?inp.value.trim():(W.inputs.domain||"");
   const domain=raw.replace(/^https?:\/\//,"").replace(/\/.*$/,"");
   if(!domain){
     if(el)el.innerHTML=`<div class="result err">✗ Enter your telemetry domain above before sending.</div>`;
     return;
   }
+  const port=portInp?parseInt(portInp.value.trim(),10)||4443:(W.inputs.port||4443);
   if(el)el.innerHTML=`<div class="result info">Sending… this may take up to 30 seconds while the signing proxy starts.</div>`;
   const region=W.inputs.region||"na";
-  const r=await api("POST","api/wizard/check",{check:"send_telemetry_config",domain,region});
-  const newInputs={...W.inputs,domain,telemetry_config_result:r};
+  const r=await api("POST","api/wizard/check",{check:"send_telemetry_config",domain,port,region});
+  const newInputs={...W.inputs,domain,port,telemetry_config_result:r};
   const newSteps=r.ok?{...W.steps,"9":"done"}:W.steps;
   await save({inputs:newInputs,steps:newSteps});
   if(el)el.innerHTML=configResultHtml(r);
