@@ -411,60 +411,41 @@ _TELEMETRY_FIELDS = {
 }
 
 
-_DEV_STATE_FILE = os.environ.get("FT_DEV_STATE", "/data/dev-token.json")
-
-
 def _send_telemetry_config(domain, region):
-    # Prefer dedicated developer credentials; fall back to shim credentials.
-    client_id = os.environ.get("FT_DEV_CLIENT_ID", "") or os.environ.get("FT_SHIM_CLIENT_ID", "")
-    if not client_id:
-        return {"ok": False, "error": "No Tesla client_id configured — set developer_client_id in add-on options"}
-    rt_seed = os.environ.get("FT_DEV_REFRESH_TOKEN", "") or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
-    # Prefer rotated token from dev state file; fall back to shim state
-    rt = rt_seed
-    for state_file in (_DEV_STATE_FILE, SHIM_STATE_FILE):
-        try:
-            with open(state_file) as fh:
-                ss = json.load(fh)
-            if ss.get("refresh_token"):
-                rt = ss["refresh_token"]
-                break
-        except (OSError, ValueError):
-            pass
-    if not rt:
-        return {"ok": False, "error": "No Tesla refresh_token configured — set developer_refresh_token in add-on options"}
+    client_id = os.environ.get("FT_DEV_CLIENT_ID", "")
+    client_secret = os.environ.get("FT_DEV_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        return {"ok": False, "error": "developer_client_id and developer_client_secret must be set in add-on options"}
     auth_host = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
-    # Use configured developer fleet host, then region map, then shim host
     fleet_host = (os.environ.get("FT_DEV_FLEET_HOST", "") or
                   _FLEET_HOSTS.get(region) or
                   os.environ.get("FT_SHIM_FLEET_HOST", "") or
                   _FLEET_HOSTS["na"])
-    # Token refresh
+    # Client credentials grant — developer authenticates as themselves, no user token needed
     try:
-        body = urllib.parse.urlencode(
-            {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": rt}
-        ).encode()
+        body = urllib.parse.urlencode({
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "vehicle_device_data openid",
+        }).encode()
         req = urllib.request.Request(
             auth_host + "/oauth2/v3/token", data=body,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         with urllib.request.urlopen(req, timeout=20) as r:
             tok = json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            body2 = e.read(1024).decode("utf-8", errors="replace")
+        except Exception:
+            body2 = ""
+        return {"ok": False, "error": f"Token request failed HTTP {e.code}: {body2[:300]}"}
     except Exception as e:
-        return {"ok": False, "error": f"Token refresh failed: {e}"}
+        return {"ok": False, "error": f"Token request failed: {e}"}
     at = tok.get("access_token")
     if not at:
-        return {"ok": False, "error": "No access_token returned from Tesla auth"}
-    # Persist rotated refresh token so next call doesn't need the seed
-    new_rt = tok.get("refresh_token")
-    if new_rt and new_rt != rt:
-        try:
-            tmp = _DEV_STATE_FILE + ".tmp"
-            with open(tmp, "w") as fh:
-                json.dump({"refresh_token": new_rt}, fh)
-            os.replace(tmp, _DEV_STATE_FILE)
-        except OSError:
-            pass
+        return {"ok": False, "error": f"No access_token returned: {tok}"}
     # Read CA chain from cert file (everything after the leaf cert)
     ca_chain = ""
     try:
