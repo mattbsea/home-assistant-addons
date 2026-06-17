@@ -1026,8 +1026,10 @@ pre{background:var(--card2);border:1px solid var(--line);border-radius:8px;paddi
 .copy-btn{position:absolute;top:8px;right:8px;background:var(--card);border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
 .copy-btn:hover{color:var(--txt)}
 .input-row{display:flex;gap:8px;margin-bottom:10px}
-input[type=text]{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;color:var(--txt);font-size:13.5px;outline:none}
-input[type=text]:focus{border-color:var(--accent)}
+input[type=text],input[type=number]{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;color:var(--txt);font-size:13.5px;outline:none}
+input[type=text]:focus,input[type=number]:focus{border-color:var(--accent)}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
 .btn{padding:10px 20px;border-radius:8px;border:none;font-size:13.5px;font-weight:600;cursor:pointer}
 .btn-primary{background:var(--accent);color:#04121f}.btn-primary:disabled{opacity:.45;cursor:not-allowed}
 .btn-secondary{background:var(--card2);color:var(--txt);border:1px solid var(--line)}

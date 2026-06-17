@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.9.7"
+version: "0.9.8"
 slug: "fleet_telemetry"
 init: false
 
