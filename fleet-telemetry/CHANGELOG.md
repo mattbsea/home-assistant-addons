@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.10
+
+### Added
+- **New "Pair Virtual Key" step** before sending the vehicle telemetry config. Tesla requires the
+  owner to approve the app's key on each vehicle (via the `https://tesla.com/_ak/<domain>` deep
+  link in the Tesla app) before it accepts any signed command, so the `fleet_telemetry_config` send
+  would otherwise fail. The step shows the copyable deep link and is gated before the send step.
+
 ## 0.10.9
 
 ### Fixed

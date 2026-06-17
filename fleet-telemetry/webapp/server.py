@@ -1695,9 +1695,9 @@ function onTelPort(v){
 function visibleSteps(){
   const ut=W.user_type;
   if(!ut)return[1];
-  // 14 = TeslaMate integration, only for the TeslaMate paths.
-  if(ut==="new")return[1,2,3,4,5,6,7,8,9,10,11,12,13,15,16];
-  return[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+  // 17 = pair virtual key (must precede 13 = send vehicle config). 14 = TeslaMate, TeslaMate paths only.
+  if(ut==="new")return[1,2,3,4,5,6,7,8,9,10,11,12,17,13,15,16];
+  return[1,2,3,4,5,6,7,8,9,10,11,12,17,13,14,15,16];
 }
 
 function codebox(code,id){
@@ -2027,6 +2027,7 @@ function renderStep16(){
     {label:"Partner account registered",ok:!!gc("tesla.partner_registered",false)},
     {label:"Telemetry stream &amp; certificate",ok:!!(W.inputs.cert_check&&W.inputs.cert_check.ok)},
     {label:"Tesla account login",ok:ssor("tesla.shim_refresh_token")},
+    {label:"Virtual key paired with vehicle",ok:W.steps["17"]==="done"},
     {label:"Vehicle telemetry configured",ok:!!(W.inputs.telemetry_config_result&&W.inputs.telemetry_config_result.ok)},
     {label:"Telemetry records verified",ok:!!(W.inputs.verify_state&&W.inputs.verify_state.records_ok)},
   ];
@@ -2039,6 +2040,22 @@ function renderStep16(){
 <div class="card" style="background:transparent;border-color:var(--accent)">
   <p style="margin:0;font-size:13.5px">The <b>Setup Guide</b> is always available from the dashboard header if you need to revisit any step.</p>
 </div>`;
+}
+
+function renderStep17(){
+  const dom=gc("tesla.pubkey_domain","")||"<your-domain>";
+  return`
+<h2>Pair the Virtual Key with Your Vehicle</h2>
+<p class="subtitle">Tesla requires the vehicle owner to approve your app's key on each car before it will accept any signed command — including the telemetry config you send in the next step.</p>
+<div class="card"><h3>On your phone (Tesla app installed, signed in as the owner)</h3>
+  <ol>
+    <li>Open this link on the phone — it launches the Tesla app's <b>Add Virtual Key</b> prompt:</li>
+  </ol>
+  ${codebox("https://tesla.com/_ak/"+dom,"pair-url")}
+  <p style="color:var(--mut);font-size:12.5px;margin:8px 0 0">Approve adding the key to your vehicle. Repeat for each car. (Tip: email yourself the link or use a QR generator to open it on the phone.)</p>
+</div>
+<div class="card" style="border-color:var(--warn)"><p style="margin:0;font-size:13px">Without pairing, the next step (<b>Send to vehicle</b>) and every signed command will fail with a key/authentication error.</p></div>
+${markDone(17)}`;
 }
 
 // ---- Interactions ----
@@ -2134,6 +2151,7 @@ function canAdvance(){
   if(s===9)return!!gc("tesla.telemetry_domain","")&&(gc("npm.stream_id",null)!=null||W.steps["9"]==="done");
   if(s===10)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
   if(s===11)return ssor("tesla.shim_refresh_token");
+  if(s===17)return W.steps["17"]==="done";
   if(s===13)return!!(W.inputs.telemetry_config_result&&W.inputs.telemetry_config_result.ok);
   return true;
 }
@@ -2165,7 +2183,7 @@ async function pollVerify(){
 
 const STEP_TITLES={1:"Welcome",2:"Prerequisites",3:"NGINX Proxy Manager",4:"Signing Key",5:"Public-Key Domain",
   6:"Verify Public Key",7:"Tesla App",8:"Register Partner",9:"Telemetry Stream",10:"Verify Certificate",
-  11:"Tesla Login",12:"Backends & Tuning",13:"Vehicle Config",14:"TeslaMate",15:"Verification",16:"Done"};
+  11:"Tesla Login",12:"Backends & Tuning",17:"Pair Virtual Key",13:"Vehicle Config",14:"TeslaMate",15:"Verification",16:"Done"};
 // NOTE: function names are historical; the WIZARD ORDER is defined here. NPM/keypair/public-key
 // hosting must come BEFORE entering Tesla app credentials — Tesla's developer portal only issues a
 // Client ID/Secret once it can validate the public key at your live domain.
@@ -2176,6 +2194,7 @@ const RENDERERS={1:renderStep1,2:renderStep2,
   6:renderStep7,   // Verify public key reachable
   7:renderStep3,   // Tesla app credentials (now that the domain validates)
   8:renderStep8,9:renderStep9,10:renderStep10,11:renderStep11,12:renderStep12,
+  17:renderStep17,  // Pair virtual key (ordered before 13 via visibleSteps)
   13:renderStep13,14:renderStep14,15:renderStep15,16:renderStep16};
 
 function render(){
