@@ -1,11 +1,13 @@
 # Changelog
 
-## 0.9.8
+## 0.9.9
 
 ### Fixed
 - **Shim `drive_state.power` is now an integer.** TeslaMate's Ecto schema requires power as
   `integer` (kW, rounded), but the shim was returning a float (e.g. `21.9`), causing an Ecto
   changeset validation error and a TeslaMate crash loop on every drive poll.
+
+## 0.9.8
 
 ## 0.9.7
 
