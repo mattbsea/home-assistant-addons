@@ -75,6 +75,28 @@ def _fan_speed(v):
     return int(m.group()) if m else None
 
 
+def _window_state(v):
+    """Parse window state enum ('WindowStateClosed', 'WindowStateVenting', 'WindowStateOpen')
+    to TeslaMate integer: 0=closed, 1=venting, 2=open."""
+    if v is None:
+        return None
+    s = str(v)
+    if "Closed" in s:
+        return 0
+    if "Vent" in s:
+        return 1
+    if "Open" in s or "Partial" in s:
+        return 2
+    return None
+
+
+def _defrost_on(v):
+    """Parse DefrostMode enum — any non-Off value means defrost is active."""
+    if v is None:
+        return None
+    return "Off" not in str(v)
+
+
 def _parse_loc(val):
     if isinstance(val, dict):
         return _num(val.get("latitude", val.get("Latitude"))), _num(val.get("longitude", val.get("Longitude")))
@@ -202,7 +224,10 @@ class Vehicle:
         # So negate the product to match what TeslaMate expects.
         power = round(-pv * pc / 1000.0, 1) if (driving and pv is not None and pc is not None) else (None if driving else 0)
         drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": _num(f.get("GpsHeading")),
-                       "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift}
+                       "speed": _num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift,
+                       "active_route_destination": f.get("DestinationName") or f.get("Destination") or None,
+                       "active_route_miles_to_arrival": _num(f.get("MilesToArrival")),
+                       "active_route_minutes_to_arrival": _num(f.get("MinutesToArrival"))}
 
         ac_p, dc_p = _num(f.get("ACChargingPower")), _num(f.get("DCChargingPower"))
         charger_power = int(round((ac_p or 0) + (dc_p or 0))) if (ac_p is not None or dc_p is not None) else None
@@ -219,14 +244,23 @@ class Vehicle:
             "conn_charge_cable": _strip_state(f.get("ChargingCableType")),
             "fast_charger_present": f.get("FastChargerPresent") if isinstance(f.get("FastChargerPresent"), bool) else None,
             "fast_charger_type": _strip_state(f.get("FastChargerType")), "time_to_full_charge": _num(f.get("TimeToFullCharge")),
-            "charge_limit_soc": _round_int(f.get("ChargeLimitSoc"))}
+            "charge_limit_soc": _round_int(f.get("ChargeLimitSoc")),
+            "charge_current_request": _round_int(f.get("ChargeCurrentRequest")),
+            "charge_current_request_max": _round_int(f.get("ChargeCurrentRequestMax")),
+            "charge_port_door_open": f.get("ChargePortDoorOpen") if isinstance(f.get("ChargePortDoorOpen"), bool) else None,
+            "battery_heater_on": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None,
+            "not_enough_power_to_heat": f.get("NotEnoughPowerToHeat") if isinstance(f.get("NotEnoughPowerToHeat"), bool) else None}
 
         climate_state = {
             "timestamp": ts, "outside_temp": _num(f.get("OutsideTemp")), "inside_temp": _num(f.get("InsideTemp")),
             "is_climate_on": (_bool(f.get("HvacACEnabled")) or _strip_state(f.get("HvacPower")) == "On") or None,
             "climate_keeper_mode": (lambda m: m.lower() if m else None)(_strip_state(f.get("ClimateKeeperMode"))),
             "fan_status": _fan_speed(f.get("HvacFanStatus")), "driver_temp_setting": _num(f.get("HvacLeftTemperatureRequest")),
-            "passenger_temp_setting": _num(f.get("HvacRightTemperatureRequest"))}
+            "passenger_temp_setting": _num(f.get("HvacRightTemperatureRequest")),
+            "is_preconditioning": f.get("PreconditioningEnabled") if isinstance(f.get("PreconditioningEnabled"), bool) else None,
+            "is_front_defroster_on": _defrost_on(f.get("DefrostMode")),
+            "is_rear_defroster_on": f.get("RearDefrostEnabled") if isinstance(f.get("RearDefrostEnabled"), bool) else None,
+            "battery_heater": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None}
 
         sentry = _strip_state(f.get("SentryMode"))
         vehicle_state = {
@@ -236,6 +270,8 @@ class Vehicle:
             "sentry_mode": (sentry in ("Armed", "On", "Enabled")) if sentry is not None else None,
             "tpms_pressure_fl": _num(f.get("TpmsPressureFl")), "tpms_pressure_fr": _num(f.get("TpmsPressureFr")),
             "tpms_pressure_rl": _num(f.get("TpmsPressureRl")), "tpms_pressure_rr": _num(f.get("TpmsPressureRr")),
+            "fd_window": _window_state(f.get("FdWindow")), "fp_window": _window_state(f.get("FpWindow")),
+            "rd_window": _window_state(f.get("RdWindow")), "rp_window": _window_state(f.get("RpWindow")),
             "is_user_present": False,
             "software_update": {"status": "", "download_perc": 0, "install_perc": 0, "version": ""}}
         doors = f.get("DoorState") if isinstance(f.get("DoorState"), dict) else None

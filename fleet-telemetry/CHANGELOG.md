@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.8.0
+
+### Added
+- **Massively expanded TeslaMate data coverage.** The shim now maps significantly more streaming
+  telemetry fields to TeslaMate's Fleet API response format, eliminating data gaps that were
+  previously only filled (partially) by the prime snapshot:
+  - **Charge state**: `battery_heater_on`, `not_enough_power_to_heat`, `charge_current_request`,
+    `charge_current_request_max`, `charge_port_door_open` — TeslaMate stores these in both the
+    `charges` and `positions` tables; they were previously absent from streaming responses.
+  - **Climate state**: `is_preconditioning`, `is_front_defroster_on`, `is_rear_defroster_on`,
+    `battery_heater` — all four were missing from the assembled climate response.
+  - **Vehicle state**: `fd_window`, `fp_window`, `rd_window`, `rp_window` — window positions
+    (0=closed, 1=venting, 2=open) now populated from streaming `FdWindow`/`FpWindow`/`RdWindow`/
+    `RpWindow` enum fields.
+  - **Drive state**: `active_route_destination`, `active_route_miles_to_arrival`,
+    `active_route_minutes_to_arrival` — now populated from the streaming `DestinationName`,
+    `MilesToArrival`, `MinutesToArrival` fields (not only from the prime snapshot).
+- **Two new helper functions** in the shim (`_window_state`, `_defrost_on`) that parse the
+  enum-string format Tesla streaming uses for windows and defrost mode.
+- **`_prime_to_fields()`** in the dashboard extended to map the same new fields from the prime
+  snapshot into the streaming field namespace, so the dashboard displays them correctly on startup
+  before the live stream has supplied them.
+- **Wizard fleet_telemetry_config expanded from 12 to 57 fields.** The recommended config in
+  setup wizard Step 9 now includes every streaming field the shim reads: energy counters
+  (`ACChargingEnergyIn`, `DCChargingEnergyIn`), pack power (`PackVoltage`, `PackCurrent`), all
+  range estimates, charger detail, battery heater state, preconditioning, defroster, window
+  positions, GPS heading, TPMS pressures, odometer, firmware version, lock/sentry, and door/window
+  states. Users who re-send the config to their vehicle unlock full data capture.
+
 ## 0.7.10
 
 ### Added

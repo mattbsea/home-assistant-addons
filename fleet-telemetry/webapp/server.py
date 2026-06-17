@@ -188,11 +188,25 @@ def _prime_to_fields(p):
     put("ChargerPhases", cs.get("charger_phases"))
     if isinstance(cs.get("fast_charger_present"), bool):
         put("FastChargerPresent", cs["fast_charger_present"])
+    put("ChargeCurrentRequest", cs.get("charge_current_request"))
+    put("ChargeCurrentRequestMax", cs.get("charge_current_request_max"))
+    if isinstance(cs.get("charge_port_door_open"), bool):
+        put("ChargePortDoorOpen", cs["charge_port_door_open"])
+    if isinstance(cs.get("battery_heater_on"), bool):
+        put("BatteryHeaterOn", cs["battery_heater_on"])
+    if isinstance(cs.get("not_enough_power_to_heat"), bool):
+        put("NotEnoughPowerToHeat", cs["not_enough_power_to_heat"])
     put("InsideTemp", cl.get("inside_temp"))
     put("OutsideTemp", cl.get("outside_temp"))
     put("ClimateKeeperMode", cl.get("climate_keeper_mode"))
     if isinstance(cl.get("is_climate_on"), bool):
         put("HvacACEnabled", cl["is_climate_on"])
+    if isinstance(cl.get("is_preconditioning"), bool):
+        put("PreconditioningEnabled", cl["is_preconditioning"])
+    if isinstance(cl.get("is_rear_defroster_on"), bool):
+        put("RearDefrostEnabled", cl["is_rear_defroster_on"])
+    if isinstance(cl.get("battery_heater"), bool):
+        put("BatteryHeaterOn", cl["battery_heater"])
     fs = cl.get("fan_status")
     if fs is not None:
         try:
@@ -222,6 +236,10 @@ def _prime_to_fields(p):
         put("DoorState", {"DriverFront": bool(vs.get("df")), "PassengerFront": bool(vs.get("pf")),
                           "DriverRear": bool(vs.get("dr")), "PassengerRear": bool(vs.get("pr")),
                           "TrunkFront": bool(vs.get("ft")), "TrunkRear": bool(vs.get("rt"))})
+    for a, b in (("fd_window", "FdWindow"), ("fp_window", "FpWindow"),
+                 ("rd_window", "RdWindow"), ("rp_window", "RpWindow")):
+        if vs.get(a) is not None:
+            put(b, vs[a])
     put("CarType", vc.get("car_type"))
     put("Trim", vc.get("trim_badging"))
     put("ExteriorColor", vc.get("exterior_color"))
@@ -1050,18 +1068,62 @@ function renderStep9(){
   "port": 443,
   "ca": "<Let's Encrypt R3+R10 chain — see note below>",
   "fields": {
-    "VehicleSpeed":        {"interval_seconds": 10},
-    "Location":            {"interval_seconds": 30},
-    "Soc":                 {"interval_seconds": 30},
-    "Gear":                {"interval_seconds": 5},
-    "DetailedChargeState": {"interval_seconds": 30},
-    "ACChargingPower":     {"interval_seconds": 30},
-    "DCChargingPower":     {"interval_seconds": 30},
-    "InsideTemp":          {"interval_seconds": 60},
-    "OutsideTemp":         {"interval_seconds": 60},
-    "Destination":         {"interval_seconds": 30},
-    "MilesToArrival":      {"interval_seconds": 30},
-    "MinutesToArrival":    {"interval_seconds": 30}
+    "VehicleSpeed":              {"interval_seconds": 10},
+    "Location":                  {"interval_seconds": 30},
+    "GpsHeading":                {"interval_seconds": 10},
+    "Soc":                       {"interval_seconds": 30},
+    "BatteryLevel":              {"interval_seconds": 30},
+    "Gear":                      {"interval_seconds": 5},
+    "PackVoltage":               {"interval_seconds": 10},
+    "PackCurrent":               {"interval_seconds": 10},
+    "RatedRange":                {"interval_seconds": 60},
+    "EstBatteryRange":           {"interval_seconds": 60},
+    "IdealBatteryRange":         {"interval_seconds": 60},
+    "DetailedChargeState":       {"interval_seconds": 30},
+    "ACChargingPower":           {"interval_seconds": 30},
+    "DCChargingPower":           {"interval_seconds": 30},
+    "ACChargingEnergyIn":        {"interval_seconds": 30},
+    "DCChargingEnergyIn":        {"interval_seconds": 30},
+    "ChargeAmps":                {"interval_seconds": 30},
+    "ChargerVoltage":            {"interval_seconds": 30},
+    "ChargerPhases":             {"interval_seconds": 60},
+    "ChargeLimitSoc":            {"interval_seconds": 60},
+    "TimeToFullCharge":          {"interval_seconds": 60},
+    "ChargingCableType":         {"interval_seconds": 60},
+    "FastChargerPresent":        {"interval_seconds": 60},
+    "FastChargerType":           {"interval_seconds": 60},
+    "ChargeCurrentRequest":      {"interval_seconds": 30},
+    "ChargeCurrentRequestMax":   {"interval_seconds": 60},
+    "ChargePortDoorOpen":        {"interval_seconds": 30},
+    "BatteryHeaterOn":           {"interval_seconds": 30},
+    "NotEnoughPowerToHeat":      {"interval_seconds": 30},
+    "InsideTemp":                {"interval_seconds": 60},
+    "OutsideTemp":               {"interval_seconds": 60},
+    "HvacACEnabled":             {"interval_seconds": 60},
+    "HvacPower":                 {"interval_seconds": 60},
+    "HvacFanStatus":             {"interval_seconds": 60},
+    "HvacLeftTemperatureRequest":  {"interval_seconds": 60},
+    "HvacRightTemperatureRequest": {"interval_seconds": 60},
+    "ClimateKeeperMode":         {"interval_seconds": 60},
+    "PreconditioningEnabled":    {"interval_seconds": 30},
+    "DefrostMode":               {"interval_seconds": 30},
+    "RearDefrostEnabled":        {"interval_seconds": 30},
+    "Odometer":                  {"interval_seconds": 60},
+    "Version":                   {"interval_seconds": 3600},
+    "Locked":                    {"interval_seconds": 60},
+    "SentryMode":                {"interval_seconds": 60},
+    "DoorState":                 {"interval_seconds": 60},
+    "FdWindow":                  {"interval_seconds": 60},
+    "FpWindow":                  {"interval_seconds": 60},
+    "RdWindow":                  {"interval_seconds": 60},
+    "RpWindow":                  {"interval_seconds": 60},
+    "TpmsPressureFl":            {"interval_seconds": 300},
+    "TpmsPressureFr":            {"interval_seconds": 300},
+    "TpmsPressureRl":            {"interval_seconds": 300},
+    "TpmsPressureRr":            {"interval_seconds": 300},
+    "Destination":               {"interval_seconds": 30},
+    "MilesToArrival":            {"interval_seconds": 30},
+    "MinutesToArrival":          {"interval_seconds": 30}
   }
 }`;
   const curl=`curl -X POST ${host}/api/1/vehicles/<VIN>/fleet_telemetry_config \\
