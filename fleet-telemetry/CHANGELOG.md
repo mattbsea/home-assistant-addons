@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2
+
+### Fixed
+- **Wizard "Next" stayed disabled after filling fields.** The credential steps gate Next on the
+  config object, but inputs only wrote to it on blur and never refreshed the nav, so a fully
+  filled form left Next greyed out. Inputs now update live on every keystroke (`oninput`) and
+  refresh the nav immediately; the domain is also flushed to the server before the proxy-host call.
+
 ## 0.10.1
 
 ### Fixed

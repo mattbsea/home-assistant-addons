@@ -1555,7 +1555,10 @@ async function saveConfig(patch){   // authoritative settings (triggers run.sh r
 }
 async function reloadConfig(){try{const c=await api("GET","api/wizard/config");if(c&&typeof c==="object")C=c;}catch(e){}}
 // Persist a single dotted setting; skip empty secret inputs so we never clobber a saved secret.
-async function saveField(path,val,isSecret){if(isSecret&&!val)return;await saveConfig(patchFrom(path,val));}
+async function saveField(path,val,isSecret){if(isSecret&&!val)return;await saveConfig(patchFrom(path,val));updateNav();}
+// Live (per-keystroke) LOCAL update so the Next button reflects typing immediately. No network —
+// persistence still happens on `change` (blur) via saveField. Bound to `oninput`.
+function setField(path,val,isSecret){if(!(isSecret&&!val))deepMerge(C,patchFrom(path,val));updateNav();}
 
 function visibleSteps(){
   const ut=W.user_type;
@@ -1637,9 +1640,9 @@ function renderStep3(){
 <p class="subtitle">Paste the credentials from your Tesla developer app. They are stored locally in the add-on and used to register your domain and configure your vehicle.</p>
 <div class="card"><h3>App credentials</h3>
   <label class="flbl">Client ID</label>
-  <input type="text" style="width:100%" placeholder="abcd1234-..." value="${esc(gc("tesla.client_id",""))}" onchange="saveField('tesla.client_id',this.value.trim())">
+  <input type="text" style="width:100%" placeholder="abcd1234-..." value="${esc(gc("tesla.client_id",""))}" oninput="setField('tesla.client_id',this.value.trim())" onchange="saveField('tesla.client_id',this.value.trim())">
   <label class="flbl">Client Secret</label>
-  <input type="password" placeholder="${secretSet("tesla.client_secret")?"•••••••• (saved)":"ta-secret...."}" onchange="saveField('tesla.client_secret',this.value.trim(),true)">
+  <input type="password" placeholder="${secretSet("tesla.client_secret")?"•••••••• (saved)":"ta-secret...."}" oninput="setField('tesla.client_secret',this.value.trim(),true)" onchange="saveField('tesla.client_secret',this.value.trim(),true)">
 </div>
 <div class="card"><h3>Region</h3>
   <div class="region-sel">
@@ -1656,13 +1659,13 @@ function renderStep4(){
 <p class="subtitle">The add-on talks to NPM's admin API to fetch your TLS certificate and create the public-key proxy host automatically.</p>
 <div class="card"><h3>Admin connection</h3>
   <label class="flbl">Admin API URL</label>
-  <input type="text" style="width:100%" placeholder="https://proxy.example.org:81" value="${esc(gc("npm.url",""))}" onchange="saveField('npm.url',this.value.trim())">
+  <input type="text" style="width:100%" placeholder="https://proxy.example.org:81" value="${esc(gc("npm.url",""))}" oninput="setField('npm.url',this.value.trim())" onchange="saveField('npm.url',this.value.trim())">
   <label class="flbl">Admin email</label>
-  <input type="text" style="width:100%" placeholder="admin@example.org" value="${esc(gc("npm.email",""))}" onchange="saveField('npm.email',this.value.trim())">
+  <input type="text" style="width:100%" placeholder="admin@example.org" value="${esc(gc("npm.email",""))}" oninput="setField('npm.email',this.value.trim())" onchange="saveField('npm.email',this.value.trim())">
   <label class="flbl">Admin password</label>
-  <input type="password" placeholder="${secretSet("npm.password")?"•••••••• (saved)":"password"}" onchange="saveField('npm.password',this.value,true)">
+  <input type="password" placeholder="${secretSet("npm.password")?"•••••••• (saved)":"password"}" oninput="setField('npm.password',this.value,true)" onchange="saveField('npm.password',this.value,true)">
   <label class="flbl">Home Assistant host IP <span style="color:var(--mut)">(what NPM forwards to)</span></label>
-  <input type="text" style="width:100%" placeholder="192.168.1.10" value="${esc(gc("npm.forward_host",""))}" onchange="saveField('npm.forward_host',this.value.trim())">
+  <input type="text" style="width:100%" placeholder="192.168.1.10" value="${esc(gc("npm.forward_host",""))}" oninput="setField('npm.forward_host',this.value.trim())" onchange="saveField('npm.forward_host',this.value.trim())">
   <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Use the same host IP your telemetry Stream forwards to. The add-on can't detect this itself.</p>
 </div>`;
 }
@@ -1689,7 +1692,7 @@ function renderStep6(){
 <h2>Public-Key Domain</h2>
 <p class="subtitle">Enter the domain Tesla will use. The add-on creates an NPM proxy host (HTTPS :443, Let's Encrypt) serving your public key at the required <code>.well-known</code> path.</p>
 <div class="card"><h3>Domain</h3>
-  <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(dom)}" onchange="onDomainChange(this.value.trim())">
+  <input type="text" id="f_pubkey_domain" style="width:100%" placeholder="fleet.example.org" value="${esc(dom)}" oninput="setField('tesla.pubkey_domain',this.value.trim())" onchange="onDomainChange(this.value.trim())">
   <p style="color:var(--mut);font-size:12px;margin:8px 0 0">DNS for this domain must already point at your public IP (NPM needs it for the Let's Encrypt challenge).</p>
 </div>
 <div class="card"><h3>Create proxy host</h3>
@@ -1732,9 +1735,9 @@ function renderStep9(){
 <p class="subtitle">Your vehicle connects here over mTLS. In NPM create a <b>Stream</b> (TCP passthrough) — not a proxy host — so the TLS handshake reaches the add-on directly.</p>
 <div class="card"><h3>Endpoint</h3>
   <label class="flbl">Telemetry domain</label>
-  <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(tdom)}" onchange="saveField('tesla.telemetry_domain',this.value.trim());saveField('npm.cert_domain',this.value.trim())">
+  <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(tdom)}" oninput="setField('tesla.telemetry_domain',this.value.trim());setField('npm.cert_domain',this.value.trim())" onchange="saveField('tesla.telemetry_domain',this.value.trim());saveField('npm.cert_domain',this.value.trim())">
   <label class="flbl">Public telemetry port</label>
-  <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
+  <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" oninput="setField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
   <p style="color:var(--mut);font-size:12px;margin:8px 0 0">Can be any port (not required to be 443) — that keeps 443 free for the public-key proxy host.</p>
 </div>
 <div class="card"><h3>Create the NPM Stream</h3>
@@ -1890,7 +1893,12 @@ async function selectType(t){await save({user_type:t,current_step:1});render();}
 function showTMFollow(){const el=document.getElementById("tmfollow");if(el)el.style.display="block";}
 async function toggleDone(n,checked){const steps={...W.steps};if(checked)steps[String(n)]="done";else delete steps[String(n)];await save({steps});updateNav();}
 async function setRegion(r){await saveField("tesla.region",r);render();}
-function onDomainChange(v){saveField("tesla.pubkey_domain",v);if(!gc("tesla.telemetry_domain",""))saveField("tesla.telemetry_domain",v);if(!gc("npm.cert_domain",""))saveField("npm.cert_domain",v);}
+async function onDomainChange(v){
+  const patch={tesla:{pubkey_domain:v}};
+  if(!gc("tesla.telemetry_domain",""))patch.tesla.telemetry_domain=v;
+  if(!gc("npm.cert_domain",""))patch.npm={cert_domain:v};
+  await saveConfig(patch);updateNav();
+}
 
 async function genKeypair(){
   const el=document.getElementById("kpResult");if(el)el.innerHTML=`<div class="result info">Generating…</div>`;
@@ -1898,6 +1906,10 @@ async function genKeypair(){
   await reloadConfig();await save({inputs:{...W.inputs,keypair_result:r}});render();
 }
 async function createProxyHost(){
+  // Flush the domain field to the server first (in case it wasn't blurred) — the endpoint reads
+  // pubkey_domain from the persisted config file, not from C.
+  const di=document.getElementById("f_pubkey_domain");
+  if(di&&di.value.trim()){await onDomainChange(di.value.trim());}
   const el=document.getElementById("phResult");if(el)el.innerHTML=`<div class="result info">Creating proxy host &amp; requesting a certificate… this can take ~30s.</div>`;
   const r=await api("POST","api/wizard/npm-proxy-host",{});
   await reloadConfig();await save({inputs:{...W.inputs,proxy_result:r}});render();
