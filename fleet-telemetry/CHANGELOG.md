@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+### Changed
+- **Wizard step 9 now sends the telemetry config directly** instead of showing a curl command.
+  A "Send to Vehicle" button calls the add-on backend, which uses the stored shim credentials
+  and app private key via `tesla-http-proxy`. On success step 9 is auto-marked done.
+
 ## 0.9.0
 
 ### Changed

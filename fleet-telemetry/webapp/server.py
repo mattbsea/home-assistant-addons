@@ -1112,6 +1112,15 @@ function checkResultHtml(r){
   return`<div class="result err">✗ ${esc(r.error||"Check failed")}</div>`;
 }
 
+function configResultHtml(r){
+  if(!r)return"";
+  if(r.ok){
+    const vins=(r.vins||[]).map(v=>"…"+v.slice(-6)).join(", ");
+    return`<div class="result ok">✓ Sent to ${(r.vins||[]).length} vehicle(s)${vins?" ("+vins+")":""}</div>`;
+  }
+  return`<div class="result err">✗ ${esc(r.error||"Send failed")}</div>`;
+}
+
 // ---- Step renderers ----
 
 function renderStep1(){
@@ -1354,27 +1363,24 @@ function renderStep9(){
     "MinutesToArrival":          {"interval_seconds": 30}
   }
 }`;
-  const curl=`curl -X POST ${host}/api/1/vehicles/<VIN>/fleet_telemetry_config \\
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \\
-  -H "Content-Type: application/json" \\
-  -d '<config-json>'`;
+  const res=W.inputs.telemetry_config_result||null;
   return`
 <h2>Configure Vehicle Telemetry</h2>
-<p class="subtitle">Tell your Tesla vehicle where to stream data. Run this once per vehicle using your Fleet API access token.</p>
+<p class="subtitle">Tell your Tesla vehicle where to stream data. This sends the configuration directly from the add-on using your stored credentials.</p>
 <div class="region-sel">
   <button class="region-btn${region==="na"?" sel":""}" onclick="setRegion('na')">North America</button>
   <button class="region-btn${region==="eu"?" sel":""}" onclick="setRegion('eu')">Europe</button>
   <button class="region-btn${region==="cn"?" sel":""}" onclick="setRegion('cn')">China</button>
 </div>
-<div class="card"><h3>Config JSON</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Paste the full Let's Encrypt intermediate chain into the <code>ca</code> field. Download from <a href="https://letsencrypt.org/certificates/" target="_blank">letsencrypt.org/certificates</a>.</p>
+<div class="card"><h3>What will be sent</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">57 telemetry fields · your domain <b>${esc(domain)}</b> · port 443 · CA chain from your TLS cert. VINs and credentials are read automatically from the add-on.</p>
   ${codebox(cfg,"cfg-json")}
 </div>
-<div class="card"><h3>API command</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">Replace &lt;VIN&gt; and &lt;ACCESS_TOKEN&gt; with your vehicle's VIN and a valid Fleet API bearer token.</p>
-  ${codebox(curl,"cfg-curl")}
-</div>
-${markDone(9)}`;
+<div class="card"><h3>Send configuration</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">Requires <code>teslamate_shim_client_id</code> and <code>teslamate_shim_refresh_token</code> to be set, and the app private key at <code>/share/tesla-fleet/private-key.pem</code>.</p>
+  <button class="btn btn-outline" onclick="sendTelemetryConfig()">Send to Vehicle</button>
+  <div id="telCfgResult">${configResultHtml(res)}</div>
+</div>`;
 }
 
 function renderStep10(){
@@ -1476,6 +1482,19 @@ async function checkCert(){
   const r=await api("POST","api/wizard/check",{check:"cert"});
   await save({inputs:{...W.inputs,cert_check:r}});
   document.getElementById("certResult").innerHTML=checkResultHtml(r);
+  updateNav();
+}
+
+async function sendTelemetryConfig(){
+  const el=document.getElementById("telCfgResult");
+  if(el)el.innerHTML=`<div class="result info">Sending… this may take up to 30 seconds while the proxy starts.</div>`;
+  const domain=(W.inputs.domain||"").replace(/^https?:\/\//,"").replace(/\/.*$/,"");
+  const region=W.inputs.region||"na";
+  const r=await api("POST","api/wizard/check",{check:"send_telemetry_config",domain,region});
+  const newInputs={...W.inputs,telemetry_config_result:r};
+  const newSteps=r.ok?{...W.steps,"9":"done"}:W.steps;
+  await save({inputs:newInputs,steps:newSteps});
+  if(el)el.innerHTML=configResultHtml(r);
   updateNav();
 }
 
