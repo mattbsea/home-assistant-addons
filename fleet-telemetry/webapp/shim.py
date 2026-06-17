@@ -131,6 +131,9 @@ class Vehicle:
         self.prime = d.get("prime")
         self.tesla_id = d.get("tesla_id")              # real Tesla id, learned from prime (for API calls)
         self.display_name = d.get("display_name") or vin
+        if d:  # warm-start: drop movement fields — they go stale instantly and mislead TeslaMate
+            for _f in ("Gear", "VehicleSpeed", "PackCurrent", "PackVoltage"):
+                self.fields.pop(_f, None)
 
     def dump(self):
         return {"fields": self.fields, "last_epoch": self.last_epoch, "charge_baseline": self.charge_baseline,

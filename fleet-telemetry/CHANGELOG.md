@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.8
+
+### Bug Fixes
+- **Stale gear/speed no longer served after add-on restart.** On warm-start, the shim reloads
+  its persisted fields — including `Gear` and `VehicleSpeed` from the last telemetry record before
+  shutdown. If the car was moving when the add-on restarted and then went quiet (e.g., parked and
+  slept immediately), the shim would keep serving the old `shift_state=R, speed=3 mph` data for
+  up to 11 minutes (the online-window expiry), causing TeslaMate to log the parked car as still
+  driving. Fixed by clearing `Gear`, `VehicleSpeed`, `PackCurrent`, and `PackVoltage` from the
+  warm-started state — these are instantaneous and meaningless across a restart. Static accumulated
+  fields (SoC, Location, Range, etc.) are retained as before.
+
 ## 0.7.7
 
 ### Bug Fixes
