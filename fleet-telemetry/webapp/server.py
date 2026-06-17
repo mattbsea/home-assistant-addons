@@ -1485,9 +1485,17 @@ function buildCards(v){
    doors=open.length?open.join(", "):"all closed";
  }
  const WINLBL={FdWindow:"Front left",FpWindow:"Front right",RdWindow:"Rear left",RpWindow:"Rear right"};
- const humanize=s=>typeof s==="string"?s.replace(/([a-z])([A-Z])/g,"$1 $2"):s;
+ // Window state arrives as a number (0 = closed, >0 = open/vented) or an enum string
+ // ("WindowStateClosed", …). Map both to a plain word so it isn't shown as a bare "0".
+ const winState=v=>{
+   if(v==null||v==="<invalid>"||v==="")return null;
+   const n=Number(v);
+   if(!Number.isNaN(n))return n===0?"closed":(n===1?"vented":"open");
+   const s=String(v),i=s.lastIndexOf("State");
+   return (i>=0&&i+5<s.length)?s.slice(i+5).toLowerCase():s;
+ };
  let winRows="";
- for(const k in WINLBL){const s=S(k);if(s!=null)winRows+=row(WINLBL[k],humanize(s));}
+ for(const k in WINLBL){const s=winState(raw(k));if(s!=null)winRows+=row(WINLBL[k],s);}
  cards+=mcard("Doors & windows",row("Doors",doors)+winRows);
 
  // Tire pressure (bar -> psi)

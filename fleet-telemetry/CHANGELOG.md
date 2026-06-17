@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.12
+
+### Fixed
+- **Window states showed a bare "0".** Window fields arrive as a number (0 = closed, >0 = open) or
+  an enum string; the dashboard now maps them to "closed" / "vented" / "open" instead of printing
+  the raw value.
+
 ## 0.10.11
 
 ### Changed
