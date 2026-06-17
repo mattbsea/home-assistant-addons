@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2
+
+### Bug Fixes
+- **`send_telemetry_config` now actually works.** The Tesla shim credentials (`client_id`,
+  `refresh_token`, `fleet_api_host`) were not being exported into the server process's environment
+  in `run.sh` — they were only set before the shim process launched. Fixed by exporting the full
+  set of `FT_SHIM_*` env vars before the server is started.
+
 ## 0.8.1
 
 ### Added
