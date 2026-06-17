@@ -1625,19 +1625,29 @@ function renderStep2(){
 <p class="subtitle">The wizard does the heavy lifting (keypair, public-key hosting, partner registration, vehicle config). Just have these ready first.</p>
 <div class="card">
   <h3>What you'll need</h3>
-  <div class="check-row"><div class="check-num">1</div><div><b>Tesla Developer app</b> — create one at <a href="https://developer.tesla.com" target="_blank">developer.tesla.com</a> with the <code>vehicle_device_data</code> and <code>vehicle_location</code> scopes. You'll paste its <b>Client ID</b> and <b>Client Secret</b> next.</div></div>
+  <div class="check-row"><div class="check-num">1</div><div><b>A Tesla Developer account</b> at <a href="https://developer.tesla.com" target="_blank">developer.tesla.com</a>. <b>Don't create the app yet</b> — Tesla won't accept your domain until it's serving the public key, which this wizard does for you first. You'll create the app and paste its Client ID/Secret a few steps in.</div></div>
   <div class="check-row"><div class="check-num">2</div><div><b>A public domain</b> pointing at your home IP — e.g. <code>fleet.example.org</code>. The same domain serves the public key (HTTPS :443) and the telemetry stream (a configurable port). A separate sub-domain also works.</div></div>
   <div class="check-row"><div class="check-num">3</div><div><b>NGINX Proxy Manager</b> running, reachable on its admin API, able to issue Let's Encrypt certs. The wizard creates the public-key proxy host for you.</div></div>
   <div class="check-row"><div class="check-num">4</div><div><b>Router port-forwards</b> to NPM: <b>443</b> (public key + LE challenge) and your chosen <b>telemetry port</b> (default 4443).</div></div>
-  <div class="check-row"><div class="check-num">5</div><div><b>Redirect URI registered</b> in your Tesla app for the OAuth login step — e.g. <code>https://&lt;your-domain&gt;/callback</code>.</div></div>
-</div>`;
+</div>
+<div class="card" style="border-color:var(--accent)"><p style="margin:0;font-size:13px">Order matters: this wizard sets up NPM → keypair → public-key hosting <b>first</b>, then walks you through creating the Tesla app (whose domain Tesla validates against your now-live public key).</p></div>`;
 }
 
 function renderStep3(){
   const region=gc("tesla.region","na");
+  const dom=gc("tesla.pubkey_domain","")||"&lt;your-domain&gt;";
   return`
 <h2>Tesla Developer App</h2>
-<p class="subtitle">Paste the credentials from your Tesla developer app. They are stored locally in the add-on and used to register your domain and configure your vehicle.</p>
+<p class="subtitle">Your public key is now live, so Tesla will accept your domain. Create the app, then paste its credentials here.</p>
+<div class="card"><h3>Create your app at developer.tesla.com</h3>
+  <ol>
+    <li>Open <a href="https://developer.tesla.com/en_US/dashboard" target="_blank">developer.tesla.com</a> → <b>Create App</b></li>
+    <li><b>Allowed Origin:</b> <code>https://${esc(dom)}</code></li>
+    <li><b>Redirect URI:</b> <code>https://${esc(dom)}/callback</code> (used by the login step later)</li>
+    <li><b>Scopes:</b> <code>vehicle_device_data</code> + <code>vehicle_location</code></li>
+    <li>Tesla validates the public key at your domain — it's already being served, so this should pass.</li>
+  </ol>
+</div>
 <div class="card"><h3>App credentials</h3>
   <label class="flbl">Client ID</label>
   <input type="text" style="width:100%" placeholder="abcd1234-..." value="${esc(gc("tesla.client_id",""))}" oninput="setField('tesla.client_id',this.value.trim())" onchange="saveField('tesla.client_id',this.value.trim())">
@@ -1963,11 +1973,11 @@ function canAdvance(){
   const s=W.current_step;
   const ssor=p=>secretSet(p)||gc(p,"")!=="";
   if(s===1)return!!W.user_type;
-  if(s===3)return!!gc("tesla.client_id","")&&ssor("tesla.client_secret");
-  if(s===4)return!!gc("npm.url","")&&!!gc("npm.email","")&&ssor("npm.password")&&!!gc("npm.forward_host","");
-  if(s===5)return!!gc("tesla.keypair_generated",false);
-  if(s===6)return gc("npm.pubkey_proxy_host_id",null)!=null;
-  if(s===7)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
+  if(s===3)return!!gc("npm.url","")&&!!gc("npm.email","")&&ssor("npm.password")&&!!gc("npm.forward_host","");
+  if(s===4)return!!gc("tesla.keypair_generated",false);
+  if(s===5)return gc("npm.pubkey_proxy_host_id",null)!=null;
+  if(s===6)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
+  if(s===7)return!!gc("tesla.client_id","")&&ssor("tesla.client_secret");
   if(s===8)return!!gc("tesla.partner_registered",false);
   if(s===9)return!!gc("tesla.telemetry_domain","")&&W.steps["9"]==="done";
   if(s===10)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
@@ -2001,11 +2011,19 @@ async function pollVerify(){
 
 // ---- Render ----
 
-const STEP_TITLES={1:"Welcome",2:"Prerequisites",3:"Tesla App",4:"NGINX Proxy Manager",5:"Signing Key",
-  6:"Public-Key Domain",7:"Verify Public Key",8:"Register Partner",9:"Telemetry Stream",10:"Verify Certificate",
+const STEP_TITLES={1:"Welcome",2:"Prerequisites",3:"NGINX Proxy Manager",4:"Signing Key",5:"Public-Key Domain",
+  6:"Verify Public Key",7:"Tesla App",8:"Register Partner",9:"Telemetry Stream",10:"Verify Certificate",
   11:"Tesla Login",12:"Backends & Tuning",13:"Vehicle Config",14:"TeslaMate",15:"Verification",16:"Done"};
-const RENDERERS={1:renderStep1,2:renderStep2,3:renderStep3,4:renderStep4,5:renderStep5,6:renderStep6,
-  7:renderStep7,8:renderStep8,9:renderStep9,10:renderStep10,11:renderStep11,12:renderStep12,
+// NOTE: function names are historical; the WIZARD ORDER is defined here. NPM/keypair/public-key
+// hosting must come BEFORE entering Tesla app credentials — Tesla's developer portal only issues a
+// Client ID/Secret once it can validate the public key at your live domain.
+const RENDERERS={1:renderStep1,2:renderStep2,
+  3:renderStep4,   // NGINX Proxy Manager connection
+  4:renderStep5,   // Generate signing key
+  5:renderStep6,   // Public-key domain + auto proxy host
+  6:renderStep7,   // Verify public key reachable
+  7:renderStep3,   // Tesla app credentials (now that the domain validates)
+  8:renderStep8,9:renderStep9,10:renderStep10,11:renderStep11,12:renderStep12,
   13:renderStep13,14:renderStep14,15:renderStep15,16:renderStep16};
 
 function render(){

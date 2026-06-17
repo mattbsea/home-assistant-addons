@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.3
+
+### Changed
+- **Reordered the wizard so the domain/public key is set up before Tesla credentials.** Tesla's
+  developer portal only issues a Client ID/Secret once it can validate the public key at your live
+  domain, so entering credentials first was a dead end. New order: NGINX Proxy Manager → generate
+  signing key → public-key domain + auto proxy host → verify public key → **then** create the Tesla
+  app and paste its Client ID/Secret → register partner. The Tesla-app step now shows the exact
+  Allowed Origin and Redirect URI to use.
+
 ## 0.10.2
 
 ### Fixed
