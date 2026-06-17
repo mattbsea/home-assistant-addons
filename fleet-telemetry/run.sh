@@ -1,285 +1,306 @@
 #!/usr/bin/with-contenv bashio
 # NB: deliberately no `set -e`/`set -o pipefail`. bashio helpers run internal pipelines whose
 # benign non-zero stages would abort startup under those options. Each step handles its own errors.
+#
+# Wizard-driven model: this add-on has NO Configuration-page options. The setup wizard (served by
+# the web UI on the ingress port) writes /data/wizard-config.json. Startup is INVERTED — the web
+# UI/wizard always starts first and never fatals, so a fresh install with no config is still
+# reachable. The cert fetch, the fleet-telemetry binary, the shim and the bridge are deferred and
+# (re)started reactively whenever the config file changes.
 
 DATA_DIR="/data"
 CERTS_DIR="${DATA_DIR}/certs"
+KEYS_DIR="${DATA_DIR}/keys"
 CONFIG_JSON="${DATA_DIR}/config.json"
-OPTIONS_JSON="${DATA_DIR}/options.json"
 GCP_CREDS="${DATA_DIR}/gcp-credentials.json"
+CFG="${DATA_DIR}/wizard-config.json"
 BINARY="/usr/local/bin/fleet-telemetry"
 
-# Fixed internal listen ports (host side is remapped in the add-on Network tab)
+# Fixed internal listen ports (host side is remapped in the add-on Network tab).
 TELEMETRY_PORT=4443
 STATUS_PORT=8080
 METRICS_PORT=9090
 WEB_PORT=8099
+PUBKEY_PORT=8100
 RECORDS_FILE="/tmp/ft-records.jsonl"
 
-bashio::log.info "Starting Tesla Fleet Telemetry add-on..."
-mkdir -p "${CERTS_DIR}"
+bashio::log.info "Starting Tesla Fleet Telemetry add-on (wizard-driven)…"
+mkdir -p "${CERTS_DIR}" "${KEYS_DIR}"
 
-# --- Helpers ----------------------------------------------------------------
-# Emit a literal true/false for jq --argjson from a bashio bool option.
-jbool() { if bashio::config.true "$1"; then echo true; else echo false; fi; }
-# Read a (possibly multiline) string option straight from options.json — bashio mangles multiline.
-opt_raw() { jq -r --arg k "$1" '.[$k] // ""' "${OPTIONS_JSON}" 2>/dev/null; }
+# --- Config readers (from the wizard config file; never fatal when it is absent) ---------------
+# cfg "a.b.c"  -> string value ("" if missing).  cfgb "a.b.c" -> literal true/false.
+cfg()  { [ -f "${CFG}" ] && jq -r --arg k "$1" 'getpath($k|split("."))//"" | if type=="object" or type=="array" then "" else tostring end' "${CFG}" 2>/dev/null || echo ""; }
+cfgb() { local v; v="$([ -f "${CFG}" ] && jq -r --arg k "$1" 'getpath($k|split("."))//false' "${CFG}" 2>/dev/null)"; [ "${v}" = "true" ] && echo true || echo false; }
 
-# --- Read scalar options ----------------------------------------------------
-LOG_LEVEL="$(bashio::config 'log_level')"
-NAMESPACE="$(bashio::config 'namespace')"
-JSON_LOG="$(jbool 'json_log_enable')"
-RELIABLE_ACK="$(jbool 'reliable_ack')"
-RL_ENABLED="$(jbool 'rate_limit_enabled')"
-RL_INTERVAL="$(bashio::config 'rate_limit_message_interval')"
-RL_LIMIT="$(bashio::config 'rate_limit_message_limit')"
-METRICS_ENABLED="$(jbool 'metrics_enabled')"
+config_exists() { [ -f "${CFG}" ]; }
+config_ready()  { config_exists && [ -n "$(cfg 'npm.url')" ] && [ -n "$(cfg 'npm.cert_domain')" ]; }
 
-ENABLE_LOGGER="$(jbool 'enable_logger')"
-ENABLE_MQTT="$(jbool 'enable_mqtt')"
-ENABLE_PUBSUB="$(jbool 'enable_pubsub')"
+fleet_host_for() {
+    case "$1" in
+        eu) echo "https://fleet-api.prd.eu.vn.cloud.tesla.com" ;;
+        cn) echo "https://fleet-api.prd.cn.vn.cloud.tesla.com" ;;
+        *)  echo "https://fleet-api.prd.na.vn.cloud.tesla.com" ;;
+    esac
+}
 
-# Guarantee at least one data dispatcher so records.V is never empty (invalid config).
-if [ "${ENABLE_LOGGER}" != "true" ] && [ "${ENABLE_MQTT}" != "true" ] && [ "${ENABLE_PUBSUB}" != "true" ]; then
-    bashio::log.warning "No backend enabled — defaulting to the logger backend."
-    ENABLE_LOGGER="true"
-fi
+# --- Web UI / wizard: ALWAYS first, never fatal ------------------------------------------------
+# Reads the config file live per request, so it is never restarted on config change. Export only
+# static paths; credentials are read from the config file by the Python process itself.
+: > "${RECORDS_FILE}" 2>/dev/null || true
+export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" FT_PUBKEY_PORT="${PUBKEY_PORT}" \
+       FT_CERT_FILE="${CERTS_DIR}/server.crt" \
+       FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
+       FT_WIZARD_STATE="${DATA_DIR}/wizard-state.json" \
+       FT_WIZARD_CONFIG="${CFG}" \
+       FT_PRIVATE_KEY="${KEYS_DIR}/private-key.pem" \
+       FT_PUBLIC_KEY="${KEYS_DIR}/public-key.pem" \
+       FT_AUTH_HOST="https://auth.tesla.com"
+# FT_ADDON_VERSION is provided as a container ENV by the Dockerfile (from BUILD_VERSION).
+( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
+  while true; do
+    python3 /opt/webapp/server.py & child=$!; wait "${child}"
+    bashio::log.warning "web UI exited; restarting in 3s"
+    sleep 3
+  done ) &
+bashio::log.info "Setup wizard + dashboard available via ingress (internal port ${WEB_PORT}); public-key listener on :${PUBKEY_PORT}"
 
-# --- TLS certificate from Nginx Proxy Manager -------------------------------
-export NPM_URL="$(bashio::config 'npm_url')"
-export NPM_EMAIL="$(bashio::config 'npm_email')"
-export NPM_PASSWORD="$(bashio::config 'npm_password')"
-export NPM_CERT_DOMAIN="$(bashio::config 'npm_cert_domain')"
-export CERTS_DIR
-CERT_REFRESH_HOURS="$(bashio::config 'cert_refresh_hours')"
-
-fetch_cert() { /opt/scripts/fetch-npm-cert.sh; }
-
-if bashio::var.is_empty "${NPM_URL}" || bashio::var.is_empty "${NPM_CERT_DOMAIN}"; then
-    bashio::log.fatal "npm_url and npm_cert_domain are required — the server is mTLS-only and needs a TLS cert."
-    exit 1
-fi
-
-bashio::log.info "Fetching TLS certificate for ${NPM_CERT_DOMAIN} from NPM..."
-if ! fetch_cert; then
-    if [ -f "${CERTS_DIR}/server.crt" ] && [ -f "${CERTS_DIR}/server.key" ]; then
-        bashio::log.warning "NPM fetch failed — using the previously cached certificate."
-    else
-        bashio::log.fatal "Could not fetch a certificate from NPM and none is cached. Check npm_* settings."
-        exit 1
-    fi
-fi
-
-# --- Google Pub/Sub credentials ---------------------------------------------
-if [ "${ENABLE_PUBSUB}" = "true" ]; then
-    GCP_JSON="$(opt_raw 'gcp_service_account_json')"
-    if [ -n "${GCP_JSON}" ]; then
-        printf '%s' "${GCP_JSON}" > "${GCP_CREDS}"
-        chmod 600 "${GCP_CREDS}"
-        export GOOGLE_APPLICATION_CREDENTIALS="${GCP_CREDS}"
-        bashio::log.info "Wrote Google service-account credentials to ${GCP_CREDS}"
-    elif [ -f "${GCP_CREDS}" ]; then
-        export GOOGLE_APPLICATION_CREDENTIALS="${GCP_CREDS}"
-        bashio::log.info "Using cached Google service-account credentials."
-    else
-        bashio::log.warning "Pub/Sub enabled but no gcp_service_account_json provided — it will likely fail to authenticate."
-    fi
-fi
-
-# --- MQTT broker (auto-discover the HA broker when broker left blank) --------
-MQTT_BROKER="$(bashio::config 'mqtt_broker')"
-MQTT_USERNAME="$(bashio::config 'mqtt_username')"
-MQTT_PASSWORD="$(bashio::config 'mqtt_password')"
-if [ "${ENABLE_MQTT}" = "true" ] && bashio::var.is_empty "${MQTT_BROKER}"; then
-    if bashio::services.available 'mqtt'; then
-        MQTT_BROKER="$(bashio::services 'mqtt' 'host'):$(bashio::services 'mqtt' 'port')"
-        MQTT_USERNAME="$(bashio::services 'mqtt' 'username')"
-        MQTT_PASSWORD="$(bashio::services 'mqtt' 'password')"
-        bashio::log.info "Auto-discovered Home Assistant MQTT broker at ${MQTT_BROKER}"
-    else
-        bashio::log.warning "MQTT enabled with a blank broker and no HA broker available — set mqtt_broker."
-    fi
-fi
-
-# --- Generate /data/config.json ---------------------------------------------
+# --- Generate /data/config.json from the wizard config file ------------------------------------
 generate_config() {
-    jq -n \
-        --arg log_level "${LOG_LEVEL}" \
-        --argjson json_log "${JSON_LOG}" \
-        --arg namespace "${NAMESPACE}" \
-        --argjson reliable_ack "${RELIABLE_ACK}" \
-        --argjson tport "${TELEMETRY_PORT}" \
-        --argjson sport "${STATUS_PORT}" \
-        --argjson rl_enabled "${RL_ENABLED}" \
-        --argjson rl_interval "${RL_INTERVAL}" \
-        --argjson rl_limit "${RL_LIMIT}" \
-        --argjson metrics "${METRICS_ENABLED}" \
-        --argjson mport "${METRICS_PORT}" \
-        --argjson logger "${ENABLE_LOGGER}" \
-        --argjson mqtt "${ENABLE_MQTT}" \
-        --argjson pubsub "${ENABLE_PUBSUB}" \
-        --arg mqtt_broker "${MQTT_BROKER}" \
-        --arg mqtt_client_id "$(bashio::config 'mqtt_client_id')" \
-        --arg mqtt_topic_base "$(bashio::config 'mqtt_topic_base')" \
-        --argjson mqtt_qos "$(bashio::config 'mqtt_qos')" \
-        --arg mqtt_username "${MQTT_USERNAME}" \
-        --arg mqtt_password "${MQTT_PASSWORD}" \
-        --arg gcp_project_id "$(bashio::config 'gcp_project_id')" \
+    # MQTT broker auto-discovery when enabled with a blank broker.
+    local mqtt_enabled mqtt_broker mqtt_user mqtt_pass
+    mqtt_enabled="$(cfgb 'backends.mqtt.enabled')"
+    mqtt_broker="$(cfg 'backends.mqtt.broker')"
+    mqtt_user="$(cfg 'backends.mqtt.username')"
+    mqtt_pass="$(cfg 'backends.mqtt.password')"
+    if [ "${mqtt_enabled}" = "true" ] && [ -z "${mqtt_broker}" ]; then
+        if bashio::services.available 'mqtt'; then
+            mqtt_broker="$(bashio::services 'mqtt' 'host'):$(bashio::services 'mqtt' 'port')"
+            mqtt_user="$(bashio::services 'mqtt' 'username')"
+            mqtt_pass="$(bashio::services 'mqtt' 'password')"
+            bashio::log.info "Auto-discovered Home Assistant MQTT broker at ${mqtt_broker}"
+        else
+            bashio::log.warning "MQTT enabled with a blank broker and no HA broker available."
+        fi
+    fi
+
+    local base
+    base="$(jq -n --slurpfile arr "${CFG}" \
+        --argjson tport "${TELEMETRY_PORT}" --argjson sport "${STATUS_PORT}" --argjson mport "${METRICS_PORT}" \
+        --arg mqtt_broker "${mqtt_broker}" --arg mqtt_user "${mqtt_user}" --arg mqtt_pass "${mqtt_pass}" \
         '
-        ([ if $logger then "logger" else empty end,
-           if $mqtt   then "mqtt"   else empty end,
-           if $pubsub then "pubsub" else empty end ]) as $disp
+        ($arr[0] // {}) as $c
+        | ([ if ($c.backends.logger // true)          then "logger" else empty end,
+             if ($c.backends.mqtt.enabled // false)   then "mqtt"   else empty end,
+             if ($c.backends.pubsub.enabled // false) then "pubsub" else empty end ]) as $disp0
+        | (if ($disp0|length)==0 then ["logger"] else $disp0 end) as $disp
         | {
             host: "0.0.0.0",
             port: $tport,
             status_port: $sport,
-            log_level: $log_level,
-            json_log_enable: $json_log,
-            namespace: $namespace,
-            reliable_ack: $reliable_ack,
-            rate_limit: { enabled: $rl_enabled, message_interval_time: $rl_interval, message_limit: $rl_limit },
+            log_level: ($c.server.log_level // "info"),
+            json_log_enable: ($c.server.json_log_enable // true),
+            namespace: ($c.server.namespace // "tesla_telemetry"),
+            reliable_ack: ($c.server.reliable_ack // false),
+            rate_limit: {
+                enabled: ($c.server.rate_limit_enabled // true),
+                message_interval_time: ($c.server.rate_limit_message_interval // 30),
+                message_limit: ($c.server.rate_limit_message_limit // 1000)
+            },
             records: { V: $disp, connectivity: $disp, alerts: ["logger"], errors: ["logger"] },
             tls: { server_cert: "/data/certs/server.crt", server_key: "/data/certs/server.key" }
           }
-        | if $metrics then .monitoring = { prometheus_metrics_port: $mport, prometheus_metrics_host: "0.0.0.0" } else . end
-        | if $mqtt then .mqtt = (
-              { broker: $mqtt_broker, client_id: $mqtt_client_id, topic_base: $mqtt_topic_base, qos: $mqtt_qos }
-              + (if $mqtt_username != "" then { username: $mqtt_username, password: $mqtt_password } else {} end)
-          ) else . end
-        | if $pubsub then .pubsub = { gcp_project_id: $gcp_project_id } else . end
-        '
+        | if ($c.server.metrics_enabled // false)
+            then .monitoring = { prometheus_metrics_port: $mport, prometheus_metrics_host: "0.0.0.0" } else . end
+        | if ($c.backends.mqtt.enabled // false)
+            then .mqtt = (
+                { broker: (if $mqtt_broker != "" then $mqtt_broker else ($c.backends.mqtt.broker // "") end),
+                  client_id: ($c.backends.mqtt.client_id // "fleet-telemetry"),
+                  topic_base: ($c.backends.mqtt.topic_base // "telemetry"),
+                  qos: ($c.backends.mqtt.qos // 1) }
+                + (if $mqtt_user != "" then { username: $mqtt_user, password: $mqtt_pass }
+                   elif (($c.backends.mqtt.username // "")|length) > 0 then { username: $c.backends.mqtt.username, password: ($c.backends.mqtt.password // "") }
+                   else {} end)
+            ) else . end
+        | if ($c.backends.pubsub.enabled // false)
+            then .pubsub = { gcp_project_id: ($c.backends.pubsub.gcp_project_id // "") } else . end
+        ')"
+    [ -z "${base}" ] && { bashio::log.error "Failed to generate config.json from ${CFG}."; return 1; }
+
+    # Deep-merge the optional raw escape hatch over the generated config.
+    local extra
+    extra="$(cfg 'server.extra_config_json')"
+    if [ -n "${extra}" ] && echo "${extra}" | jq empty 2>/dev/null; then
+        echo "${base}" | jq --argjson extra "${extra}" '. * $extra' > "${CONFIG_JSON}"
+        bashio::log.info "Merged server.extra_config_json over the generated configuration."
+    else
+        echo "${base}" > "${CONFIG_JSON}"
+    fi
+
+    # Google Pub/Sub credentials (written from the config file when present).
+    if [ "$(cfgb 'backends.pubsub.enabled')" = "true" ]; then
+        local gcp_json
+        gcp_json="$([ -f "${CFG}" ] && jq -r '.backends.pubsub.service_account_json // ""' "${CFG}" 2>/dev/null)"
+        if [ -n "${gcp_json}" ]; then
+            printf '%s' "${gcp_json}" > "${GCP_CREDS}"; chmod 600 "${GCP_CREDS}"
+            export GOOGLE_APPLICATION_CREDENTIALS="${GCP_CREDS}"
+        elif [ -f "${GCP_CREDS}" ]; then
+            export GOOGLE_APPLICATION_CREDENTIALS="${GCP_CREDS}"
+        fi
+    fi
+    return 0
 }
 
-BASE_CONFIG="$(generate_config)"
-if [ -z "${BASE_CONFIG}" ]; then
-    bashio::log.fatal "Failed to generate config.json from options."
-    exit 1
-fi
+fetch_cert() {
+    export NPM_URL="$(cfg 'npm.url')" NPM_EMAIL="$(cfg 'npm.email')" \
+           NPM_PASSWORD="$([ -f "${CFG}" ] && jq -r '.npm.password // ""' "${CFG}" 2>/dev/null)" \
+           NPM_CERT_DOMAIN="$(cfg 'npm.cert_domain')" CERTS_DIR
+    /opt/scripts/fetch-npm-cert.sh
+}
 
-# Deep-merge the optional raw escape hatch over the generated config.
-EXTRA_JSON="$(opt_raw 'extra_config_json')"
-if [ -n "${EXTRA_JSON}" ]; then
-    if echo "${EXTRA_JSON}" | jq empty 2>/dev/null; then
-        echo "${BASE_CONFIG}" | jq --argjson extra "${EXTRA_JSON}" '. * $extra' > "${CONFIG_JSON}"
-        bashio::log.info "Merged extra_config_json over the generated configuration."
-    else
-        bashio::log.error "extra_config_json is not valid JSON — ignoring it."
-        echo "${BASE_CONFIG}" > "${CONFIG_JSON}"
+# --- Process management ------------------------------------------------------------------------
+SERVER_PID=""; SHIM_PID=""; BRIDGE_PID=""; TMWS_PID=""
+
+stop_pid() {  # $1 = name of the variable holding the pid
+    local var="$1" pid="${!1}"
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+        kill "${pid}" 2>/dev/null; wait "${pid}" 2>/dev/null
     fi
-else
-    echo "${BASE_CONFIG}" > "${CONFIG_JSON}"
-fi
+    eval "${var}=''"
+}
 
-bashio::log.info "Effective configuration (secrets omitted):"
-jq 'del(.mqtt.password)' "${CONFIG_JSON}" | while IFS= read -r line; do bashio::log.info "  ${line}"; done
-
-# --- Telemetry dashboard (ingress, read-only) -------------------------------
-# Independent of the telemetry path: it only tails a copy of the logger output, so if it
-# dies the vehicle stream is unaffected. Restarted in a loop to keep the panel available.
-: > "${RECORDS_FILE}" 2>/dev/null || true
-export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" \
-       FT_CERT_FILE="${CERTS_DIR}/server.crt" FT_NAMESPACE="${NAMESPACE}" \
-       FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
-       FT_SHIM_CLIENT_ID="$(bashio::config 'teslamate_shim_client_id')" \
-       FT_SHIM_REFRESH_TOKEN="$(bashio::config 'teslamate_shim_refresh_token')" \
-       FT_SHIM_FLEET_HOST="$(bashio::config 'teslamate_shim_fleet_api_host')" \
-       FT_SHIM_AUTH_HOST="https://auth.tesla.com" \
-       FT_DEV_CLIENT_ID="$(bashio::config 'developer_client_id')" \
-       FT_DEV_CLIENT_SECRET="$(bashio::config 'developer_client_secret')" \
-       FT_DEV_FLEET_HOST="$(bashio::config 'developer_fleet_api_host')"
-( while true; do
-    python3 /opt/webapp/server.py
-    bashio::log.warning "dashboard exited; restarting in 3s"
-    sleep 3
-  done ) &
-bashio::log.info "Telemetry dashboard available via ingress (internal port ${WEB_PORT})"
-
-# --- Fleet-API shim for TeslaMate (read-only) -------------------------------
-# Serves the three Fleet API endpoints TeslaMate polls, assembled from the live stream, so
-# TeslaMate can point TESLA_API_HOST here (with use_streaming_api=false per car) instead of polling
-# Tesla. State is checkpointed to /data so it warm-starts across restarts. Isolated restart loop.
-export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json"
-# Optional priming credentials (user-supplied; blank = priming off, shim runs telemetry-only).
-export FT_SHIM_CLIENT_ID="$(bashio::config 'teslamate_shim_client_id')"
-export FT_SHIM_REFRESH_TOKEN="$(bashio::config 'teslamate_shim_refresh_token')"
-export FT_SHIM_FLEET_HOST="$(bashio::config 'teslamate_shim_fleet_api_host')"
-export FT_SHIM_WAKE_ON_PRIME="$(jbool 'teslamate_shim_wake_on_prime')"
-( while true; do
-    python3 /opt/webapp/shim.py
-    bashio::log.warning "Fleet-API shim exited; restarting in 3s"
-    sleep 3
-  done ) &
-bashio::log.info "Fleet-API shim listening on :8085 (set TeslaMate TESLA_API_HOST to this add-on; use_streaming_api=false)"
-
-# --- TeslaMate bridge (optional) --------------------------------------------
-# Forwards decoded records to a MyTeslaMate websocket server (POST /), replacing the Google
-# Pub/Sub push so TeslaMate can stream fully self-hosted. The websocket server can be bundled
-# (runs here on :8081) or external (teslamate_bridge_url). Isolated from the telemetry path.
-TM_TARGET=""
-EXT_URL="$(bashio::config 'teslamate_bridge_url')"
-if [ -n "${EXT_URL}" ] && [ "${EXT_URL}" != "null" ]; then
-    TM_TARGET="${EXT_URL}"
-    bashio::log.info "TeslaMate bridge -> external websocket server ${TM_TARGET}"
-elif bashio::config.true 'enable_teslamate_bridge'; then
-    ( while true; do
-        node /opt/teslamate-ws/index.js
-        bashio::log.warning "TeslaMate websocket server exited; restarting in 5s"
-        sleep 5
-      done ) &
-    TM_TARGET="http://127.0.0.1:8081/"
-    bashio::log.info "Bundled TeslaMate websocket server started on :8081 (front with TLS for wss://)"
-fi
-if [ -n "${TM_TARGET}" ]; then
-    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${TM_TARGET}"
-    ( while true; do
-        python3 /opt/webapp/bridge.py
-        bashio::log.warning "TeslaMate bridge exited; restarting in 5s"
-        sleep 5
-      done ) &
-    bashio::log.info "TeslaMate bridge forwarding telemetry to ${TM_TARGET}"
-fi
-
-# --- Run the server with cert-refresh supervision ---------------------------
-SERVER_PID=""
 start_server() {
-    # Tee the binary's stdout/stderr to the records file (for the dashboard) while still
-    # surfacing it in the add-on log. $! remains the binary's PID for clean kill/restart.
     "${BINARY}" -config="${CONFIG_JSON}" > >(tee -a "${RECORDS_FILE}") 2>&1 &
     SERVER_PID=$!
-    bashio::log.info "fleet-telemetry started (pid ${SERVER_PID}) listening on :${TELEMETRY_PORT} (telemetry), :${STATUS_PORT} (status)"
+    bashio::log.info "fleet-telemetry started (pid ${SERVER_PID}) on :${TELEMETRY_PORT} (telemetry), :${STATUS_PORT} (status)"
+}
+
+start_shim() {
+    export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
+           FT_SHIM_CLIENT_ID="$(cfg 'tesla.client_id')" \
+           FT_SHIM_REFRESH_TOKEN="$([ -f "${CFG}" ] && jq -r '.tesla.shim_refresh_token // ""' "${CFG}" 2>/dev/null)" \
+           FT_SHIM_FLEET_HOST="$(fleet_host_for "$(cfg 'tesla.region')")" \
+           FT_SHIM_WAKE_ON_PRIME="$([ -f "${CFG}" ] && jq -r '.teslamate.shim_wake_on_prime // true' "${CFG}" 2>/dev/null || echo true)"
+    # The wrapper traps TERM and kills its python child — otherwise stop_pid would only kill the
+    # subshell and orphan python, which would keep holding :8085 and block the restarted instance.
+    ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
+      while true; do
+        python3 /opt/webapp/shim.py & child=$!; wait "${child}"
+        bashio::log.warning "Fleet-API shim exited; restarting in 3s"; sleep 3
+      done ) &
+    SHIM_PID=$!
+    bashio::log.info "Fleet-API shim listening on :8085"
+}
+
+start_bridge() {
+    local target="" ext
+    ext="$(cfg 'teslamate.bridge_url')"
+    if [ -n "${ext}" ]; then
+        target="${ext}"
+        bashio::log.info "TeslaMate bridge -> external websocket server ${target}"
+    elif [ "$(cfgb 'teslamate.bridge_enabled')" = "true" ]; then
+        ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
+          while true; do
+            node /opt/teslamate-ws/index.js & child=$!; wait "${child}"
+            bashio::log.warning "TeslaMate websocket server exited; restarting in 5s"; sleep 5
+          done ) &
+        TMWS_PID=$!
+        target="http://127.0.0.1:8081/"
+        bashio::log.info "Bundled TeslaMate websocket server started on :8081"
+    fi
+    if [ -n "${target}" ]; then
+        export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${target}"
+        ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
+          while true; do
+            python3 /opt/webapp/bridge.py & child=$!; wait "${child}"
+            bashio::log.warning "TeslaMate bridge exited; restarting in 5s"; sleep 5
+          done ) &
+        BRIDGE_PID=$!
+        bashio::log.info "TeslaMate bridge forwarding telemetry to ${target}"
+    fi
+}
+
+# Re-(generate config, fetch cert, launch services) to match the current config file.
+reconcile() {
+    config_exists || return 0
+    bashio::log.info "Applying configuration from ${CFG}…"
+
+    # Telemetry binary: requires a cert (mTLS-only). Fetch from NPM when configured.
+    stop_pid SERVER_PID
+    if config_ready; then
+        if ! fetch_cert; then
+            if [ -f "${CERTS_DIR}/server.crt" ]; then
+                bashio::log.warning "NPM cert fetch failed — using the cached certificate."
+            else
+                bashio::log.warning "No certificate yet (NPM fetch failed, none cached) — telemetry server not started. Finish the NPM steps in the wizard."
+            fi
+        fi
+    fi
+    if generate_config && [ -f "${CERTS_DIR}/server.crt" ] && [ -f "${CERTS_DIR}/server.key" ]; then
+        jq 'del(.mqtt.password)' "${CONFIG_JSON}" 2>/dev/null | while IFS= read -r line; do bashio::log.info "  ${line}"; done
+        start_server
+    else
+        bashio::log.info "Telemetry server deferred until a certificate is available."
+    fi
+
+    # Shim + bridge do not need the cert; (re)start them to pick up credential/integration changes.
+    stop_pid SHIM_PID
+    start_shim
+    stop_pid BRIDGE_PID
+    stop_pid TMWS_PID
+    start_bridge
 }
 
 shutdown() {
-    bashio::log.info "Shutting down..."
-    [ -n "${SERVER_PID}" ] && kill "${SERVER_PID}" 2>/dev/null
-    wait "${SERVER_PID}" 2>/dev/null
+    bashio::log.info "Shutting down…"
+    stop_pid SERVER_PID; stop_pid SHIM_PID; stop_pid BRIDGE_PID; stop_pid TMWS_PID
     exit 0
 }
 trap shutdown SIGTERM SIGINT
 
-start_server
-
+# --- Reactive supervision loop -----------------------------------------------------------------
+# The config file IS the restart signal: hash it each tick and reconcile on change. The add-on is
+# NEVER exited when a child dies — that would take the wizard down with it; children are relaunched.
+LAST_HASH=""
+CERT_REFRESH_HOURS="$(cfg 'npm.cert_refresh_hours')"; [ -z "${CERT_REFRESH_HOURS}" ] && CERT_REFRESH_HOURS=12
 REFRESH_SECS=$(( CERT_REFRESH_HOURS * 3600 ))
 POLL_SECS=5
 elapsed=0
+
 while true; do
-    sleep "${POLL_SECS}"
-    if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
-        wait "${SERVER_PID}"; rc=$?
-        bashio::log.warning "fleet-telemetry exited (rc=${rc}). Exiting so Supervisor restarts the add-on."
-        exit "${rc}"
+    NEW_HASH="$( [ -f "${CFG}" ] && sha256sum "${CFG}" 2>/dev/null | awk '{print $1}' )"
+    if [ "${NEW_HASH}" != "${LAST_HASH}" ]; then
+        LAST_HASH="${NEW_HASH}"
+        CERT_REFRESH_HOURS="$(cfg 'npm.cert_refresh_hours')"; [ -z "${CERT_REFRESH_HOURS}" ] && CERT_REFRESH_HOURS=12
+        REFRESH_SECS=$(( CERT_REFRESH_HOURS * 3600 )); elapsed=0
+        reconcile
     fi
-    elapsed=$(( elapsed + POLL_SECS ))
-    if [ "${elapsed}" -ge "${REFRESH_SECS}" ]; then
-        elapsed=0
-        OLD_HASH="$(sha256sum "${CERTS_DIR}/server.crt" 2>/dev/null | awk '{print $1}')"
-        if fetch_cert; then
-            NEW_HASH="$(sha256sum "${CERTS_DIR}/server.crt" 2>/dev/null | awk '{print $1}')"
-            if [ "${OLD_HASH}" != "${NEW_HASH}" ]; then
-                bashio::log.info "Certificate changed on renewal — restarting fleet-telemetry to load it."
-                kill "${SERVER_PID}" 2>/dev/null
-                wait "${SERVER_PID}" 2>/dev/null
-                start_server
+
+    sleep "${POLL_SECS}"
+
+    # Relaunch the telemetry binary if it died while we expect it to be running (do NOT exit).
+    if [ -n "${SERVER_PID}" ] && ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+        wait "${SERVER_PID}" 2>/dev/null; rc=$?
+        bashio::log.warning "fleet-telemetry exited (rc=${rc}); relaunching in 3s."
+        SERVER_PID=""
+        sleep 3
+        if config_ready && [ -f "${CONFIG_JSON}" ] && [ -f "${CERTS_DIR}/server.crt" ]; then
+            start_server
+        fi
+    fi
+
+    # Periodic certificate refresh — restart only the binary if the cert changed.
+    if config_ready; then
+        elapsed=$(( elapsed + POLL_SECS ))
+        if [ "${elapsed}" -ge "${REFRESH_SECS}" ]; then
+            elapsed=0
+            OLD_CHASH="$(sha256sum "${CERTS_DIR}/server.crt" 2>/dev/null | awk '{print $1}')"
+            if fetch_cert; then
+                NEW_CHASH="$(sha256sum "${CERTS_DIR}/server.crt" 2>/dev/null | awk '{print $1}')"
+                if [ "${OLD_CHASH}" != "${NEW_CHASH}" ]; then
+                    bashio::log.info "Certificate changed on renewal — restarting fleet-telemetry."
+                    stop_pid SERVER_PID
+                    [ -f "${CONFIG_JSON}" ] && start_server
+                fi
             fi
         fi
     fi

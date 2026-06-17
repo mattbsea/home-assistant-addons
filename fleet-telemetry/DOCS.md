@@ -5,228 +5,143 @@ Home Assistant. Vehicles stream high-frequency telemetry directly to your server
 encrypted, mutually-authenticated WebSocket; the server fans those records out to a **Logger**
 (stdout), an **MQTT** broker, and/or **Google Pub/Sub**.
 
-This is the *server* side only. Decoding the records into Home Assistant entities (or feeding
-TeslaMate) is a separate consumer that reads from MQTT/Pub/Sub.
+**This add-on has no Configuration page.** Everything is configured through the built-in **setup
+wizard** — open the add-on from the Home Assistant sidebar and the wizard launches automatically.
+It generates your signing keypair, hosts the public key, registers your Tesla partner account,
+fetches your TLS certificate, and sends the streaming config to your vehicle. All settings are
+written to a single local file, `/data/wizard-config.json`.
 
 ---
 
 ## How it works (read this first)
 
 ```
-Tesla vehicle ──WSS / mTLS──▶ NPM Stream (TCP passthrough :443) ──TCP──▶ HA host:<mapped port>
-                                                                              │
-                                                                  fleet-telemetry add-on
+                      ┌─ HTTPS :443  ─ NPM Proxy Host ─▶ add-on :8100  (serves the public key)
+public domain ────────┤
+(e.g. fleet.x.org)    └─ TCP  :<port> ─ NPM Stream ────▶ add-on :4443  (mTLS telemetry)
+
+Tesla vehicle ──WSS / mTLS──▶ NPM Stream (TCP passthrough) ──▶ fleet-telemetry add-on
                                                                   (terminates TLS + mTLS itself)
-                                                                              │
-                                          ┌───────────────────┬───────────────┴───────────────┐
-                                     logger (stdout)       MQTT broker                  Google Pub/Sub
+                                          ┌───────────────────┬───────────────┴──────────────┐
+                                     logger (stdout)       MQTT broker                 Google Pub/Sub
 ```
 
-> **⚠️ The server is mTLS-only and terminates TLS itself.**
-> fleet-telemetry refuses to start without a TLS certificate and *requires and verifies* the
-> vehicle's client certificate. Therefore your public reverse proxy **must be a Layer-4 TCP
-> passthrough** (in NGINX Proxy Manager: a **Stream**, not a Proxy Host). The proxy must **not**
-> terminate TLS — if it did, the vehicle's client-certificate identity would be lost and the
-> handshake would fail. The TLS certificate for your public hostname therefore lives **with this
-> add-on**, which fetches it from NPM's API (see below).
+> **⚠️ Telemetry is mTLS-only and the server terminates TLS itself.**
+> Your telemetry endpoint **must be a Layer-4 TCP passthrough** — in NGINX Proxy Manager a
+> **Stream**, not a Proxy Host. A proxy that terminated TLS would lose the vehicle's
+> client-certificate identity and the handshake would fail. The TLS certificate therefore lives
+> **with this add-on**, which fetches it from NPM's API.
 >
-> You do **not** need to manage the vehicle's client CA — Tesla's production CA is built into the
-> server.
+> Because the **telemetry port is configurable** (it need not be 443), the *same domain* can serve
+> both: an ordinary HTTPS **Proxy Host on :443** for the public key, and a **Stream** on your
+> chosen telemetry port. You may also use two separate sub-domains.
+>
+> You do **not** manage the vehicle's client CA — Tesla's production CA is built into the server.
 
 ---
 
-## Step 1 — Tesla developer setup (API keys)
+## Before you start
 
-You need a Tesla developer application and a paired virtual key before any vehicle will connect.
+- A **Tesla developer app** at <https://developer.tesla.com> with the `vehicle_device_data` and
+  `vehicle_location` scopes. Note its **Client ID** and **Client Secret**. Register a **redirect
+  URI** (e.g. `https://<your-domain>/callback`) for the login step.
+- A **public domain** pointing at your home IP (e.g. `fleet.example.org`).
+- **NGINX Proxy Manager** running, reachable on its admin API, able to issue Let's Encrypt certs.
+- **Router port-forwards** to NPM: `443` (public key + LE challenge) and your chosen **telemetry
+  port** (default `4443`).
 
-1. **Create an application** at <https://developer.tesla.com>. Request the
-   `vehicle_device_data` scope (and any others you need). Note your **Client ID** and
-   **Client Secret**.
-2. **Generate an EC key pair** (secp256r1 / prime256v1) for your application:
-   ```bash
-   openssl ecparam -name prime256v1 -genkey -noout -out private-key.pem
-   openssl ec -in private-key.pem -pubout -out public-key.pem
-   ```
-3. **Host the public key** at exactly this path on your registered domain:
-   ```
-   https://<your-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem
-   ```
-   > This static file is **not** served by this add-on. Host it with your existing web stack —
-   > e.g. an NGINX Proxy Manager *Proxy Host* / custom location, or any static host. The domain
-   > here is your **application** domain; it can differ from the telemetry hostname in Step 2.
-4. **Get a Partner Authentication token** and **register** your partner account against the
-   Fleet API `partner_accounts` endpoint (this is where Tesla fetches the public key above).
-5. **Pair the virtual key** to each vehicle (the owner approves the app's virtual key in the
-   Tesla mobile app — commonly via a `https://tesla.com/_ak/<your-domain>` deep link). Follow the
-   exact current flow in Tesla's docs, as the pairing URL/steps change over time.
-
-Full reference: <https://developer.tesla.com/docs/fleet-api> and the
-[fleet-telemetry README](https://github.com/teslamotors/fleet-telemetry#getting-started).
+The wizard does the rest — you don't run any `openssl` or `curl` commands by hand.
 
 ---
 
-## Step 2 — Public hostname, certificate, and the NPM Stream
+## The wizard, step by step
 
-Pick a public hostname for telemetry, e.g. `telemetry.example.org`.
+1. **Welcome** — choose new setup or TeslaMate migration.
+2. **Prerequisites** — the checklist above.
+3. **Tesla app** — paste Client ID + Client Secret, pick your region (NA/EU/CN).
+4. **NGINX Proxy Manager** — admin URL, email, password, and the **Home Assistant host IP** that
+   NPM forwards to (the add-on can't detect this itself — use the same IP your Stream targets).
+5. **Generate signing key** — the add-on creates the EC key pair (`/data/keys/`). The private key
+   never leaves the add-on.
+6. **Public-key domain** — enter your domain; the add-on **auto-creates an NPM proxy host**
+   (HTTPS :443 + Let's Encrypt) that serves the public key at the `.well-known` path. DNS for the
+   domain must already point at NPM for the certificate challenge to succeed.
+7. **Verify public key** — confirms the key is reachable from the internet.
+8. **Register partner** — the add-on registers your domain with Tesla automatically.
+9. **Telemetry stream** — confirm the telemetry domain + port, then create the NPM **Stream**
+   (TCP passthrough → add-on `:4443`). Do **not** enable SSL termination on the Stream.
+10. **Verify certificate** — the add-on fetches the telemetry cert from NPM; confirm it loaded.
+11. **Tesla account login** — generate the login link, sign in, and paste back the redirect URL
+    (containing `?code=…`). The add-on exchanges it for a refresh token, stored locally.
+12. **Backends & tuning** — pick Logger / MQTT / Pub/Sub and adjust log level, namespace, etc.
+13. **Configure your vehicle** — sends the signed `fleet_telemetry_config` to your car(s).
+14. **TeslaMate** (TeslaMate paths only) — choose the shim or the streaming bridge.
+15. **Verification** — polls the cert and incoming records until your car starts streaming.
+16. **Done** — summary.
 
-1. **Issue a Let's Encrypt certificate** for that hostname in NGINX Proxy Manager
-   (*SSL Certificates → Add → Let's Encrypt*). A **DNS challenge** works even though nothing is
-   served over HTTP on this host.
-2. **Create a Stream** (*Hosts → Streams → Add Stream*):
-   - **Incoming Port:** `443` (the public port vehicles connect to).
-   - **Forward Host:** your Home Assistant host IP.
-   - **Forward Port:** the host port mapped to the add-on's `4443` (see the add-on **Network**
-     tab; default `4443`).
-   - **TCP Forwarding:** on. **UDP:** off. **Do not** attach SSL termination — leave it as raw
-     passthrough.
-3. **Point DNS** for `telemetry.example.org` at your public IP and forward TCP `443` to NPM.
-
-The add-on pulls the certificate's PEMs from NPM automatically — see the `npm_*` options below.
-
----
-
-## Step 3 — Add-on configuration
-
-Open the add-on **Configuration** tab. Start with the **Logger** backend so you can confirm
-vehicles connect, then add MQTT and/or Pub/Sub.
-
-### Server options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `log_level` | `info` | `trace`, `debug`, `info`, `warn`, or `error`. |
-| `json_log_enable` | `true` | Emit structured JSON logs. |
-| `namespace` | `tesla_telemetry` | Topic/stream prefix used by the dispatchers. |
-| `reliable_ack` | `false` | Only ack the vehicle after the backend confirms receipt (recommend `true` with Kafka/Pub/Sub for at-least-once delivery). |
-| `rate_limit_enabled` | `true` | Enable per-vehicle message rate limiting. |
-| `rate_limit_message_interval` | `30` | Rate-limit window, seconds. |
-| `rate_limit_message_limit` | `1000` | Max messages per window. |
-| `metrics_enabled` | `false` | Expose Prometheus metrics on port `9090`. |
-
-### TLS / NGINX Proxy Manager (required)
-
-| Option | Description |
-|--------|-------------|
-| `npm_url` | NPM admin API base URL, e.g. `https://proxy.example.org:81`. |
-| `npm_email` / `npm_password` | NPM login used to read the certificate via the API. **Must be an administrator account, or a user that owns the certificate** — in NPM, non-admin users only see their own certs, so a limited account returns an empty list and the fetch fails. |
-| `npm_cert_domain` | The certificate's domain, e.g. `telemetry.example.org`. |
-| `cert_refresh_hours` | How often (hours) to re-pull the cert from NPM so renewals are picked up. The add-on restarts the server only when the cert actually changes. |
-
-### Backends
-
-At least one backend must be enabled; if none are, the add-on falls back to the Logger.
-
-**Logger** — `enable_logger: true`. Records are serialized to JSON in the add-on log. Zero setup;
-ideal for verifying connectivity.
-
-**MQTT** — `enable_mqtt: true`.
-
-| Option | Description |
-|--------|-------------|
-| `mqtt_broker` | `host:port`. **Leave blank** to auto-discover the Home Assistant Mosquitto broker. |
-| `mqtt_client_id` | Client id (default `fleet-telemetry`). |
-| `mqtt_topic_base` | Root topic; messages publish under `<topic_base>/...`. |
-| `mqtt_qos` | 0, 1, or 2. |
-| `mqtt_username` / `mqtt_password` | Optional; auto-filled from the discovered HA broker. |
-
-**Google Pub/Sub** — `enable_pubsub: true`.
-
-| Option | Description |
-|--------|-------------|
-| `gcp_project_id` | Your GCP project id. |
-| `gcp_service_account_json` | Paste the full service-account JSON key. It is written to `/data/gcp-credentials.json` (mode 600) and exported as `GOOGLE_APPLICATION_CREDENTIALS`. |
-
-The service account needs the **Pub/Sub Editor** role (`roles/pubsub.editor`) — the server
-**auto-creates** the topics (`<namespace>_V`, `<namespace>_connectivity`, …) on startup and
-panics if it cannot.
-
-### Advanced — raw config escape hatch
-
-`extra_config_json` accepts a JSON object that is **deep-merged over** the generated config. Use
-it for backends not exposed above (Kafka, Kinesis, ZMQ, MQTT TLS, statsd, custom `records`
-routing, `tls.ca_file`, etc.). Example to add Kafka and route `V` to both logger and Kafka:
-
-```json
-{
-  "kafka": { "bootstrap.servers": "kafka:9092", "queue.buffering.max.messages": 1000000 },
-  "records": { "V": ["logger", "kafka"] }
-}
-```
-
-> Use the Configuration tab's **YAML mode** to paste multi-line values like
-> `gcp_service_account_json` and `extra_config_json`.
+The wizard writes each step's settings to `/data/wizard-config.json` immediately. The add-on
+watches that file and (re)starts the telemetry server, shim and bridge automatically — you never
+need to restart the add-on.
 
 ---
 
-## Step 4 — Point your vehicles at the server
+## Backends
 
-Tell each vehicle where to stream, using the Fleet API
-`api/1/vehicles/fleet_telemetry_config` endpoint. The `config` object references your telemetry
-hostname, the CA the vehicle should trust (the Let's Encrypt chain), and the fields to stream.
-The shape below is **illustrative** — confirm the exact field names and value schema against the
-current [Fleet API telemetry docs](https://developer.tesla.com/docs/fleet-api) and the
-[fleet-telemetry protos](https://github.com/teslamotors/fleet-telemetry/tree/main/protos), which
-change over time:
+At least one backend is always active; if none are selected the Logger is used.
 
-```jsonc
-{
-  "vins": ["<your-vin>"],
-  "config": {
-    "hostname": "telemetry.example.org",
-    "port": 443,
-    "ca": "-----BEGIN CERTIFICATE-----\n...ISRG/LE chain...\n-----END CERTIFICATE-----",
-    "fields": {
-      "VehicleSpeed": { "interval_seconds": 10 },
-      "Soc":          { "interval_seconds": 60 },
-      "Location":     { "interval_seconds": 10 }
-    }
-  }
-}
-```
+- **Logger** — records serialized to the add-on log. Powers the dashboard and the TeslaMate shim,
+  so keep it on if you want those.
+- **MQTT** — leave the broker blank to auto-discover the Home Assistant Mosquitto broker.
+- **Google Pub/Sub** — paste the service-account JSON (stored at `/data/gcp-credentials.json`,
+  mode 600). The account needs **Pub/Sub Editor** (`roles/pubsub.editor`); topics
+  (`<namespace>_V`, `<namespace>_connectivity`, …) are auto-created on startup.
 
-Vehicles require firmware **2023.20.6 or later**. After the config is accepted, the car opens a
-WebSocket to `telemetry.example.org:443`, which NPM passes through to the add-on.
+**Advanced escape hatch:** the *Backends & tuning* step's `extra_config_json` is deep-merged over
+the generated `fleet-telemetry` config, for backends not exposed in the UI (Kafka, Kinesis, ZMQ,
+custom `records` routing, `tls.ca_file`, …).
 
 ---
 
 ## Feeding TeslaMate (self-hosted, no Google Pub/Sub)
 
-TeslaMate can use a [MyTeslaMate websocket server](https://github.com/MyTeslaMate/websocket) as its
-streaming source. That server is normally fed by a Google Pub/Sub push subscription; to stay fully
-self-hosted, this add-on can **bundle the websocket server and feed it directly**:
+The add-on can feed TeslaMate without Google Pub/Sub:
 
-- Set **`enable_teslamate_bridge: true`**. The add-on runs the websocket server on port **8081**
-  and a built-in glue forwards each decoded record to it locally, in the same
-  `{"message":{"data":base64(payload)}}` envelope Pub/Sub would deliver. (Keep `enable_logger` on —
-  the glue tails the logger output.)
-- Or, to use an **external** websocket server instead, leave `enable_teslamate_bridge` off and set
-  **`teslamate_bridge_url`** to its ingest URL (e.g. `http://host:8081/`).
+- **Fleet-API shim** — point TeslaMate at `http://<ha-host>:8085` (`TESLA_API_HOST`) and set
+  `use_streaming_api = false` per car. Vehicle data is assembled from the live telemetry stream.
+- **Streaming bridge** — enable the bundled websocket server (port `8081`) in the TeslaMate step,
+  or set an external websocket URL. Then point TeslaMate at it
+  (`TESLA_WSS_HOST=wss://<your-ws-domain>`, `TESLA_WSS_USE_VIN=true`).
 
-Then point TeslaMate at the websocket server (see the TeslaMate docs, *Streaming via Tesla
-Telemetry*): `TESLA_WSS_HOST=wss://<your-ws-domain>`, `TESLA_WSS_USE_VIN=true`,
-`TESLA_WSS_TLS_ACCEPT_INVALID_CERTS=true`. TeslaMate connects to `<host>/streaming/` and subscribes
-by VIN; the websocket server forwards the telemetry as streaming updates.
+---
 
 ## Dashboard
 
-The add-on adds a **Fleet Telemetry** panel to the Home Assistant sidebar (ingress). It tails the
-logger output and shows, per vehicle, the latest battery/charging, speed, gear, odometer, and a
-location mini-map, plus stream health (records/min, total records, last-seen, TLS cert expiry,
-uptime, telemetry client version). It updates every few seconds and renders any extra telemetry
-fields you configure. The dashboard is read-only and isolated — if it stops, the vehicle stream is
-unaffected. (The Logger backend is what feeds it, so keep `enable_logger` on if you want the panel
-populated.)
+The add-on adds a **Tesla Telemetry** panel to the sidebar (ingress). It shows, per vehicle, the
+latest battery/charging, speed, gear, odometer and a location mini-map, plus stream health
+(records/min, total, last-seen, TLS expiry, uptime). It's read-only and isolated from the
+telemetry path. The Logger backend feeds it, so keep Logger on for a populated panel.
+
+---
+
+## Where things are stored
+
+| Path | Contents |
+|------|----------|
+| `/data/wizard-config.json` | All settings (mode 600; holds secrets). The source of truth. |
+| `/data/wizard-state.json` | Wizard UI progress only. |
+| `/data/keys/private-key.pem` / `public-key.pem` | The generated EC keypair (private key mode 600). |
+| `/data/certs/server.{crt,key}` | TLS cert fetched from NPM. |
+| `/data/config.json` | The native `fleet-telemetry` config, regenerated from the settings file. |
+| `/data/shim-state.json` | TeslaMate shim snapshot. |
+
+---
 
 ## Verification
 
-1. **Add-on log** — with the Logger backend you should see incoming records as JSON once a car
-   connects. `connectivity` records mark a vehicle going online/offline.
-2. **Status endpoint** — the server exposes a health check on the status port (`8080` internally;
-   see the add-on Network tab for the mapped host port). The exact path (e.g. `/status`) depends
-   on the upstream version.
-3. **Metrics** — if `metrics_enabled`, Prometheus metrics are on port `9090`.
-4. **MQTT** — subscribe to `<mqtt_topic_base>/#` on your broker and watch records arrive.
-5. **Pub/Sub** — confirm the `<namespace>_V` topic was created and is receiving messages.
+1. **Add-on log** — with Logger on you should see incoming records as JSON once a car connects.
+2. **Dashboard** — vehicles and a rising record count appear within a few minutes of the car waking.
+3. **MQTT** — subscribe to `<topic_base>/#`; **Pub/Sub** — confirm the `<namespace>_V` topic fills.
+4. **Metrics** — if enabled, Prometheus metrics are on port `9090`.
 
 ---
 
@@ -234,14 +149,14 @@ populated.)
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| Add-on exits at startup with *"could not fetch a certificate from NPM"* | Wrong `npm_url`/credentials, or `npm_cert_domain` doesn't match a cert in NPM. The URL must reach the NPM **admin** API (often port `81`). |
-| Log says *"the NPM account … can see 0 certificates"* | The configured NPM login is a non-admin user; it only sees certs it owns. Use an NPM administrator account (or one that owns the certificate). |
-| *"tls config is empty - telemetry server is mTLS only"* | The cert wasn't written. Confirm `/data/certs/server.crt` exists; re-check the `npm_*` options. |
-| Vehicle never connects / TLS handshake errors | The proxy is terminating TLS. It must be a **Stream / TCP passthrough**, not a Proxy Host. Also verify DNS and the public `443` forward. |
-| Vehicle connects then drops | Cert hostname mismatch with `hostname` in the vehicle config, or the `ca` you sent the car doesn't match the served chain. |
-| Pub/Sub panic on startup | Service account lacks `roles/pubsub.editor`, or `gcp_project_id` is wrong. |
-| No data but vehicle paired | Firmware < 2023.20.6, virtual key not paired, or `fields` not configured in `fleet_telemetry_config`. |
+| Wizard says the certificate request failed at step 6 | DNS for the domain isn't pointing at NPM yet, or ports 80/443 don't reach NPM. The Let's Encrypt HTTP-01 challenge needs both. |
+| Step 4 / cert fetch: *"the NPM account can see 0 certificates"* | The NPM login is a non-admin user; it only sees certs it owns. Use an NPM administrator account. |
+| Step 8 partner registration fails | Wrong Client ID/Secret, wrong region, or the public key isn't reachable yet (do step 7 first). |
+| Step 11 login fails | The redirect URI you used isn't registered in your Tesla app, or the pasted URL didn't contain a `code`. |
+| Vehicle never connects / TLS handshake errors | The telemetry endpoint is a Proxy Host (terminating TLS) instead of a **Stream**. Also verify DNS and the telemetry-port forward. |
+| Step 13 says "No VINs in shim state" | Wait a minute after the server starts so the shim can prime from the Fleet API, then retry. |
+| Telemetry server "deferred until a certificate is available" in the log | Finish the NPM cert steps; once a cert is fetched the server starts automatically (no add-on restart needed). |
+| Pub/Sub panic on startup | Service account lacks `roles/pubsub.editor`, or the project ID is wrong. |
 
-To suppress noisy TLS handshake error logs (e.g. from internet scanners hitting the port), add
-`SUPPRESS_TLS_HANDSHAKE_ERROR_LOGGING=true` — currently only via a custom build; most users can
-ignore the noise.
+The setup wizard is always reachable from the **Setup Guide** link in the dashboard header if you
+need to revisit a step.

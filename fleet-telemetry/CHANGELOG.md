@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.0
+
+### Changed (breaking — re-run setup)
+- **Wizard-driven configuration.** The add-on Configuration page is gone. Everything is now
+  configured through the built-in setup wizard, which writes a single local config file
+  (`/data/wizard-config.json`). Existing installs are **not** migrated — open the add-on and run
+  the wizard again. Back up your old option values first if you need them.
+- **Inverted startup.** The setup wizard/dashboard now always starts first and never fails on a
+  fresh, unconfigured install. The TLS-cert fetch, the `fleet-telemetry` binary, the TeslaMate
+  shim and the bridge are started reactively once the wizard has written enough config, and
+  restart automatically when settings change — no add-on restart needed.
+
+### Added
+- **Add-on generates and hosts the signing keypair.** The wizard creates the EC key pair, serves
+  the public key on a dedicated internet-facing listener (port `8100`), and **auto-creates the
+  NGINX Proxy Manager proxy host** (HTTPS :443 + Let's Encrypt) for the `.well-known` path.
+- **Automated Tesla partner registration** (client-credentials grant) and a **guided OAuth login**
+  that captures the user-context refresh token via the authorization-code flow.
+- **Single-domain setup.** Because the telemetry port is configurable, one domain can serve both
+  the public key (proxy host on :443) and the telemetry stream (NPM Stream on the chosen port).
+
+### Removed
+- All `options:`/`schema:` entries from `config.yaml`, and the `share:ro` mapping (the private key
+  is now generated at `/data/keys/private-key.pem`).
+
 ## 0.9.9
 
 ### Fixed

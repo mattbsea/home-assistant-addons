@@ -7,27 +7,29 @@ are dispatched to a **Logger**, **MQTT**, and/or **Google Pub/Sub**.
 ## Features
 
 - Runs the official `fleet-telemetry` binary (pinned `v0.9.0`, amd64).
-- All server settings exposed on the add-on Configuration page, plus a raw-JSON escape hatch for
-  advanced backends (Kafka, Kinesis, ZMQ, …).
+- **Built-in setup wizard.** No Configuration page — everything is configured through a guided
+  wizard that generates the EC keypair, hosts the public key, registers your Tesla partner
+  account, fetches your TLS cert, and configures your vehicle. It writes one local config file
+  (`/data/wizard-config.json`) and (re)starts services reactively.
 - **mTLS handled by the add-on.** Automatically fetches and renews the TLS certificate from your
-  NGINX Proxy Manager via its API.
+  NGINX Proxy Manager via its API, and auto-creates the NPM proxy host for the public key.
 - First-class backends: Logger (stdout), MQTT (auto-discovers the HA Mosquitto broker), and Google
   Pub/Sub (topics auto-created).
 
 ## Quick start
 
-1. Install the add-on and open **Configuration**.
-2. Set `npm_url`, `npm_email`, `npm_password`, and `npm_cert_domain` so the add-on can pull your
-   Let's Encrypt cert from NGINX Proxy Manager.
-3. Leave the Logger backend on, start the add-on, and watch the log.
-4. In NPM, create a **Stream** (TCP passthrough) from public `:443` to the add-on's mapped port.
-5. Point your vehicles at the server with the Fleet API `fleet_telemetry_config` endpoint.
+1. Install the add-on and **open it from the sidebar** — the setup wizard launches automatically.
+2. Have ready: a Tesla developer app (Client ID + Secret), a public domain pointing at your home
+   IP, and NGINX Proxy Manager. Then follow the wizard step by step.
+3. The wizard generates your signing keypair, creates the public-key proxy host in NPM, registers
+   your domain with Tesla, helps you create the telemetry **Stream**, logs you in, and sends the
+   `fleet_telemetry_config` to your vehicle.
 
-> The reverse proxy must be a **TCP passthrough Stream**, not an HTTP proxy host — the server is
-> mTLS-only and terminates TLS itself.
+> Telemetry uses **mTLS**, so the telemetry endpoint must be an NPM **TCP-passthrough Stream**, not
+> an HTTP proxy host. The telemetry port is configurable, so the public key can be served by an
+> ordinary HTTPS proxy host on :443 of the same domain.
 
-See **[DOCS.md](DOCS.md)** for the full setup guide (Tesla API keys, public-key hosting, Pub/Sub,
-vehicle configuration, verification, and troubleshooting).
+See **[DOCS.md](DOCS.md)** for the full setup guide and troubleshooting.
 
 ## License
 

@@ -1,7 +1,7 @@
 ---
 name: "Tesla Fleet Telemetry"
 description: "Self-hosted Tesla fleet-telemetry server — receive streaming vehicle telemetry over mTLS and fan it out to Logger, MQTT, or Google Pub/Sub"
-version: "0.9.9"
+version: "0.10.0"
 slug: "fleet_telemetry"
 init: false
 
@@ -29,17 +29,19 @@ ports:
   9090/tcp: 9090
   8081/tcp: 8081
   8085/tcp: 8085
+  8100/tcp: 8100
 ports_description:
   4443/tcp: "Vehicle telemetry (mTLS). Point your NPM passthrough Stream here."
   8080/tcp: "Status/health endpoint"
   9090/tcp: "Prometheus metrics (only used when metrics_enabled is on)"
   8081/tcp: "TeslaMate streaming websocket (when enable_teslamate_bridge is on). Front with TLS for wss."
   8085/tcp: "Fleet-API shim for TeslaMate (point TeslaMate's TESLA_API_HOST here; set use_streaming_api=false)"
+  8100/tcp: "Public-key host. The setup wizard auto-creates an NPM proxy host (HTTPS :443) forwarding to this port to serve the Tesla 3p public key."
 
-# Persistent storage for generated config.json, fetched TLS certs, and GCP credentials
+# Persistent storage for the wizard config, generated config.json, fetched TLS certs,
+# the generated EC keypair, and GCP credentials.
 map:
   - data:rw
-  - share:ro
 
 # Used for bashio::info.timezone; entities are not published directly by this add-on
 hassio_api: true
@@ -48,74 +50,7 @@ hassio_api: true
 services:
   - mqtt:want
 
-# Add-on configuration options
-options:
-  log_level: "info"
-  json_log_enable: true
-  namespace: "tesla_telemetry"
-  reliable_ack: false
-  rate_limit_enabled: true
-  rate_limit_message_interval: 30
-  rate_limit_message_limit: 1000
-  metrics_enabled: false
-  npm_url: ""
-  npm_email: ""
-  npm_password: ""
-  npm_cert_domain: ""
-  cert_refresh_hours: 12
-  enable_logger: true
-  enable_mqtt: false
-  mqtt_broker: ""
-  mqtt_client_id: "fleet-telemetry"
-  mqtt_topic_base: "telemetry"
-  mqtt_qos: 1
-  mqtt_username: ""
-  mqtt_password: ""
-  enable_pubsub: false
-  gcp_project_id: ""
-  gcp_service_account_json: ""
-  developer_client_id: ""
-  developer_client_secret: ""
-  developer_fleet_api_host: "https://fleet-api.prd.na.vn.cloud.tesla.com"
-  enable_teslamate_bridge: false
-  teslamate_bridge_url: ""
-  teslamate_shim_client_id: ""
-  teslamate_shim_refresh_token: ""
-  teslamate_shim_fleet_api_host: "https://fleet-api.prd.na.vn.cloud.tesla.com"
-  teslamate_shim_wake_on_prime: true
-  extra_config_json: ""
-schema:
-  log_level: "list(trace|debug|info|warn|error)"
-  json_log_enable: bool
-  namespace: str
-  reliable_ack: bool
-  rate_limit_enabled: bool
-  rate_limit_message_interval: int(1,3600)
-  rate_limit_message_limit: int(1,1000000)
-  metrics_enabled: bool
-  npm_url: url
-  npm_email: email
-  npm_password: password
-  npm_cert_domain: str
-  cert_refresh_hours: int(1,168)
-  enable_logger: bool
-  enable_mqtt: bool
-  mqtt_broker: str?
-  mqtt_client_id: str?
-  mqtt_topic_base: str?
-  mqtt_qos: int(0,2)
-  mqtt_username: str?
-  mqtt_password: password?
-  enable_pubsub: bool
-  gcp_project_id: str?
-  gcp_service_account_json: str?
-  developer_client_id: str?
-  developer_client_secret: password?
-  developer_fleet_api_host: str?
-  enable_teslamate_bridge: bool
-  teslamate_bridge_url: str?
-  teslamate_shim_client_id: str?
-  teslamate_shim_refresh_token: password?
-  teslamate_shim_fleet_api_host: str?
-  teslamate_shim_wake_on_prime: bool
-  extra_config_json: str?
+# No add-on configuration options: this add-on is configured entirely through its built-in setup
+# wizard (open the add-on via the sidebar / ingress). The wizard writes /data/wizard-config.json,
+# generates the EC keypair, hosts the public key, and drives Tesla partner registration + vehicle
+# telemetry config. The HA Configuration page is intentionally empty.
