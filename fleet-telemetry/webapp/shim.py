@@ -248,7 +248,7 @@ class Vehicle:
         if self.prime:
             for sec in ("drive_state", "charge_state", "climate_state", "vehicle_state"):
                 for k, v in (self.prime.get(sec) or {}).items():
-                    if tele[sec].get(k) is None:
+                    if tele[sec].get(k) is None and v not in ("<invalid>", "invalid"):
                         tele[sec][k] = v
             if not tele.get("vehicle_config"):
                 tele["vehicle_config"] = self.prime.get("vehicle_config") or {}

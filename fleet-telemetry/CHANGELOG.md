@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.7
+
+### Bug Fixes
+- **Prime snapshot `<invalid>` strings no longer passed through to TeslaMate.** When live telemetry
+  hasn't yet provided a value, `vehicle_data()` fills gaps from the prime snapshot. However the prime
+  — a real Tesla Fleet API response — contains `"<invalid>"` strings for fields like
+  `conn_charge_cable`, `fast_charger_brand`, and `fast_charger_type` when the car is not charging.
+  These were being forwarded to TeslaMate as-is instead of treated as absent. Fixed by skipping
+  `"<invalid>"` and `"invalid"` values in the prime fill loop (same sentinel values that
+  `_strip_state()` already filters for live telemetry fields).
+
 ## 0.7.6
 
 ### Bug Fixes
