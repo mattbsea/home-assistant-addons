@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.10
+
+### Added
+- **Navigation destination and ETA in the Drive card.** The dashboard now shows the active navigation
+  destination and estimated arrival (miles + minutes) when the car is navigating. The data comes
+  from the prime snapshot immediately on startup, and from live streaming telemetry once the
+  vehicle's `fleet_telemetry_config` includes the new fields. The suggested config in the setup
+  wizard (Step 9) now includes `Destination`, `MilesToArrival`, and `MinutesToArrival` — re-send
+  the config to your vehicle to enable live updates. Until then, the destination shown reflects
+  the prime snapshot (updated on each add-on restart).
+
 ## 0.7.9
 
 ### Bug Fixes

@@ -206,6 +206,9 @@ def _prime_to_fields(p):
     put("GpsHeading", ds.get("heading"))
     put("VehicleSpeed", ds.get("speed"))
     put("Gear", ds.get("shift_state"))
+    put("Destination", ds.get("active_route_destination"))
+    put("MilesToArrival", ds.get("active_route_miles_to_arrival"))
+    put("MinutesToArrival", ds.get("active_route_minutes_to_arrival"))
     put("Odometer", vs.get("odometer"))
     put("Version", vs.get("car_version"))
     if isinstance(vs.get("locked"), bool):
@@ -618,7 +621,9 @@ function buildCards(v){
    +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
    +row("Gear",gear)
    +row("Heading",nf(N('GpsHeading')),"°")
-   +row("Odometer",nf(d(N('Odometer'))),distUnit));
+   +row("Odometer",nf(d(N('Odometer'))),distUnit)
+   +row("Destination",S('Destination'))
+   +(N('MilesToArrival')!=null&&N('MilesToArrival')>0.1?row("ETA",`${nf(N('MilesToArrival'))} mi · ${Math.round(N('MinutesToArrival'))} min`):""));
 
  // Climate
  cards+=mcard("Climate",
@@ -1053,7 +1058,10 @@ function renderStep9(){
     "ACChargingPower":     {"interval_seconds": 30},
     "DCChargingPower":     {"interval_seconds": 30},
     "InsideTemp":          {"interval_seconds": 60},
-    "OutsideTemp":         {"interval_seconds": 60}
+    "OutsideTemp":         {"interval_seconds": 60},
+    "Destination":         {"interval_seconds": 30},
+    "MilesToArrival":      {"interval_seconds": 30},
+    "MinutesToArrival":    {"interval_seconds": 30}
   }
 }`;
   const curl=`curl -X POST ${host}/api/1/vehicles/<VIN>/fleet_telemetry_config \\
