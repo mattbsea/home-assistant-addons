@@ -1363,17 +1363,24 @@ function renderStep9(){
     "MinutesToArrival":          {"interval_seconds": 30}
   }
 }`;
+  const domainVal=W.inputs.domain||"";
   const res=W.inputs.telemetry_config_result||null;
   return`
 <h2>Configure Vehicle Telemetry</h2>
 <p class="subtitle">Tell your Tesla vehicle where to stream data. This sends the configuration directly from the add-on using your stored credentials.</p>
+<div class="card"><h3>Telemetry domain</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">The public hostname your vehicle will connect to — must match your TLS certificate.</p>
+  <div class="input-row">
+    <input type="text" id="telDomainInput" placeholder="telemetry.example.org" value="${esc(domainVal)}">
+  </div>
+</div>
 <div class="region-sel">
   <button class="region-btn${region==="na"?" sel":""}" onclick="setRegion('na')">North America</button>
   <button class="region-btn${region==="eu"?" sel":""}" onclick="setRegion('eu')">Europe</button>
   <button class="region-btn${region==="cn"?" sel":""}" onclick="setRegion('cn')">China</button>
 </div>
 <div class="card"><h3>What will be sent</h3>
-  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">57 telemetry fields · your domain <b>${esc(domain)}</b> · port 443 · CA chain from your TLS cert. VINs and credentials are read automatically from the add-on.</p>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">57 telemetry fields · port 443 · CA chain from your TLS cert. VINs and credentials are read automatically from the add-on.</p>
   ${codebox(cfg,"cfg-json")}
 </div>
 <div class="card"><h3>Send configuration</h3>
@@ -1487,11 +1494,17 @@ async function checkCert(){
 
 async function sendTelemetryConfig(){
   const el=document.getElementById("telCfgResult");
-  if(el)el.innerHTML=`<div class="result info">Sending… this may take up to 30 seconds while the proxy starts.</div>`;
-  const domain=(W.inputs.domain||"").replace(/^https?:\/\//,"").replace(/\/.*$/,"");
+  const inp=document.getElementById("telDomainInput");
+  const raw=inp?inp.value.trim():(W.inputs.domain||"");
+  const domain=raw.replace(/^https?:\/\//,"").replace(/\/.*$/,"");
+  if(!domain){
+    if(el)el.innerHTML=`<div class="result err">✗ Enter your telemetry domain above before sending.</div>`;
+    return;
+  }
+  if(el)el.innerHTML=`<div class="result info">Sending… this may take up to 30 seconds while the signing proxy starts.</div>`;
   const region=W.inputs.region||"na";
   const r=await api("POST","api/wizard/check",{check:"send_telemetry_config",domain,region});
-  const newInputs={...W.inputs,telemetry_config_result:r};
+  const newInputs={...W.inputs,domain,telemetry_config_result:r};
   const newSteps=r.ok?{...W.steps,"9":"done"}:W.steps;
   await save({inputs:newInputs,steps:newSteps});
   if(el)el.innerHTML=configResultHtml(r);
