@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.6
+
+### Added
+- **Step 9 auto-creates the NPM telemetry Stream.** Like the public-key proxy host, the wizard now
+  creates the TCP-passthrough Stream for you via the NPM API (incoming telemetry port → HA host
+  `:4443`, no SSL termination). Reuses an existing stream on that port if present. Manual
+  instructions remain available as a fallback under a collapsible section.
+
 ## 0.10.5
 
 ### Security

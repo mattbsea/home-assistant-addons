@@ -315,7 +315,7 @@ _CONFIG_DEFAULTS = {
     },
     "npm": {
         "url": "", "email": "", "password": "", "cert_domain": "",
-        "forward_host": "", "cert_refresh_hours": 12, "pubkey_proxy_host_id": None,
+        "forward_host": "", "cert_refresh_hours": 12, "pubkey_proxy_host_id": None, "stream_id": None,
     },
     "server": {
         "log_level": "info", "json_log_enable": True, "namespace": "tesla_telemetry",
@@ -735,6 +735,62 @@ def _create_pubkey_proxy_host(cfg):
     return {"ok": True, "id": host_id, "certificate_id": cert_id}
 
 
+def _npm_find_stream(base, token, incoming_port):
+    """Return an existing TCP-passthrough stream id on `incoming_port`, or None."""
+    status, body = _http_json("GET", base.rstrip("/") + "/api/nginx/streams",
+                              headers={"Authorization": "Bearer " + token})
+    if isinstance(body, list):
+        for s in body:
+            if int(s.get("incoming_port", -1)) == int(incoming_port):
+                return s.get("id")
+    return None
+
+
+def _create_telemetry_stream(cfg):
+    """Create (or reuse) an NPM Stream: a Layer-4 TCP passthrough from the public telemetry port to
+    the add-on's mTLS port. NO SSL termination (certificate_id 0) — the add-on terminates mTLS
+    itself. Returns {"ok": bool, "id"?, "error"?}.
+    """
+    npm = cfg.get("npm", {})
+    tesla = cfg.get("tesla", {})
+    base = (npm.get("url") or "").rstrip("/")
+    email = npm.get("email") or ""
+    forward_host = (npm.get("forward_host") or "").strip()
+    try:
+        port = int(tesla.get("telemetry_port") or 4443)
+    except (TypeError, ValueError):
+        port = 4443
+    if not base or not email or not npm.get("password"):
+        return {"ok": False, "error": "NPM url, email and password must be set first (step 3)."}
+    if not forward_host:
+        return {"ok": False, "error": "Set the HA host IP (forward_host) NPM should forward to (step 3)."}
+
+    token, err = _npm_token(base, email, npm["password"])
+    if not token:
+        return {"ok": False, "error": err}
+    auth = {"Authorization": "Bearer " + token}
+
+    existing = _npm_find_stream(base, token, port)
+    if existing:
+        return {"ok": True, "id": existing, "reused": True, "incoming_port": port}
+
+    payload = {
+        "incoming_port": port,
+        "forwarding_host": forward_host,
+        "forwarding_port": TELEMETRY_PORT,   # add-on's internal mTLS port (host-mapped 1:1)
+        "tcp_forwarding": True,
+        "udp_forwarding": False,
+        "certificate_id": 0,                 # passthrough — do NOT terminate TLS (mTLS-only server)
+        "meta": {},
+    }
+    sstatus, sbody = _http_json("POST", base + "/api/nginx/streams", headers=auth, data=payload, timeout=60)
+    stream_id = sbody.get("id") if isinstance(sbody, dict) else None
+    if not stream_id:
+        return {"ok": False, "error": f"Stream creation failed (HTTP {sstatus}): {str(sbody)[:300]}. "
+                                      f"Confirm port {port} is forwarded from your router to NPM."}
+    return {"ok": True, "id": stream_id, "incoming_port": port}
+
+
 # ---------------------------------------------------------------------------
 # EC keypair (generated once; public key registered + served, private key signs commands)
 # ---------------------------------------------------------------------------
@@ -1144,6 +1200,11 @@ class Handler(BaseHTTPRequestHandler):
             r = _create_pubkey_proxy_host(_load_config())
             if r.get("ok") and r.get("id") is not None:
                 _save_config({"npm": {"pubkey_proxy_host_id": r["id"]}})
+            self._send(200, json.dumps(r))
+        elif path.endswith("/api/wizard/npm-stream"):
+            r = _create_telemetry_stream(_load_config())
+            if r.get("ok") and r.get("id") is not None:
+                _save_config({"npm": {"stream_id": r["id"]}})
             self._send(200, json.dumps(r))
         elif path.endswith("/api/wizard/register-partner"):
             self._send(200, json.dumps(_register_partner(_load_config())))
@@ -1779,9 +1840,11 @@ function renderStep8(){
 function renderStep9(){
   const tdom=gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain","");
   const tport=gc("tesla.telemetry_port",4443);
+  const sid=gc("npm.stream_id",null);
+  const res=W.inputs.stream_result||null;
   return`
 <h2>Telemetry Stream</h2>
-<p class="subtitle">Your vehicle connects here over mTLS. In NPM create a <b>Stream</b> (TCP passthrough) — not a proxy host — so the TLS handshake reaches the add-on directly.</p>
+<p class="subtitle">Your vehicle connects here over mTLS. The add-on creates an NPM <b>Stream</b> (TCP passthrough) — not a proxy host — so the TLS handshake reaches the add-on directly.</p>
 <div class="card"><h3>Endpoint</h3>
   <label class="flbl">Telemetry domain</label>
   <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(tdom)}" oninput="setField('tesla.telemetry_domain',this.value.trim());setField('npm.cert_domain',this.value.trim())" onchange="saveField('tesla.telemetry_domain',this.value.trim());saveField('npm.cert_domain',this.value.trim())">
@@ -1789,16 +1852,21 @@ function renderStep9(){
   <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" oninput="setField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
   <p style="color:var(--mut);font-size:12px;margin:8px 0 0">Can be any port (not required to be 443) — that keeps 443 free for the public-key proxy host.</p>
 </div>
-<div class="card"><h3>Create the NPM Stream</h3>
-  <ol>
+<div class="card"><h3>Create the Stream</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough on port <b>${esc(String(tport))}</b> → your HA host <code>:4443</code>, with <b>no SSL termination</b>.</p>
+  <button class="btn btn-outline" onclick="createStream()">${sid!=null?"Re-create Stream":"Create Stream in NPM"}</button>
+  <div id="streamResult">${res?(res.ok?`<div class="result ok">✓ Stream ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""} · port ${esc(String(res.incoming_port||tport))} → :4443</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(sid!=null?`<div class="result ok">✓ Stream id ${esc(String(sid))}</div>`:"")}</div>
+  <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Make sure your router forwards port <b>${esc(String(tport))}</b> to NPM.</p>
+</div>
+<details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--mut);font-size:12.5px">Prefer to create the Stream manually?</summary>
+  <div class="card" style="margin-top:8px"><ol>
     <li>NPM → <b>Streams</b> → <b>Add Stream</b></li>
-    <li>Incoming port: your telemetry port (e.g. <b>${esc(String(tport))}</b>)</li>
+    <li>Incoming port: <b>${esc(String(tport))}</b></li>
     <li>Forward host: your Home Assistant IP</li>
     <li>Forward port: <b>4443</b> (the add-on)</li>
     <li>TCP on; <b>do NOT</b> enable SSL termination</li>
-  </ol>
-</div>
-${markDone(9)}`;
+  </ol>${markDone(9)}</div>
+</details>`;
 }
 
 function renderStep10(){
@@ -1963,6 +2031,14 @@ async function createProxyHost(){
   const r=await api("POST","api/wizard/npm-proxy-host",{});
   await reloadConfig();await save({inputs:{...W.inputs,proxy_result:r}});render();
 }
+async function createStream(){
+  const el=document.getElementById("streamResult");if(el)el.innerHTML=`<div class="result info">Creating the Stream in NPM…</div>`;
+  // Persist domain + port first — the endpoint reads them from the config file, not from C.
+  const dom=gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain","");
+  await saveConfig({tesla:{telemetry_domain:dom,telemetry_port:gc("tesla.telemetry_port",4443)},npm:{cert_domain:dom}});
+  const r=await api("POST","api/wizard/npm-stream",{});
+  await reloadConfig();await save({inputs:{...W.inputs,stream_result:r}});render();
+}
 async function registerPartner(){
   const el=document.getElementById("regResult");if(el)el.innerHTML=`<div class="result info">Registering…</div>`;
   const r=await api("POST","api/wizard/register-partner",{});
@@ -2018,7 +2094,7 @@ function canAdvance(){
   if(s===6)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
   if(s===7)return!!gc("tesla.client_id","")&&ssor("tesla.client_secret");
   if(s===8)return!!gc("tesla.partner_registered",false);
-  if(s===9)return!!gc("tesla.telemetry_domain","")&&W.steps["9"]==="done";
+  if(s===9)return!!gc("tesla.telemetry_domain","")&&(gc("npm.stream_id",null)!=null||W.steps["9"]==="done");
   if(s===10)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
   if(s===11)return ssor("tesla.shim_refresh_token");
   if(s===13)return!!(W.inputs.telemetry_config_result&&W.inputs.telemetry_config_result.ok);
