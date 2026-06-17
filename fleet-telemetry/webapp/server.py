@@ -429,25 +429,27 @@ def _check_pubkey(domain):
     # Only valid hostname characters — no path, port, userinfo, or scheme
     if not re.match(r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$", domain):
         return {"ok": False, "error": "Invalid domain — must be a plain hostname like telemetry.example.org"}
-    # Resolve the domain. A private/LAN IP is NOT a failure — split-horizon DNS or NAT hairpin
-    # commonly resolves your public domain to a local IP from inside the network. We note it as a
-    # warning and still fetch (and verify the served key matches ours), which proves NPM is serving
-    # the right key; public reachability for Tesla is the user's DNS/port-forward responsibility.
-    local_only = False
+    # Resolve the domain. SSRF guard: reject genuinely-sensitive targets outright — loopback,
+    # link-local (incl. 169.254.169.254 cloud metadata), multicast, unspecified, reserved — which
+    # are never a valid destination for a real domain. RFC1918 *private* IPs are allowed but flagged
+    # as a warning, because split-horizon DNS / NAT hairpin legitimately resolves a public domain to
+    # a LAN IP from inside the network. The fixed .well-known path and TLS certificate verification
+    # below are the real guards: only a host presenting a publicly-trusted cert for this exact
+    # domain returns readable data, so this cannot exfiltrate from arbitrary internal services.
     try:
         addrs = socket.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP)
-        resolved = []
-        for _, _, _, _, addr in addrs:
-            try:
-                ip = ipaddress.ip_address(addr[0])
-                resolved.append(ip)
-            except ValueError:
-                pass
-        if resolved and all(ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-                            for ip in resolved):
-            local_only = True
     except socket.gaierror:
         return {"ok": False, "error": "Domain does not resolve — check DNS for this domain."}
+    resolved = []
+    for _, _, _, _, addr in addrs:
+        try:
+            resolved.append(ipaddress.ip_address(addr[0]))
+        except ValueError:
+            pass
+    for ip in resolved:
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+            return {"ok": False, "error": "Domain resolves to a disallowed address (loopback/link-local/etc.). Enter your real public domain."}
+    local_only = bool(resolved) and all(ip.is_private for ip in resolved)
 
     warning = ("Inside your network this domain resolves to a private/LAN IP (split-horizon DNS or "
                "NAT hairpin). The key is served correctly here — just make sure the domain is also "
@@ -458,8 +460,10 @@ def _check_pubkey(domain):
         ctx = ssl.create_default_context()
         req = urllib.request.urlopen(url, context=ctx, timeout=10)
         body = req.read(8192).decode("utf-8", errors="replace")
-    except Exception as exc:
-        return {"ok": False, "error": f"Could not fetch the public key at {url}: {exc}", "warning": warning}
+    except ssl.SSLError:
+        return {"ok": False, "error": "TLS error fetching the public key — the domain's certificate is missing or not trusted yet. Confirm NPM issued a Let's Encrypt cert for this domain.", "warning": warning}
+    except Exception:
+        return {"ok": False, "error": "Could not reach the public-key URL. Check the domain is reachable and the NPM proxy host is running.", "warning": warning}
 
     if "BEGIN PUBLIC KEY" not in body and "BEGIN EC PUBLIC KEY" not in body:
         return {"ok": False, "error": "URL reachable but the content is not an EC public key PEM.", "warning": warning}

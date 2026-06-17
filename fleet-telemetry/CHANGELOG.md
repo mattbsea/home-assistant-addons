@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.5
+
+### Security
+- **Bounded the public-key reachability check against SSRF.** v0.10.4 relaxed the resolved-IP guard
+  to support split-horizon DNS, which would also have allowed probing loopback/link-local targets
+  (e.g. `169.254.169.254`). The check now hard-rejects loopback, link-local, multicast, unspecified
+  and reserved addresses, allows only RFC1918 private IPs (the legitimate LAN-hairpin case) with a
+  warning, relies on TLS certificate verification as the guard against reading data from internal
+  hosts, and no longer echoes raw connection errors (removing a port-scan oracle).
+
 ## 0.10.4
 
 ### Fixed
