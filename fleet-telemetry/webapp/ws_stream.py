@@ -79,9 +79,15 @@ def build_data_update(vin, last_values, created_at):
         cp = fields.num(lv.get(src))
         if cp is not None and cp > 0:
             power = int(cp)
+    # VehicleSpeed is an on-change field: it stops streaming when the car parks, so lv retains the
+    # last *driving* value indefinitely. Emitting it on a parked frame strands a phantom speed in
+    # TeslaMate (summary.ex publishes mph_to_kmh(speed) whenever speed is non-nil, with NO shift gate
+    # — only ""/nil clears it). Gate on driving, exactly like the REST shim's assemble(), so a parked
+    # frame carries speed="" -> TeslaMate's nil fallback clears sensor.tesla_speed.
+    speed = _int_or_blank(lv.get("VehicleSpeed")) if lv.get("Gear") in ("D", "R", "N") else ""
     value = ",".join(str(x) for x in [
         _epoch_ms(created_at),
-        _int_or_blank(lv.get("VehicleSpeed")),
+        speed,
         _blank_if_none(lv.get("Odometer")),
         _int_or_blank(lv.get("Soc")),
         "",                                      # elevation (not provided)

@@ -66,6 +66,23 @@ def test_park_emits_blank_shift_state():
     assert msg["value"].split(",")[9] == ""                # shift_state blank, not "None"/"D"
 
 
+def test_park_blanks_stale_speed():
+    """Regression: VehicleSpeed is on-change, so it stops streaming on park and lv retains the last
+    driving value (e.g. 37). The parked frame must blank speed (-> TeslaMate's nil fallback clears
+    sensor.tesla_speed) instead of reporting the stale 37, matching the REST shim's driving gate."""
+    last = {}
+    ws_stream.accumulate(last, rec(Location={"latitude": 47.77, "longitude": -122.15}))
+    ws_stream.accumulate(last, rec(Gear="D", VehicleSpeed=37))
+    # driving frame carries the speed
+    msg = ws_stream.build_data_update(VIN, last, "2026-06-18T01:21:45Z")
+    assert msg["value"].split(",")[1] == "37"
+    ws_stream.accumulate(last, rec(Gear="<invalid>"))      # parked; VehicleSpeed unchanged -> stale 37
+    assert last[VIN]["VehicleSpeed"] == 37                 # still retained in last-values
+    msg = ws_stream.build_data_update(VIN, last, "2026-06-18T01:21:45Z")
+    p = msg["value"].split(",")
+    assert p[9] == "" and p[1] == ""                       # shift_state blank AND speed blank, not 37
+
+
 def test_build_update_suppressed_until_gear_seen():
     """Before Gear is ever seen, suppress (can't tell driving from parked yet)."""
     lv = {"Latitude": 47.77, "Longitude": -122.15, "Soc": 50}   # no Gear key

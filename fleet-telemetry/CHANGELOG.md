@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.10
+
+### Fixed
+- **Phantom speed on the TeslaMate streaming path.** `VehicleSpeed` is an on-change telemetry field,
+  so it stops streaming when the car parks and the per-VIN last-values dict keeps reporting the last
+  *driving* value (e.g. 37) on every subsequent parked frame. TeslaMate's `summary.ex` publishes
+  `mph_to_kmh(speed)` whenever `speed` is non-nil — with **no** `shift_state` gate — so a stale 37
+  kept `sensor.tesla_speed` pinned at 37 mph while parked. The streaming builder now gates speed on
+  `Gear in (D, R, N)` exactly like the REST shim's `assemble()`, emitting `speed=""` (→ TeslaMate's
+  nil fallback clears it) on parked frames.
+
+### Verified, not changed
+- **`gui_settings` is intentionally NOT shimmed.** TeslaMate's `tesla_api/vehicle.ex` lists
+  `gui_settings` as a struct field but `result/1` never populates it — the section is fetched and
+  dropped, with no references to `gui_distance_units`/`gui_temperature_units` in the parser. Adding
+  it to the shim would be shape-only with no consumer, so it's deliberately omitted. (The dashboard's
+  unit display is served by reverse-mapping the two unit keys to `SettingTemperatureUnit`/
+  `SettingDistanceUnit` in `prime_to_fields`, independent of the shim's `vehicle_data` shape.)
+
 ## 1.0.9
 
 ### Fixed
