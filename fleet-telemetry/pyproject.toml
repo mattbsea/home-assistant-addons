@@ -3,16 +3,20 @@ name = "fleet-telemetry-addon"
 version = "0.10.16"
 description = "Tesla Fleet Telemetry Home Assistant add-on — webapp, shim, bridge"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "websockets>=12",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "pytest-asyncio>=0.23",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+asyncio_mode = "auto"
 
 # The add-on's Python sources live under webapp/ and are run directly (no package install);
 # tests add that dir to sys.path via conftest.py.
