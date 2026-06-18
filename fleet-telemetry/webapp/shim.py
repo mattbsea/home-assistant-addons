@@ -51,48 +51,10 @@ FLEET_HOST = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.c
 _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 _META = fields.META_SHIM
 _num = fields.num
-
-
-def _round_int(v):
-    n = _num(v)
-    return int(round(n)) if n is not None else None
-
-
-def _fan_speed(v):
-    """Parse HvacFanStatus enum ('HvacFanStatusSpeed3') or bare int to an integer fan level."""
-    if v is None:
-        return None
-    if isinstance(v, (int, float)):
-        return int(v)
-    s = str(v)
-    if "Off" in s:
-        return 0
-    m = re.search(r"\d+", s)
-    return int(m.group()) if m else None
-
-
-def _window_state(v):
-    """Parse window state enum ('WindowStateClosed', 'WindowStateVenting', 'WindowStateOpen')
-    to TeslaMate integer: 0=closed, 1=venting, 2=open."""
-    if v is None:
-        return None
-    s = str(v)
-    if "Closed" in s:
-        return 0
-    if "Vent" in s:
-        return 1
-    if "Open" in s or "Partial" in s:
-        return 2
-    return None
-
-
-def _defrost_on(v):
-    """Parse DefrostMode enum — any non-Off value means defrost is active."""
-    if v is None:
-        return None
-    return "Off" not in str(v)
-
-
+_round_int = fields.round_int
+_fan_speed = fields.fan_speed
+_window_state = fields.window_state
+_defrost_on = fields.defrost_on
 _parse_loc = fields.parse_location
 _strip_state = fields.strip_state
 
@@ -276,8 +238,7 @@ class Vehicle:
         return tele
 
 
-def _bool(v):
-    return v if isinstance(v, bool) else False
+_bool = fields.as_bool
 
 
 class Manager:

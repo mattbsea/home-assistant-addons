@@ -1,9 +1,11 @@
 """Single source of truth for Fleet Telemetry field handling.
 
 Consolidates logic that was duplicated across server.py / shim.py / bridge.py: the meta-key sets,
-numeric coercion, enum stripping, gear normalization, location parsing, and the vehicle_data ->
-telemetry-field mapping. Each consumer imports from here instead of carrying its own copy.
+numeric coercion, enum stripping, gear normalization, location parsing, the small enum decoders
+(fan / window / defrost), and the vehicle_data -> telemetry-field mapping. Each consumer imports
+from here instead of carrying its own copy.
 """
+import re
 
 # Keys that are never vehicle telemetry fields. The dashboard and bridge keep the connectivity
 # frame keys (ConnectionID / NetworkInterface / Status) because the dashboard renders them; the
@@ -47,6 +49,49 @@ def strip_state(v):
     if 0 <= i and i + 5 < len(v):
         return v[i + 5:]
     return v
+
+
+def round_int(v):
+    n = num(v)
+    return int(round(n)) if n is not None else None
+
+
+def as_bool(v):
+    return v if isinstance(v, bool) else False
+
+
+def fan_speed(v):
+    """HvacFanStatus enum ('HvacFanStatusSpeed3') or bare int -> integer fan level."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    s = str(v)
+    if "Off" in s:
+        return 0
+    m = re.search(r"\d+", s)
+    return int(m.group()) if m else None
+
+
+def window_state(v):
+    """Window enum ('WindowStateClosed'/'WindowStateVenting'/'WindowStateOpen') -> 0/1/2."""
+    if v is None:
+        return None
+    s = str(v)
+    if "Closed" in s:
+        return 0
+    if "Vent" in s:
+        return 1
+    if "Open" in s or "Partial" in s:
+        return 2
+    return None
+
+
+def defrost_on(v):
+    """DefrostMode enum -> any non-Off value means defrost is active."""
+    if v is None:
+        return None
+    return "Off" not in str(v)
 
 
 def gear_letter(v):
