@@ -72,8 +72,12 @@ class Registry:
 
     def vehicle_data(self, vin):
         m = self._m(vin)
+        # Baseline is tracked live by the Store as records arrive (m["charge_baseline"] is legacy/prime-only).
+        baseline = self.store.charge_baseline(vin)
+        if baseline is None:
+            baseline = m["charge_baseline"]
         return shim_data.vehicle_data(self.store.snapshot(vin), ts=int(time.time() * 1000),
-                                      identity=self.identity(vin), charge_baseline=m["charge_baseline"],
+                                      identity=self.identity(vin), charge_baseline=baseline,
                                       prime=m["prime"])
 
 

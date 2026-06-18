@@ -45,6 +45,23 @@ def test_unknown_vehicle_404_and_token():
     assert tok["access_token"].startswith("qts-")
 
 
+def test_charge_energy_added_uses_live_store_baseline():
+    """Regression (#5): charge_energy_added must derive from the Store's live baseline, not the
+    always-None Registry meta slot — so a charging vehicle reports energy added since session start."""
+    store = state.Store()
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"Soc": 50.0, "Location": {"latitude": 37.0, "longitude": -122.0},
+                           "DetailedChargeState": "DetailedChargeStateCharging",
+                           "DCChargingEnergyIn": 2.0}})
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DCChargingEnergyIn": 7.5}})       # +5.5 kWh since baseline
+    reg = shim_rest.Registry(store)
+    c = TestClient(shim_rest.build_app(store, reg))
+    eid = shim_rest.synth_id(VIN, "id:")
+    vd = c.get(f"/api/1/vehicles/{eid}/vehicle_data").json()["response"]
+    assert vd["charge_state"]["charge_energy_added"] == 5.5
+
+
 def test_not_ready_returns_408():
     store = state.Store()
     # a VIN seen only via a connectivity frame (no Soc/Location) is not "ready"

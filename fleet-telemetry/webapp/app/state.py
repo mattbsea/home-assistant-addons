@@ -49,6 +49,7 @@ class Store:
         v = self.vehicles.get(vin)
         if v is None:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
+                 "charge_baseline": None,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -58,6 +59,8 @@ class Store:
         if rec.get("msg") != "record_payload":
             return
         data = rec.get("data") or {}
+        if not isinstance(data, dict):   # a variant/non-record frame; never let it kill the tail
+            return
         vin = rec.get("vin") or data.get("Vin")
         if not vin:
             return
@@ -83,8 +86,25 @@ class Store:
                     v["history"]["soc"].append((now, n))
                 elif k == "VehicleSpeed" and n is not None:
                     v["history"]["speed"].append((now, n))
+            self._track_charge_baseline(v)
         if changed:
             self._publish({"vin": vin, "changed": changed, "at": now})
+
+    @staticmethod
+    def _track_charge_baseline(v):
+        """Capture energy-in at charge-session start so charge_energy_added can be derived, and
+        reset it when not charging. Mirrors the v0 shim's per-session baseline."""
+        f = v["fields"]
+
+        def val(k):
+            return f[k]["value"] if k in f else None
+        cs = fields.strip_state(val("DetailedChargeState")) or fields.strip_state(val("ChargeState"))
+        if cs in ("Charging", "Starting"):
+            if v.get("charge_baseline") is None:
+                dc = fields.num(val("DCChargingEnergyIn"))
+                v["charge_baseline"] = dc if dc is not None else (fields.num(val("ACChargingEnergyIn")) or 0.0)
+        else:
+            v["charge_baseline"] = None
 
     # --- read helpers ------------------------------------------------------------------
     def snapshot(self, vin):
@@ -96,6 +116,12 @@ class Store:
     def vins(self):
         with self._lock:
             return list(self.vehicles.keys())
+
+    def charge_baseline(self, vin):
+        """Energy-in (kWh) captured at the start of the current charge session, or None."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return v.get("charge_baseline") if v else None
 
     def rate_per_min(self):
         now = time.time()

@@ -43,10 +43,22 @@ def build():
 
 
 def start_ingest(store, records_file):
-    """Background thread: the single records tail that feeds the Store (and thus every sink)."""
+    """Background thread: the single records tail that feeds the Store (and thus every sink).
+
+    The tail is the lifeline of the whole app — every surface reads from the Store it feeds. It must
+    never die: records.tail() already swallows I/O errors, and we additionally isolate each record so
+    one malformed payload can't take down the thread, and restart the loop if it ever exits."""
     def run():
-        for rec in records.tail(records_file):
-            store.ingest(rec)
+        while True:
+            try:
+                for rec in records.tail(records_file):
+                    try:
+                        store.ingest(rec)
+                    except Exception as exc:   # one bad record must not kill the tail
+                        print(f"[app] ingest error on record: {exc!r}", flush=True)
+            except Exception as exc:           # tail() shouldn't raise, but never let it be fatal
+                print(f"[app] records tail crashed: {exc!r}; restarting in 2s", flush=True)
+                time.sleep(2)
     t = threading.Thread(target=run, daemon=True)
     t.start()
     return t
@@ -105,16 +117,35 @@ async def _serve(app, port):
     await uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")).serve()
 
 
+async def _supervise(name, factory):
+    """Run a long-lived coroutine forever; if it raises, log and restart it. Isolates the listeners
+    so a crash in one surface (shim, ws, dashboard) can't take down the others (shared-fate was #2)."""
+    while True:
+        try:
+            await factory()
+            print(f"[app] {name} exited cleanly; restarting in 2s", flush=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[app] {name} crashed: {exc!r}; restarting in 2s", flush=True)
+        await asyncio.sleep(2)
+
+
 async def run(store, *, shim_app, ingress_app, pubkey_app, shim_port, ws_port, web_port, pubkey_port):
     sink = stream.StreamSink(store)
-    asyncio.create_task(sink.run())
-    await websockets.serve(sink.handler, "0.0.0.0", ws_port)
+
+    async def ws_server():
+        server = await websockets.serve(sink.handler, "0.0.0.0", ws_port)
+        await server.wait_closed()
+
     print(f"[app] dashboard+wizard :{web_port} · shim :{shim_port} · stream ws :{ws_port} · pubkey :{pubkey_port}",
           flush=True)
     await asyncio.gather(
-        _serve(ingress_app, web_port),
-        _serve(shim_app, shim_port),
-        _serve(pubkey_app, pubkey_port),
+        _supervise("ingress", lambda: _serve(ingress_app, web_port)),
+        _supervise("shim", lambda: _serve(shim_app, shim_port)),
+        _supervise("pubkey", lambda: _serve(pubkey_app, pubkey_port)),
+        _supervise("stream-sink", sink.run),
+        _supervise("stream-ws", ws_server),
     )
 
 

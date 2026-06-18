@@ -27,6 +27,7 @@ METRICS_PORT=9090
 WEB_PORT=8099
 PUBKEY_PORT=8100
 RECORDS_FILE="/tmp/ft-records.jsonl"
+RECORDS_MAX_BYTES=$((200 * 1024 * 1024))   # cap the JSONL tee buffer; /tmp is tmpfs (RAM)
 
 bashio::log.info "Starting Tesla Fleet Telemetry add-on (wizard-driven)…"
 mkdir -p "${CERTS_DIR}" "${KEYS_DIR}"
@@ -235,6 +236,15 @@ while true; do
     fi
 
     sleep "${POLL_SECS}"
+
+    # Cap the records JSONL so it can't fill /tmp (tmpfs/RAM) on a long-running add-on. tee uses
+    # O_APPEND, so truncating to zero is safe — the next write lands at the new EOF (no sparse hole) —
+    # and the Python tail detects the shrink (tell()<pos) and resumes from the top.
+    RSIZE="$(stat -c%s "${RECORDS_FILE}" 2>/dev/null || echo 0)"
+    if [ "${RSIZE}" -gt "${RECORDS_MAX_BYTES}" ]; then
+        bashio::log.info "Records file ${RSIZE}B > cap; truncating ${RECORDS_FILE}."
+        : > "${RECORDS_FILE}" 2>/dev/null || true
+    fi
 
     # Relaunch the telemetry binary if it died while we expect it to be running (do NOT exit).
     if [ -n "${SERVER_PID}" ] && ! kill -0 "${SERVER_PID}" 2>/dev/null; then

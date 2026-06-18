@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.3
+
+### Fixed
+- **Hardened reliability after a code review.** Four latent failure modes:
+  - A malformed telemetry record (non-dict `data`) would raise inside ingest and kill the single
+    records-tail thread, silently freezing every surface. Such frames are now skipped; the tail also
+    isolates per-record errors and self-restarts if it ever exits.
+  - The four async listeners (dashboard/wizard, shim, streaming ws, pubkey) plus the stream sink ran
+    under a single `asyncio.gather` with shared fate — one crash took the rest down. Each is now
+    supervised independently and restarts on failure.
+  - The records JSONL in `/tmp` (tmpfs/RAM) grew unbounded, truncated only at boot. It is now capped
+    (200 MB) and truncated in place when exceeded.
+  - `charge_energy_added` in the Fleet-API shim always read an always-`None` baseline slot, so it
+    never reported energy added during a charge. The baseline is now tracked live by the Store at
+    charge-session start and read from there.
+
 ## 1.0.2
 
 ### Fixed

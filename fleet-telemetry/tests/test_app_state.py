@@ -51,3 +51,31 @@ async def test_event_bus_publishes_changes():
     # after unsubscribe, no further delivery
     store.ingest({"msg": "record_payload", "vin": VIN, "data": {"Soc": 51.0}})
     assert q.empty()
+
+
+def test_malformed_record_does_not_raise():
+    """A non-record frame (data is a string/None/list) must be skipped, not crash the tail."""
+    store = state.Store()
+    for bad in ({"msg": "record_payload", "vin": VIN, "data": "oops"},
+                {"msg": "record_payload", "vin": VIN, "data": ["a", "b"]},
+                {"msg": "record_payload", "vin": VIN}):       # no data key
+        store.ingest(bad)                                     # must not raise
+    assert store.snapshot(VIN) == {}
+
+
+def test_charge_baseline_captured_and_reset():
+    store = state.Store()
+    # Charging: baseline captured from DC energy-in at session start, then held steady.
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DetailedChargeState": "DetailedChargeStateCharging",
+                           "DCChargingEnergyIn": 5.0}})
+    assert store.charge_baseline(VIN) == 5.0
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DetailedChargeState": "DetailedChargeStateCharging",
+                           "DCChargingEnergyIn": 8.0}})
+    assert store.charge_baseline(VIN) == 5.0          # baseline frozen at session start
+    # Disconnect clears it; an unknown VIN reads None.
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DetailedChargeState": "DetailedChargeStateDisconnected"}})
+    assert store.charge_baseline(VIN) is None
+    assert store.charge_baseline("NOPE") is None
