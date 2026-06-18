@@ -23,6 +23,7 @@ class Store:
         self.vehicles = {}            # vin -> {fields, history, last_epoch, display_name}
         self.total_records = 0
         self.last_record_epoch = 0.0
+        self._record_times = deque(maxlen=5000)   # epochs, for the records/min stat
         self._subscribers = []        # list[(loop, asyncio.Queue)]
 
     # --- subscription (event bus) ------------------------------------------------------
@@ -47,7 +48,7 @@ class Store:
     def _vehicle(self, vin):
         v = self.vehicles.get(vin)
         if v is None:
-            v = {"fields": {}, "last_epoch": 0.0, "display_name": vin,
+            v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -62,12 +63,16 @@ class Store:
             return
         now = time.time()
         created = data.get("CreatedAt", "")
+        cver = (rec.get("metadata") or {}).get("device_client_version")
         changed = {}
         with self._lock:
             self.total_records += 1
             self.last_record_epoch = now
+            self._record_times.append(now)
             v = self._vehicle(vin)
             v["last_epoch"] = now
+            if cver:
+                v["client_version"] = cver
             for k, val in data.items():
                 if k in fields.META_BASE:
                     continue
@@ -91,3 +96,12 @@ class Store:
     def vins(self):
         with self._lock:
             return list(self.vehicles.keys())
+
+    def rate_per_min(self):
+        now = time.time()
+        with self._lock:
+            recent = [t for t in self._record_times if now - t <= 600]
+        if not recent:
+            return 0.0
+        span = max(now - recent[0], 1.0)
+        return round(len(recent) / span * 60.0, 1)
