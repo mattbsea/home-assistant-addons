@@ -49,6 +49,11 @@ def test_prime_to_fields_mapping():
     assert out["CabinOverheatProtectionMode"] == "FanOnly"
     assert out["Gear"] == "D"                    # drive_state.shift_state
     assert out["ChargeRateMilePerHour"] == 0.0   # charge_state.charge_rate
+    # active-route trip fields now reverse-mapped (panel finding A3/A5)
+    assert out["DestinationName"] == "Home"      # active_route_destination
+    assert out["DestinationLocation"] == {"latitude": 47.768694, "longitude": -122.14294}
+    assert out["RouteTrafficMinutesDelay"] == 0.0
+    assert out["ExpectedEnergyPercentAtTripArrival"] == 49
 
 
 def test_meta_sets():

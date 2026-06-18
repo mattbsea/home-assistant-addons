@@ -47,6 +47,23 @@ def test_defaults_without_prime():
     assert vd["vehicle_state"]["odometer"] == 35595.12119278515
 
 
+def test_live_charge_rate_wins_over_stale_prime():
+    """Regression (panel A1): ChargeRateMilePerHour is now forward-emitted by assemble, so a live
+    charge rate beats the (up-to-30-min) stale prime value instead of being masked by it."""
+    charging = {"Soc": 50, "Location": {"latitude": 47.4, "longitude": -122.2},
+                "ChargeRateMilePerHour": 25.0, "ChargePortLatch": "Engaged",
+                "CabinOverheatProtectionMode": "CabinOverheatProtectionModeStateOff", "VehicleName": "DoodleMobile"}
+    stale_prime = {"charge_state": {"charge_rate": 0.0, "charge_port_latch": "Disengaged"},
+                   "climate_state": {"cabin_overheat_protection": "FanOnly"},
+                   "vehicle_state": {"vehicle_name": "OldName"},
+                   "drive_state": {}, "vehicle_config": {}}
+    vd = shim_data.vehicle_data(charging, ts=0, identity=IDENT, charge_baseline=None, prime=stale_prime)
+    assert vd["charge_state"]["charge_rate"] == 25.0          # live, not stale 0.0
+    assert vd["charge_state"]["charge_port_latch"] == "Engaged"
+    assert vd["climate_state"]["cabin_overheat_protection"] == "Off"
+    assert vd["vehicle_state"]["vehicle_name"] == "DoodleMobile"
+
+
 def test_parked_does_not_inherit_stale_drive_state_from_prime():
     """Regression: on park, live telemetry has shift_state/speed=None. The prime snapshot (captured
     mid-drive) must NOT backfill them, or the shim keeps reporting 'driving at 38' after parking."""

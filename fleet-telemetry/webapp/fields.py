@@ -172,8 +172,13 @@ def prime_to_fields(p):
     put("VehicleSpeed", ds.get("speed"))
     put("Gear", ds.get("shift_state"))
     put("Destination", ds.get("active_route_destination"))
+    put("DestinationName", ds.get("active_route_destination"))
+    if ds.get("active_route_latitude") is not None and ds.get("active_route_longitude") is not None:
+        put("DestinationLocation", {"latitude": ds["active_route_latitude"], "longitude": ds["active_route_longitude"]})
     put("MilesToArrival", ds.get("active_route_miles_to_arrival"))
     put("MinutesToArrival", ds.get("active_route_minutes_to_arrival"))
+    put("RouteTrafficMinutesDelay", ds.get("active_route_traffic_minutes_delay"))
+    put("ExpectedEnergyPercentAtTripArrival", ds.get("active_route_energy_at_arrival"))
     put("Odometer", vs.get("odometer"))
     put("Version", vs.get("car_version"))
     put("VehicleName", vs.get("vehicle_name"))

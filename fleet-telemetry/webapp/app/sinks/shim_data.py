@@ -53,7 +53,9 @@ def assemble(f, *, ts, identity, charge_baseline=None):
         "charge_current_request_max": F.round_int(f.get("ChargeCurrentRequestMax")),
         "charge_port_door_open": f.get("ChargePortDoorOpen") if isinstance(f.get("ChargePortDoorOpen"), bool) else None,
         "battery_heater_on": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None,
-        "not_enough_power_to_heat": f.get("NotEnoughPowerToHeat") if isinstance(f.get("NotEnoughPowerToHeat"), bool) else None}
+        "not_enough_power_to_heat": f.get("NotEnoughPowerToHeat") if isinstance(f.get("NotEnoughPowerToHeat"), bool) else None,
+        "charge_rate": F.num(f.get("ChargeRateMilePerHour")),
+        "charge_port_latch": F.strip_state(f.get("ChargePortLatch"))}
 
     climate_state = {
         "timestamp": ts, "outside_temp": F.num(f.get("OutsideTemp")), "inside_temp": F.num(f.get("InsideTemp")),
@@ -64,7 +66,8 @@ def assemble(f, *, ts, identity, charge_baseline=None):
         "is_preconditioning": f.get("PreconditioningEnabled") if isinstance(f.get("PreconditioningEnabled"), bool) else None,
         "is_front_defroster_on": F.defrost_on(f.get("DefrostMode")),
         "is_rear_defroster_on": f.get("RearDefrostEnabled") if isinstance(f.get("RearDefrostEnabled"), bool) else None,
-        "battery_heater": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None}
+        "battery_heater": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None,
+        "cabin_overheat_protection": F.strip_state(f.get("CabinOverheatProtectionMode"))}
 
     sentry = F.strip_state(f.get("SentryMode"))
     vehicle_state = {
@@ -77,6 +80,7 @@ def assemble(f, *, ts, identity, charge_baseline=None):
         "fd_window": F.window_state(f.get("FdWindow")), "fp_window": F.window_state(f.get("FpWindow")),
         "rd_window": F.window_state(f.get("RdWindow")), "rp_window": F.window_state(f.get("RpWindow")),
         "is_user_present": False,
+        "vehicle_name": f.get("VehicleName") if isinstance(f.get("VehicleName"), str) else None,
         "software_update": {"status": "", "download_perc": 0, "install_perc": 0, "version": ""}}
     doors = f.get("DoorState") if isinstance(f.get("DoorState"), dict) else None
     if doors is not None:

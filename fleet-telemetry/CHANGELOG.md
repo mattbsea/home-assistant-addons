@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.6
+
+### Fixed
+- **Close superset coverage gaps found by a field-completeness review** (code-only; no change to what
+  the car streams):
+  - **Live charge rate (and 3 more) no longer masked by a stale prime.** `assemble()` now forward-emits
+    `charge_rate` (from `ChargeRateMilePerHour`), `charge_port_latch`, `cabin_overheat_protection`, and
+    `vehicle_name` from live telemetry. Previously these were never emitted, so the shim's
+    `vehicle_data` always took them from the up-to-30-min-stale prime snapshot — during a charge the
+    live rate was silently discarded.
+  - **Trip/navigation fields now fill from the Fleet-API prime.** `prime_to_fields` now reverse-maps
+    `DestinationName`, `DestinationLocation` (from `active_route_latitude/longitude`),
+    `RouteTrafficMinutesDelay`, and `ExpectedEnergyPercentAtTripArrival`, so the dashboard's
+    Destination/ETA/traffic/energy-at-arrival rows populate on a parked/just-restarted car.
+
+### Deferred to a follow-up release (touch the vehicle config/command path — verified separately)
+- Telemetry roster expansion (`EnergyRemaining`, software-update + TPMS-warning fields, tighter
+  `Location` interval) and `gui_settings` mapping — these change `fleet_telemetry_config` and require a
+  re-send to the car.
+- Auto re-send of `fleet_telemetry_config` when the requested-field roster changes (hash tracked in
+  `shim-state.json`).
+- Skipped intentionally: synthesizing `DefrostMode`/`HvacPower` from the prime (uncertain value
+  semantics — a wrong value is worse than a blank row).
+
 ## 1.0.5
 
 ### Changed
