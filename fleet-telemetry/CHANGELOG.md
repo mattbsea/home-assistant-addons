@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0
+
+### Changed — unified app rewrite (no user-facing setup changes)
+
+The add-on's glue layer was rewritten into a **single async Python app** (`app/main.py`): one
+records tail feeds one in-memory per-VIN **Store** + event bus, and every surface is served from it
+— the **dashboard + setup wizard** (ingress), the **Fleet-API shim** (`:8085`), the **TeslaMate
+streaming websocket** (`:8081`), and the **public-key** `.well-known` listener (`:8100`).
+
+This replaces the previous four glue processes (separate dashboard, shim, bridge, and a **Node**
+websocket server) and removes their duplication:
+
+- **Node removed** — the TeslaMate streaming server is now native Python (`websockets`).
+- **One records reader** instead of three near-identical tail loops.
+- **One field model** (`fields.py`) — the meta-key sets, enum/gear/location decoders, the
+  telemetry↔vehicle_data mapping, and the telemetry field roster live in exactly one place.
+- **One NPM client** — the bash `fetch-npm-cert.sh` is gone; cert fetch + proxy-host/stream
+  provisioning are unified in Python.
+- ~2,800 lines of duplicated/dead code removed; the app ships with a `pytest` suite.
+
+The setup wizard, configuration schema (`wizard-config.json`), and all integrations (TeslaMate
+shim + streaming, MQTT, Pub/Sub) are unchanged — no reconfiguration needed on upgrade.
+
 ## 0.10.16
 
 ### Fixed
