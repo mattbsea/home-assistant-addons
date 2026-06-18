@@ -1,0 +1,93 @@
+"""Per-VIN telemetry state + async pub/sub event bus — the heart of the v1 app.
+
+A single records reader calls `Store.ingest(record)`; the store updates the per-VIN field map and
+short history series, then publishes a change event to every subscriber queue. Sinks (dashboard
+SSE, TeslaMate shim, streaming ws, MQTT) subscribe to the bus instead of each tailing the file.
+
+Field-keeping matches the v0 dashboard exactly: everything except the base meta keys (CreatedAt /
+IsResend / Vin) is stored — including the connectivity-frame keys the dashboard renders.
+"""
+import asyncio
+import threading
+import time
+from collections import deque
+
+import fields
+
+HISTORY_MAX = 600  # samples kept per sparkline series
+
+
+class Store:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.vehicles = {}            # vin -> {fields, history, last_epoch, display_name}
+        self.total_records = 0
+        self.last_record_epoch = 0.0
+        self._subscribers = []        # list[(loop, asyncio.Queue)]
+
+    # --- subscription (event bus) ------------------------------------------------------
+    def subscribe(self, loop):
+        q = asyncio.Queue()
+        with self._lock:
+            self._subscribers.append((loop, q))
+        return q
+
+    def unsubscribe(self, q):
+        with self._lock:
+            self._subscribers = [(l, qq) for (l, qq) in self._subscribers if qq is not q]
+
+    def _publish(self, event):
+        for loop, q in list(self._subscribers):
+            try:
+                loop.call_soon_threadsafe(q.put_nowait, event)
+            except RuntimeError:
+                pass  # loop stopped; subscriber will be cleaned up on unsubscribe
+
+    # --- ingest ------------------------------------------------------------------------
+    def _vehicle(self, vin):
+        v = self.vehicles.get(vin)
+        if v is None:
+            v = {"fields": {}, "last_epoch": 0.0, "display_name": vin,
+                 "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
+            self.vehicles[vin] = v
+        return v
+
+    def ingest(self, rec):
+        """Fold one telemetry record into state and publish a change event. Thread-safe."""
+        if rec.get("msg") != "record_payload":
+            return
+        data = rec.get("data") or {}
+        vin = rec.get("vin") or data.get("Vin")
+        if not vin:
+            return
+        now = time.time()
+        created = data.get("CreatedAt", "")
+        changed = {}
+        with self._lock:
+            self.total_records += 1
+            self.last_record_epoch = now
+            v = self._vehicle(vin)
+            v["last_epoch"] = now
+            for k, val in data.items():
+                if k in fields.META_BASE:
+                    continue
+                v["fields"][k] = {"value": val, "created_at": created, "received_at": now}
+                changed[k] = val
+                n = fields.num(val)
+                if k == "Soc" and n is not None:
+                    v["history"]["soc"].append((now, n))
+                elif k == "VehicleSpeed" and n is not None:
+                    v["history"]["speed"].append((now, n))
+        if changed:
+            self._publish({"vin": vin, "changed": changed, "at": now})
+
+    # --- read helpers ------------------------------------------------------------------
+    def snapshot(self, vin):
+        """A plain dict of {field: value} for the VIN (latest values only)."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return {k: f["value"] for k, f in v["fields"].items()} if v else {}
+
+    def vins(self):
+        with self._lock:
+            return list(self.vehicles.keys())
