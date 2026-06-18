@@ -228,7 +228,11 @@ function buildCards(v){
  const tp=k=>{const n=N(k);return n==null?null:(useImperial?Math.round(n*14.5038):Math.round(n*100)/100);};
  cards+=mcard("Tire pressure",
    row("Front L",tp('TpmsPressureFl'),pressUnit)+row("Front R",tp('TpmsPressureFr'),pressUnit)
-   +row("Rear L",tp('TpmsPressureRl'),pressUnit)+row("Rear R",tp('TpmsPressureRr'),pressUnit));
+   +row("Rear L",tp('TpmsPressureRl'),pressUnit)+row("Rear R",tp('TpmsPressureRr'),pressUnit)
+   +(()=>{const w=x=>x!=null&&x!=="<invalid>"&&x!==""&&x!==0&&x!=="0";  // only when a warning is set
+      const p=[];if(w(raw('TpmsHardWarnings')))p.push("hard: "+raw('TpmsHardWarnings'));
+      if(w(raw('TpmsSoftWarnings')))p.push("soft: "+raw('TpmsSoftWarnings'));
+      return p.length?row("Warnings",p.join(", ")):"";})());
 
  // Vehicle
  cards+=card("Vehicle",
@@ -239,6 +243,15 @@ function buildCards(v){
    +row("Color",S('ExteriorColor'))
    +row("Wheels",S('Wheels'))
    +row("Software",typeof raw('Version')==="string"?raw('Version'):null)
+   +(()=>{const uv=raw('SoftwareUpdateVersion');
+      // Only show update status when a real version is staged. The percent fields report a stray
+      // idle value (e.g. install=1) when nothing is updating, so gate strictly on a pending version.
+      const pend=typeof uv==="string"&&uv.trim()!==""&&uv.trim()!=="<invalid>";
+      if(!pend)return"";
+      const dl=N('SoftwareUpdateDownloadPercentComplete'),ins=N('SoftwareUpdateInstallationPercentComplete');
+      let s="available";
+      if(ins!=null&&ins>0)s="installing "+ins+"%"; else if(dl!=null&&dl>0&&dl<100)s="downloading "+dl+"%";
+      return row("Update",uv.trim()+" · "+s);})()
    +row("Network",typeof raw('NetworkInterface')==="string"?raw('NetworkInterface'):null)
    +row("Status",v.online?"online":"offline")
    +row("Last record",ago(v.last_seen_epoch))
@@ -246,7 +259,7 @@ function buildCards(v){
    +row("Signals",Object.keys(f).length));
 
  // Other — only genuinely ungrouped signals (future-proofing)
- const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
+ const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","TpmsHardWarnings","TpmsSoftWarnings","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","SoftwareUpdateVersion","SoftwareUpdateInstallationPercentComplete","SoftwareUpdateDownloadPercentComplete","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
  const extra=Object.keys(f).filter(k=>!grouped.has(k));
  if(extra.length){cards+=card("Other signals",extra.map(k=>row(k,typeof raw(k)==="object"?JSON.stringify(raw(k)):(pretty(k,raw(k))!=null?pretty(k,raw(k)):raw(k)))).join(""));}
 

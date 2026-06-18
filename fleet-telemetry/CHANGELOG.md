@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.8
+
+### Added / Fixed (dashboard)
+- **Surface the v1.0.7 telemetry fields on the dashboard.** "Energy left" (`EnergyRemaining`, kWh) now
+  populates in the Battery tile. The Vehicle tile shows a software **Update** row, and the Tire tile
+  shows TPMS **Warnings** — both displayed only when actually present.
+- **No more phantom "installing 1%".** The software-update percent fields report a stray idle value
+  (e.g. install = 1) when nothing is updating, so the Update row only appears when a real
+  `SoftwareUpdateVersion` is staged (then shows downloading/installing %); otherwise it's hidden.
+- The new fields are added to the dashboard's grouped set so they render in their proper tiles
+  instead of the raw "Other signals" list.
+
 ## 1.0.7
 
 ### Added
