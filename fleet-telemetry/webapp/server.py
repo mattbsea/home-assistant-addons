@@ -335,7 +335,7 @@ _CONFIG_DEFAULTS = {
                  "topic_base": "telemetry", "qos": 1, "username": "", "password": ""},
         "pubsub": {"enabled": False, "gcp_project_id": "", "service_account_json": ""},
     },
-    "teslamate": {"bridge_enabled": False, "bridge_url": "", "shim_wake_on_prime": True},
+    "teslamate": {"bridge_enabled": False, "bridge_url": ""},
 }
 
 
@@ -1303,6 +1303,7 @@ h1{font-size:18px;margin:0;font-weight:650}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
 .pill{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--mut)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.mapcard{grid-column:span 2}@media(max-width:480px){.mapcard{grid-column:auto}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;min-height:120px}
 .card h3{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:600}
 .big{font-size:34px;font-weight:680;line-height:1}
@@ -1460,7 +1461,9 @@ function buildCards(v){
    if(typeof x==="string"&&x.includes(",")){const p=x.split(",");if(p.length===2&&!Number.isNaN(Number(p[0]))&&!Number.isNaN(Number(p[1])))return{la:Number(p[0]),lo:Number(p[1])};}
    return null;})();
  const miles=N('MilesToArrival');
- let navInner=row("Destination",navName);
+ // Always show a Destination row; collapse missing/None/null to a clear "Not Set".
+ const navDest=(navName==null||/^none$/i.test(String(navName)))?"Not Set":navName;
+ let navInner=row("Destination",navDest);
  if(navLoc)navInner+=`<div class="kv"><span>Coordinates</span><span><a href="https://www.openstreetmap.org/?mlat=${navLoc.la}&mlon=${navLoc.lo}#map=14/${navLoc.la}/${navLoc.lo}" target="_blank">${navLoc.la.toFixed(5)}, ${navLoc.lo.toFixed(5)}</a></span></div>`;
  if(miles!=null&&miles>0.1)navInner+=row("ETA",`${nf(d(miles))} ${distUnit} · ${Math.round(N('MinutesToArrival'))} min`);
  navInner+=row("Traffic delay",nf(N('RouteTrafficMinutesDelay')),"min")
@@ -1488,13 +1491,15 @@ function buildCards(v){
    row("Locked",B('Locked')==null?null:(B('Locked')?"locked":"unlocked"))
    +row("Sentry",S('SentryMode')));
 
- // Doors & windows — door summary, then one labelled row per window
- const DOORLBL={DriverFront:"Driver front",DriverRear:"Driver rear",PassengerFront:"Passenger front",PassengerRear:"Passenger rear",TrunkFront:"Frunk",TrunkRear:"Trunk"};
- const dsraw=raw('DoorState');let doors=null;
+ // Doors — one labelled row per door, so every open door shows (positional, matching windows).
+ const DOORLBL={DriverFront:"Front left",PassengerFront:"Front right",DriverRear:"Rear left",PassengerRear:"Rear right",TrunkFront:"Frunk",TrunkRear:"Trunk"};
+ const dsraw=raw('DoorState');let doorRows="";
  if(dsraw&&typeof dsraw==="object"){
-   const open=Object.keys(dsraw).filter(k=>dsraw[k]).map(k=>DOORLBL[k]||k);
-   doors=open.length?open.join(", "):"all closed";
+   for(const k in DOORLBL){if(k in dsraw)doorRows+=row(DOORLBL[k],dsraw[k]?"open":"closed");}
  }
+ cards+=mcard("Doors",doorRows);
+
+ // Windows — one labelled row per window
  const WINLBL={FdWindow:"Front left",FpWindow:"Front right",RdWindow:"Rear left",RpWindow:"Rear right"};
  // Window state arrives as a number (0 = closed, >0 = open/vented) or an enum string
  // ("WindowStateClosed", …). Map both to a plain word so it isn't shown as a bare "0".
@@ -1507,7 +1512,7 @@ function buildCards(v){
  };
  let winRows="";
  for(const k in WINLBL){const s=winState(raw(k));if(s!=null)winRows+=row(WINLBL[k],s);}
- cards+=mcard("Doors & windows",row("Doors",doors)+winRows);
+ cards+=mcard("Windows",winRows);
 
  // Tire pressure (bar -> psi)
  const tp=k=>{const n=N(k);return n==null?null:(useImperial?Math.round(n*14.5038):Math.round(n*100)/100);};
@@ -1563,13 +1568,16 @@ async function tick(){
      // recreated — we only change its src when the vehicle moves.
      el=document.createElement("div");el.id=id;
      el.innerHTML=`<h2 style="font-size:15px;margin:18px 0 10px">🚗 ${esc(v.display_name||v.vin)}</h2>`
-       +`<div class="grid gridslot"></div>`
-       +`<div class="card mapcard" style="display:none;margin-top:14px"><h3>Location</h3>`
+       +`<div class="grid gridslot"><div class="card mapcard" style="display:none"><h3>Location</h3>`
        +`<div class="sub maploc"></div>`
-       +`<iframe class="mapframe" loading="lazy"></iframe></div>`;
+       +`<iframe class="mapframe" loading="lazy"></iframe></div></div>`;
      vehiclesEl.appendChild(el);
    }
-   el.querySelector(".gridslot").innerHTML=buildCards(v);
+   // Re-render the tile cards each tick but preserve the map node (its iframe must never be
+   // recreated). The map lives inside the grid as a 2-col-wide tile so it flows with the rest.
+   {const slot=el.querySelector(".gridslot");
+    slot.querySelectorAll(":scope > :not(.mapcard)").forEach(n=>n.remove());
+    slot.insertAdjacentHTML("afterbegin",buildCards(v));}
    // Pulse rows whose value changed since the last tick
    {const pk=prevKV[v.vin]||{};const nk={};
     el.querySelectorAll('.gridslot .kv').forEach(div=>{

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.15
+
+### Removed
+- **All car-wake code.** The shim no longer ever calls Tesla's `wake_up`. `prime_once()` simply
+  skips any vehicle that isn't already `online` and reads `vehicle_data` only for awake cars.
+  Removed `_wake`, the `shim_wake_on_prime` option, the `FT_SHIM_WAKE_ON_PRIME` env, and its
+  `run.sh` plumbing. (Fleet API `vehicle_data` is read-only and never woke a car anyway; the prior
+  `wake_up` attempt was also being rejected with HTTP 406.) Wake the car from the Tesla app if you
+  want a fresh cold-start snapshot.
+
+### Changed
+- **Dashboard: map tile now flows with the other tiles.** The Location/map card lives inside the
+  tile grid as a 2-column-wide tile, so it sits beside other cards when the window is wide instead
+  of always dropping to its own full-width row. Collapses to a single column on narrow screens.
+- **Dashboard: split "Doors & windows" into separate "Doors" and "Windows" tiles**, each listing
+  one labelled row per door/window (Front left / Front right / Rear left / Rear right, plus Frunk
+  and Trunk for doors). Every door now shows its own open/closed state — previously a single summary
+  row could obscure multiple open doors.
+- **Dashboard: Destination shows "Not Set"** when there is no active route (empty / `None` / null),
+  instead of hiding the row.
+
 ## 0.10.14
 
 ### Fixed

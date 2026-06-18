@@ -183,8 +183,7 @@ start_shim() {
     export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
            FT_SHIM_CLIENT_ID="$(cfg 'tesla.client_id')" \
            FT_SHIM_REFRESH_TOKEN="$([ -f "${CFG}" ] && jq -r '.tesla.shim_refresh_token // ""' "${CFG}" 2>/dev/null)" \
-           FT_SHIM_FLEET_HOST="$(fleet_host_for "$(cfg 'tesla.region')")" \
-           FT_SHIM_WAKE_ON_PRIME="$([ -f "${CFG}" ] && jq -r '.teslamate.shim_wake_on_prime // true' "${CFG}" 2>/dev/null || echo true)"
+           FT_SHIM_FLEET_HOST="$(fleet_host_for "$(cfg 'tesla.region')")"
     # The wrapper traps TERM and kills its python child — otherwise stop_pid would only kill the
     # subshell and orphan python, which would keep holding :8085 and block the restarted instance.
     ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
