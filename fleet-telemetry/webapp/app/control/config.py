@@ -100,6 +100,38 @@ def redacted(path):
     return cfg
 
 
+def load_wizard_state(path):
+    """The wizard's step-progress state (separate from the settings config)."""
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_wizard_state(path, patch):
+    state = load_wizard_state(path)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(state.get(k), dict):
+            state[k] = {**state[k], **v}
+        else:
+            state[k] = v
+    dirpath = os.path.dirname(path) or "."
+    os.makedirs(dirpath, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=dirpath, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(state, fh)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return state
+
+
 def strip_secret_masks(patch):
     """Drop secret fields whose value is the unchanged sentinel (in place)."""
     for p in SECRET_PATHS:

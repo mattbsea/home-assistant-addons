@@ -1,4 +1,4 @@
-"""Phase 3 — assembled ingress app (config-aware index + /api/state) and pubkey listener."""
+"""Ingress: /api/state served from the Store (with cert), and the pubkey listener."""
 import importlib
 
 from starlette.testclient import TestClient
@@ -8,27 +8,21 @@ wizard = importlib.import_module("app.web.wizard")
 main = importlib.import_module("app.main")
 
 
-def _ingress(tmp_path, store):
-    return wizard.build_wizard_app(
-        config_path=str(tmp_path / "c.json"), private_key_path=str(tmp_path / "p.pem"),
-        public_key_path=str(tmp_path / "pub.pem"), cert_file=str(tmp_path / "server.crt"),
-        certs_dir=str(tmp_path), registry=None, store=store, version="1.0.0", namespace="tesla_telemetry")
+def _client(tmp_path, store):
+    return TestClient(wizard.build_wizard_app(
+        config_path=str(tmp_path / "c.json"), wizard_state_path=str(tmp_path / "ws.json"),
+        private_key_path=str(tmp_path / "p.pem"), public_key_path=str(tmp_path / "pub.pem"),
+        cert_file=str(tmp_path / "server.crt"), certs_dir=str(tmp_path),
+        store=store, registry=None, version="1.0.0"))
 
 
-def test_index_switches_wizard_to_dashboard(tmp_path):
-    c = TestClient(_ingress(tmp_path, state.Store()))
-    unconfigured = c.get("/").text
-    c.post("/api/config", json={"npm": {"url": "https://npm", "cert_domain": "d"}, "tesla": {"client_id": "cid"}})
-    configured = c.get("/").text
-    assert "<!DOCTYPE html>" in unconfigured and "<!DOCTYPE html>" in configured
-    assert unconfigured != configured                       # wizard page vs dashboard page
-
-
-def test_api_state_served_from_ingress(tmp_path):
+def test_api_state_served_from_store(tmp_path):
     store = state.Store()
     store.ingest({"msg": "record_payload", "vin": "V", "data": {"Soc": 50.0}})
-    st = TestClient(_ingress(tmp_path, store)).get("/api/state").json()
-    assert st["version"] == "1.0.0" and st["vehicles"][0]["vin"] == "V"
+    st = _client(tmp_path, store).get("/api/state").json()
+    assert st["version"] == "1.0.0"
+    assert st["vehicles"][0]["vin"] == "V"
+    assert "cert" in st                      # cert_detail (ok:False here — no cert file)
 
 
 def test_pubkey_listener(tmp_path):

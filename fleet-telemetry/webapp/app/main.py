@@ -125,9 +125,12 @@ def main():
     cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
     store, registry, shim_app = build()
     ingress_app = wizard.build_wizard_app(
-        config_path=cfg_path, private_key_path=priv, public_key_path=pub,
-        cert_file=cert_file, certs_dir=os.path.dirname(cert_file), registry=registry,
-        store=store, version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry")
+        config_path=cfg_path,
+        wizard_state_path=os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json"),
+        private_key_path=priv, public_key_path=pub,
+        cert_file=cert_file, certs_dir=os.path.dirname(cert_file),
+        store=store, registry=registry,
+        version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry")
     pubkey_app = build_pubkey_app(pub)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
     start_prime(registry, cfg_path)

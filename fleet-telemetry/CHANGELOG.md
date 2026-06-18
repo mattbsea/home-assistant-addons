@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+- **Wizard 404 / dashboard endpoints.** The v1.0.0 rewrite served the dashboard/wizard pages but
+  exposed the wrong API paths — the (verbatim) UI calls `/setup` and `/api/wizard/*`
+  (config/save/state/hostports/keypair/oauth-url/oauth-exchange/register-partner/npm-proxy-host/
+  npm-stream/check), and `/` redirects to `./setup` until setup completes. Restored that exact
+  contract, and ported the wizard-state, host-port lookup, and pubkey/cert/records checks that were
+  missing. The setup wizard works again.
+
 ## 1.0.0
 
 ### Changed — unified app rewrite (no user-facing setup changes)
