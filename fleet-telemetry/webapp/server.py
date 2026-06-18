@@ -25,6 +25,9 @@ _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import fields
+import records
+
 RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 CERT_FILE = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
 PORT = int(os.environ.get("FT_WEB_PORT", "8099"))
@@ -48,7 +51,7 @@ PUBKEY_WELL_KNOWN_PATH = "/.well-known/appspecific/com.tesla.3p.public-key.pem"
 HISTORY_MAX = 600  # ~ last N samples kept per series for sparklines
 
 START_TIME = time.time()
-_META = {"CreatedAt", "IsResend", "Vin"}
+_META = fields.META_BASE
 
 # ---------------------------------------------------------------------------
 # Shared state (guarded by _lock)
@@ -65,25 +68,8 @@ _client_versions = {}                # vin -> device_client_version
 _last_record_epoch = 0.0
 
 
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_location(val):
-    """Return (lat, lon) from a Location field value in whatever shape it arrives."""
-    if isinstance(val, dict):
-        lat = val.get("latitude", val.get("Latitude"))
-        lon = val.get("longitude", val.get("Longitude"))
-        if lat is not None and lon is not None:
-            return _num(lat), _num(lon)
-    if isinstance(val, str) and "," in val:
-        parts = val.split(",")
-        if len(parts) == 2:
-            return _num(parts[0]), _num(parts[1])
-    return None, None
+_num = fields.num
+_parse_location = fields.parse_location
 
 
 def _ingest(obj):
@@ -119,40 +105,12 @@ def _ingest(obj):
 
 
 def _tail_records():
-    """Follow RECORDS_FILE, tolerating truncation/rotation and the file not existing yet."""
-    pos = 0
-    while True:
+    """Follow RECORDS_FILE and ingest each record (shared tail in records.py)."""
+    for obj in records.tail(RECORDS_FILE):
         try:
-            if not os.path.exists(RECORDS_FILE):
-                time.sleep(1.0)
-                continue
-            with open(RECORDS_FILE, "r", errors="replace") as fh:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                if size < pos:           # truncated/rotated -> restart from top
-                    pos = 0
-                fh.seek(pos)
-                while True:
-                    line = fh.readline()
-                    if not line:
-                        pos = fh.tell()
-                        # detect rotation: file shrank
-                        try:
-                            if os.path.getsize(RECORDS_FILE) < pos:
-                                break
-                        except OSError:
-                            break
-                        time.sleep(0.5)
-                        continue
-                    line = line.strip()
-                    if not line or line[0] != "{":
-                        continue
-                    try:
-                        _ingest(json.loads(line))
-                    except (ValueError, KeyError):
-                        pass
-        except OSError:
-            time.sleep(1.0)
+            _ingest(obj)
+        except (ValueError, KeyError):
+            pass
 
 
 def _cert_expiry():
@@ -179,92 +137,7 @@ def _rate_per_min():
     return round(len(recent) / span * 60.0, 1)
 
 
-def _prime_to_fields(p):
-    """Map a shim 'prime' (Tesla vehicle_data shape) back to telemetry field names so the dashboard's
-    existing cards can render it. Used only to fill gaps the live stream hasn't (or won't) provide."""
-    ds = p.get("drive_state") or {}; cs = p.get("charge_state") or {}
-    cl = p.get("climate_state") or {}; vs = p.get("vehicle_state") or {}; vc = p.get("vehicle_config") or {}
-    out = {}
-
-    def put(k, v):
-        if v is not None:
-            out[k] = v
-    put("Soc", cs.get("battery_level"))
-    put("BatteryLevel", cs.get("usable_battery_level"))
-    put("RatedRange", cs.get("battery_range"))
-    put("EstBatteryRange", cs.get("est_battery_range"))
-    put("IdealBatteryRange", cs.get("ideal_battery_range"))
-    put("DetailedChargeState", cs.get("charging_state"))
-    put("ChargerVoltage", cs.get("charger_voltage"))
-    put("ChargeAmps", cs.get("charger_actual_current"))
-    put("ChargeRateMilePerHour", cs.get("charge_rate"))
-    put("TimeToFullCharge", cs.get("time_to_full_charge"))
-    put("ChargingCableType", cs.get("conn_charge_cable"))
-    put("FastChargerType", cs.get("fast_charger_type"))
-    put("ChargeLimitSoc", cs.get("charge_limit_soc"))
-    put("ChargerPhases", cs.get("charger_phases"))
-    if isinstance(cs.get("fast_charger_present"), bool):
-        put("FastChargerPresent", cs["fast_charger_present"])
-    put("ChargeCurrentRequest", cs.get("charge_current_request"))
-    put("ChargeCurrentRequestMax", cs.get("charge_current_request_max"))
-    if isinstance(cs.get("charge_port_door_open"), bool):
-        put("ChargePortDoorOpen", cs["charge_port_door_open"])
-    put("ChargePortLatch", cs.get("charge_port_latch"))
-    if isinstance(cs.get("battery_heater_on"), bool):
-        put("BatteryHeaterOn", cs["battery_heater_on"])
-    if isinstance(cs.get("not_enough_power_to_heat"), bool):
-        put("NotEnoughPowerToHeat", cs["not_enough_power_to_heat"])
-    put("InsideTemp", cl.get("inside_temp"))
-    put("OutsideTemp", cl.get("outside_temp"))
-    put("ClimateKeeperMode", cl.get("climate_keeper_mode"))
-    put("CabinOverheatProtectionMode", cl.get("cabin_overheat_protection"))
-    if isinstance(cl.get("is_climate_on"), bool):
-        put("HvacACEnabled", cl["is_climate_on"])
-    if isinstance(cl.get("is_preconditioning"), bool):
-        put("PreconditioningEnabled", cl["is_preconditioning"])
-    if isinstance(cl.get("is_rear_defroster_on"), bool):
-        put("RearDefrostEnabled", cl["is_rear_defroster_on"])
-    if isinstance(cl.get("battery_heater"), bool):
-        put("BatteryHeaterOn", cl["battery_heater"])
-    fs = cl.get("fan_status")
-    if fs is not None:
-        try:
-            put("HvacFanStatus", int(fs))
-        except (TypeError, ValueError):
-            pass
-    put("HvacLeftTemperatureRequest", cl.get("driver_temp_setting"))
-    put("HvacRightTemperatureRequest", cl.get("passenger_temp_setting"))
-    if ds.get("latitude") is not None and ds.get("longitude") is not None:
-        put("Location", {"latitude": ds["latitude"], "longitude": ds["longitude"]})
-    put("GpsHeading", ds.get("heading"))
-    put("VehicleSpeed", ds.get("speed"))
-    put("Gear", ds.get("shift_state"))
-    put("Destination", ds.get("active_route_destination"))
-    put("MilesToArrival", ds.get("active_route_miles_to_arrival"))
-    put("MinutesToArrival", ds.get("active_route_minutes_to_arrival"))
-    put("Odometer", vs.get("odometer"))
-    put("Version", vs.get("car_version"))
-    put("VehicleName", vs.get("vehicle_name"))
-    if isinstance(vs.get("locked"), bool):
-        put("Locked", vs["locked"])
-    if isinstance(vs.get("sentry_mode"), bool):
-        put("SentryMode", "Armed" if vs["sentry_mode"] else "Off")
-    for a, b in (("tpms_pressure_fl", "TpmsPressureFl"), ("tpms_pressure_fr", "TpmsPressureFr"),
-                 ("tpms_pressure_rl", "TpmsPressureRl"), ("tpms_pressure_rr", "TpmsPressureRr")):
-        put(b, vs.get(a))
-    if any(k in vs for k in ("df", "pf", "dr", "pr", "ft", "rt")):
-        put("DoorState", {"DriverFront": bool(vs.get("df")), "PassengerFront": bool(vs.get("pf")),
-                          "DriverRear": bool(vs.get("dr")), "PassengerRear": bool(vs.get("pr")),
-                          "TrunkFront": bool(vs.get("ft")), "TrunkRear": bool(vs.get("rt"))})
-    for a, b in (("fd_window", "FdWindow"), ("fp_window", "FpWindow"),
-                 ("rd_window", "RdWindow"), ("rp_window", "RpWindow")):
-        if vs.get(a) is not None:
-            put(b, vs[a])
-    put("CarType", vc.get("car_type"))
-    put("Trim", vc.get("trim_badging"))
-    put("ExteriorColor", vc.get("exterior_color"))
-    put("Wheels", vc.get("wheel_type"))
-    return out
+_prime_to_fields = fields.prime_to_fields
 
 
 def _load_primes():

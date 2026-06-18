@@ -31,6 +31,9 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import fields
+import records
+
 RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 PORT = int(os.environ.get("FT_SHIM_PORT", "8085"))
 STATE_FILE = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
@@ -46,14 +49,8 @@ FLEET_HOST = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.c
 # the rest (Tesla's Fleet API vehicle_data is read-only and won't wake a car anyway).
 
 _VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
-_META = {"CreatedAt", "IsResend", "Vin", "ConnectionID", "NetworkInterface", "Status"}
-
-
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+_META = fields.META_SHIM
+_num = fields.num
 
 
 def _round_int(v):
@@ -96,21 +93,8 @@ def _defrost_on(v):
     return "Off" not in str(v)
 
 
-def _parse_loc(val):
-    if isinstance(val, dict):
-        return _num(val.get("latitude", val.get("Latitude"))), _num(val.get("longitude", val.get("Longitude")))
-    return None, None
-
-
-def _strip_state(v):
-    if v is None or not isinstance(v, str):
-        return v
-    if v in ("<invalid>", "invalid", ""):
-        return None
-    i = v.rfind("State")
-    if 0 <= i and i + 5 < len(v):
-        return v[i + 5:]
-    return v
+_parse_loc = fields.parse_location
+_strip_state = fields.strip_state
 
 
 def _synth_id(vin, salt):
@@ -416,36 +400,11 @@ MGR = Manager()
 
 
 def _tail():
-    pos = 0
-    while True:
+    for obj in records.tail(RECORDS_FILE):
         try:
-            if not os.path.exists(RECORDS_FILE):
-                time.sleep(1.0)
-                continue
-            with open(RECORDS_FILE, "r", errors="replace") as fh:
-                fh.seek(0, os.SEEK_END)
-                if fh.tell() < pos:
-                    pos = 0
-                fh.seek(pos)
-                while True:
-                    line = fh.readline()
-                    if not line:
-                        pos = fh.tell()
-                        try:
-                            if os.path.getsize(RECORDS_FILE) < pos:
-                                break
-                        except OSError:
-                            break
-                        time.sleep(0.5)
-                        continue
-                    line = line.strip()
-                    if line and line[0] == "{":
-                        try:
-                            MGR.ingest(json.loads(line))
-                        except (ValueError, KeyError):
-                            pass
-        except OSError:
-            time.sleep(1.0)
+            MGR.ingest(obj)
+        except (ValueError, KeyError):
+            pass
 
 
 def _saver():

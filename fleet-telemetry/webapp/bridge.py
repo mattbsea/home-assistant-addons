@@ -14,32 +14,19 @@ Env:
 import base64
 import json
 import os
-import time
 import urllib.request
+
+import fields
+import records
 
 RECORDS_FILE = os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl")
 BRIDGE_URL = os.environ.get("FT_BRIDGE_URL", "").strip()
-_META = {"CreatedAt", "IsResend", "Vin"}
+_META = fields.META_BASE
+_gear_letter = fields.gear_letter
 
 
 def log(msg):
     print(f"[fleet-telemetry-bridge] {msg}", flush=True)
-
-
-def _gear_letter(v):
-    """Map any gear representation (DriveGearP / ShiftStateP / P / Drive…) to P/R/N/D."""
-    s = str(v).upper()
-    if s and s[-1] in "PRND":
-        return s[-1]
-    if "PARK" in s:
-        return "P"
-    if "REV" in s:
-        return "R"
-    if "NEUT" in s:
-        return "N"
-    if "DRIVE" in s:
-        return "D"
-    return s
 
 
 def to_payload(rec):
@@ -85,50 +72,20 @@ def post(payload):
 
 
 def tail():
-    pos = 0
     warned = False
-    while True:
+    for obj in records.tail(RECORDS_FILE):
+        if obj.get("msg") != "record_payload":
+            continue
+        payload = to_payload(obj)
+        if not payload:
+            continue
         try:
-            if not os.path.exists(RECORDS_FILE):
-                time.sleep(1.0)
-                continue
-            with open(RECORDS_FILE, "r", errors="replace") as fh:
-                fh.seek(0, os.SEEK_END)
-                if fh.tell() < pos:
-                    pos = 0
-                fh.seek(pos)
-                while True:
-                    line = fh.readline()
-                    if not line:
-                        pos = fh.tell()
-                        try:
-                            if os.path.getsize(RECORDS_FILE) < pos:
-                                break
-                        except OSError:
-                            break
-                        time.sleep(0.5)
-                        continue
-                    line = line.strip()
-                    if not line or line[0] != "{":
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except ValueError:
-                        continue
-                    if obj.get("msg") != "record_payload":
-                        continue
-                    payload = to_payload(obj)
-                    if not payload:
-                        continue
-                    try:
-                        post(payload)
-                        warned = False
-                    except Exception as e:
-                        if not warned:
-                            log(f"POST to {BRIDGE_URL} failed ({e}); will keep retrying as records arrive")
-                            warned = True
-        except OSError:
-            time.sleep(1.0)
+            post(payload)
+            warned = False
+        except Exception as e:
+            if not warned:
+                log(f"POST to {BRIDGE_URL} failed ({e}); will keep retrying as records arrive")
+                warned = True
 
 
 def main():
