@@ -114,6 +114,9 @@ function buildCards(v){
  const tu=fahr?"°F":"°C";
  const distUnit=useImperial?"mi":"km";
  const d=v=>v==null?null:(useImperial?v:Math.round(v*1.60934*10)/10);
+ // Elevation is stored canonically in METERS (the unit TeslaMate stores); show feet when imperial.
+ const el=v=>v==null?null:(useImperial?Math.round(v*3.28084):Math.round(v));
+ const elU=useImperial?"ft":"m";
  const pressUnit=useImperial?"psi":"bar";
  const onoff=k=>{const b=B(k);return b==null?null:(b?"on":"off");};
  let cards="";
@@ -161,6 +164,7 @@ function buildCards(v){
    +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
    +row("Gear",gear)
    +row("Heading",nf(N('GpsHeading')),"°")
+   +row("Elevation",nf(el(N('Elevation'))),elU)
    +row("Odometer",nf(d(N('Odometer'))),distUnit));
 
  // Navigation / trip (active route)
@@ -259,7 +263,7 @@ function buildCards(v){
    +row("Signals",Object.keys(f).length));
 
  // Other — only genuinely ungrouped signals (future-proofing)
- const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","TpmsHardWarnings","TpmsSoftWarnings","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","SoftwareUpdateVersion","SoftwareUpdateInstallationPercentComplete","SoftwareUpdateDownloadPercentComplete","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
+ const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Elevation","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","TpmsHardWarnings","TpmsSoftWarnings","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","SoftwareUpdateVersion","SoftwareUpdateInstallationPercentComplete","SoftwareUpdateDownloadPercentComplete","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
  const extra=Object.keys(f).filter(k=>!grouped.has(k));
  if(extra.length){cards+=card("Other signals",extra.map(k=>row(k,typeof raw(k)==="object"?JSON.stringify(raw(k)):(pretty(k,raw(k))!=null?pretty(k,raw(k)):raw(k)))).join(""));}
 

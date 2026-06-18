@@ -28,7 +28,8 @@ async def _json_body(req):
 
 
 def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private_key_path, public_key_path,
-                     cert_file, certs_dir, store, registry, version="", namespace="tesla_telemetry"):
+                     cert_file, certs_dir, store, registry, version="", namespace="tesla_telemetry",
+                     elevation=None):
     with open(os.path.join(_STATIC, "wizard.html")) as fh:
         wizard_page = fh.read()
     with open(os.path.join(_STATIC, "dashboard.html")) as fh:
@@ -50,7 +51,7 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
     # --- dashboard data ----------------------------------------------------------------
     async def state(_req):
         return JSONResponse(api.state_payload(store, version=version, cert=checks.cert_detail(cert_file),
-                                              namespace=namespace))
+                                              namespace=namespace, elevation_resolver=elevation))
 
     # --- wizard reads ------------------------------------------------------------------
     async def wiz_state(_req):

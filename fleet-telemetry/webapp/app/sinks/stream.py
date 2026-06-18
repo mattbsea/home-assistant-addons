@@ -27,8 +27,9 @@ def lv_from_snapshot(snap):
 
 
 class StreamSink:
-    def __init__(self, store):
+    def __init__(self, store, elevation=None):
         self.store = store
+        self.elevation = elevation   # elevation.Resolver or None — fills the stream elevation column
         self.subs = {}          # vin -> set[websocket]
 
     async def handler(self, ws):
@@ -65,7 +66,8 @@ class StreamSink:
         if not self.subs.get(vin):
             return
         lv = lv_from_snapshot(self.store.snapshot(vin))
-        update = ws_stream.build_data_update(vin, {vin: lv}, created_at)
+        elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
+        update = ws_stream.build_data_update(vin, {vin: lv}, created_at, elevation=elev)
         if not update:
             return
         payload = json.dumps(update)

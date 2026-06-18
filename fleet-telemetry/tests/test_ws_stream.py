@@ -52,6 +52,16 @@ def test_build_update_csv_columns():
     assert int(p[0]) > 0         # time_ms parsed from ISO CreatedAt
 
 
+def test_elevation_column_filled_and_blank():
+    """Column 4 (elevation) is blank by default (Fleet API/Telemetry omit elevation) and carries the
+    resolver-provided meters when supplied."""
+    lv = {"Latitude": 47.77, "Longitude": -122.15, "Gear": "D", "VehicleSpeed": 30}
+    blank = ws_stream.build_data_update(VIN, {VIN: lv}, "2026-06-18T01:21:45Z")
+    assert blank["value"].split(",")[4] == ""              # unresolved -> blank, not "None"
+    filled = ws_stream.build_data_update(VIN, {VIN: lv}, "2026-06-18T01:21:45Z", elevation=123.6)
+    assert filled["value"].split(",")[4] == "123"          # rounded int meters
+
+
 def test_park_emits_blank_shift_state():
     """Regression: on park Tesla streams Gear='<invalid>' -> strip_state -> None. The frame must
     STILL be emitted with shift_state='' so TeslaMate ends the drive (suppressing it stranded it)."""

@@ -8,7 +8,7 @@ import time
 import fields
 
 
-def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0):
+def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0, elevation_resolver=None):
     now = time.time()
     with store._lock:
         meta = [(vin, {
@@ -29,6 +29,13 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0)
         lat = lon = None
         if "Location" in f:
             lat, lon = fields.parse_location(f["Location"]["value"])
+        # Elevation is not in any Tesla API; derive it from the local DEM (meters, the canonical unit
+        # TeslaMate stores). The dashboard converts to feet when set to imperial. None until the 1°
+        # tile for this position is cached (it downloads in the background on first lookup).
+        if elevation_resolver is not None and lat is not None and lon is not None:
+            elev_m = elevation_resolver.elevation(lat, lon)
+            if elev_m is not None:
+                f["Elevation"] = {"value": elev_m, "created_at": "", "received_at": now, "source": "derived"}
         vehicles.append({
             "vin": vin, "display_name": m["display_name"], "fields": f,
             "location": {"lat": lat, "lon": lon},

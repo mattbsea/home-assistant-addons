@@ -63,8 +63,11 @@ def accumulate(last_values, rec):
     return vin
 
 
-def build_data_update(vin, last_values, created_at):
-    """Build a TeslaMate ``data:update`` message, or None if position/gear aren't known yet."""
+def build_data_update(vin, last_values, created_at, elevation=None):
+    """Build a TeslaMate ``data:update`` message, or None if position/gear aren't known yet.
+
+    ``elevation`` (meters) fills the column that Tesla's Fleet API/Telemetry no longer provide; it is
+    resolved from a local DEM by the sink (None -> blank, the column's prior always-empty behavior)."""
     lv = last_values.get(vin, {})
     # Gear must have been *seen* at least once (key present) — but once seen it can be None, which is
     # how a park reads: Tesla streams Gear="<invalid>" on park, strip_state -> None. We must still emit
@@ -90,7 +93,7 @@ def build_data_update(vin, last_values, created_at):
         speed,
         _blank_if_none(lv.get("Odometer")),
         _int_or_blank(lv.get("Soc")),
-        "",                                      # elevation (not provided)
+        _int_or_blank(elevation),                # elevation (m) from local DEM, "" if unresolved
         _blank_if_none(lv.get("GpsHeading")),    # est_heading
         lv["Latitude"],                          # est_lat
         lv["Longitude"],                         # est_lng

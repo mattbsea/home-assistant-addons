@@ -16,6 +16,7 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 
+import elevation as elevation_mod
 import records
 from app import state
 from app.control import prime
@@ -143,8 +144,9 @@ async def _supervise(name, factory):
         await asyncio.sleep(2)
 
 
-async def run(store, *, shim_app, ingress_app, pubkey_app, shim_port, ws_port, web_port, pubkey_port):
-    sink = stream.StreamSink(store)
+async def run(store, *, shim_app, ingress_app, pubkey_app, shim_port, ws_port, web_port, pubkey_port,
+              elevation=None):
+    sink = stream.StreamSink(store, elevation=elevation)
 
     async def ws_server():
         server = await websockets.serve(sink.handler, "0.0.0.0", ws_port)
@@ -167,6 +169,13 @@ def main():
     pub = os.environ.get("FT_PUBLIC_KEY", "/data/keys/public-key.pem")
     cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
     store, registry, shim_app = build()
+    # Local DEM resolver fills the elevation that no Tesla API provides — both the TeslaMate stream
+    # column (meters) and the dashboard (m/ft toggle). On by default; tiles cache to the persistent
+    # /data volume. Disable with FT_ELEVATION=0.
+    elev = None
+    if os.environ.get("FT_ELEVATION", "1") != "0":
+        elev = elevation_mod.Resolver(os.environ.get("FT_ELEVATION_DIR", "/data/elevation"))
+        elev.load_disk()
     ingress_app = wizard.build_wizard_app(
         config_path=cfg_path,
         wizard_state_path=os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json"),
@@ -174,7 +183,7 @@ def main():
         private_key_path=priv, public_key_path=pub,
         cert_file=cert_file, certs_dir=os.path.dirname(cert_file),
         store=store, registry=registry,
-        version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry")
+        version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry", elevation=elev)
     pubkey_app = build_pubkey_app(pub)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
     start_prime(registry, cfg_path)
@@ -182,7 +191,8 @@ def main():
                     shim_port=int(os.environ.get("FT_SHIM_PORT", "8085")),
                     ws_port=int(os.environ.get("FT_WS_PORT", "8081")),
                     web_port=int(os.environ.get("FT_WEB_PORT", "8099")),
-                    pubkey_port=int(os.environ.get("FT_PUBKEY_PORT", "8100"))))
+                    pubkey_port=int(os.environ.get("FT_PUBKEY_PORT", "8100")),
+                    elevation=elev))
 
 
 if __name__ == "__main__":

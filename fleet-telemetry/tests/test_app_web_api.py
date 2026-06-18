@@ -27,6 +27,31 @@ def test_state_payload_shape():
     assert v["last_seen_epoch"] > 0
 
 
+class _FakeElevation:
+    def __init__(self):
+        self.calls = []
+
+    def elevation(self, lat, lon):
+        self.calls.append((lat, lon))
+        return 55                       # canonical meters
+
+def test_state_payload_injects_elevation_from_resolver():
+    store = state.Store()
+    for r in conftest.load_records():
+        store.ingest(r)
+    res = _FakeElevation()
+    f = api.state_payload(store, elevation_resolver=res)["vehicles"][0]["fields"]
+    assert f["Elevation"]["value"] == 55 and f["Elevation"]["source"] == "derived"
+    assert res.calls == [(47.768839, -122.155053)]   # resolved at the vehicle's location
+
+def test_state_payload_no_elevation_without_resolver():
+    store = state.Store()
+    for r in conftest.load_records():
+        store.ingest(r)
+    f = api.state_payload(store)["vehicles"][0]["fields"]   # default: no resolver
+    assert "Elevation" not in f
+
+
 def _prime():
     return {k: conftest.load_reference("shim_vehicle_data.json")["response"].get(k)
             for k in ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config")}

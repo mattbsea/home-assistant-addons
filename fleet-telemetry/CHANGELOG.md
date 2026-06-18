@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.11
+
+### Added
+- **Elevation for TeslaMate drives (local DEM).** Tesla's Fleet API and Fleet Telemetry expose no
+  elevation/altitude (the legacy owner-api streaming WebSocket that carried it is gone), so the
+  TeslaMate stream's `elevation` column had always been blank — no elevation profiles on drives. The
+  add-on now fills it from a local digital-elevation model: on-demand 1°×1° SRTM-derived HGT tiles
+  from the **AWS public "terrain-tiles" skadi** dataset (no auth, ~30 m resolution), gunzipped and
+  parsed in pure Python (no GDAL), bilinearly interpolated. Only tiles for regions actually driven
+  are fetched, and they cache to the persistent `/data/elevation/` volume — so after the first fetch
+  in a region, lookups are fully offline, rate-limit-free, and coordinates never leave the box.
+  - The lookup is synchronous and non-blocking: a brand-new 1° cell's first frame gets blank
+    elevation and the tile downloads in the background, filling subsequent frames. Elevation is
+    re-derived from the current lat/long on every streamed frame, so it tracks position changes.
+  - **Units:** stored/streamed canonically in **meters** — confirmed correct against TeslaMate's
+    source (`vehicle.ex` maps the stream's `elevation` straight into `positions.elevation` with no
+    conversion, and TeslaMate's DB is metric; speed/odometer are converted but elevation is not).
+  - **Dashboard:** the Drive tile now shows an **Elevation** row that honors the existing units
+    toggle — meters in metric, feet in imperial — alongside temperature and distance.
+  - On by default; set `FT_ELEVATION=0` to disable, `FT_ELEVATION_DIR` to relocate the cache.
+
 ## 1.0.10
 
 ### Fixed
