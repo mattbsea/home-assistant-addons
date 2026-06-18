@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fleet Telemetry Setup</title>
+<style>
+:root{--bg:#0b0f17;--card:#141b29;--card2:#1b2435;--line:#26314a;--txt:#e7edf7;--mut:#8a98b3;--accent:#3ea6ff;--good:#3ddc97;--warn:#ffb454;--bad:#ff5d5d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:780px;margin:0 auto;padding:24px 18px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+h1{font-size:18px;margin:0;font-weight:650;flex:1}
+a.back{color:var(--mut);text-decoration:none;font-size:13px}a.back:hover{color:var(--txt)}
+.progress{height:4px;background:var(--card2);border-radius:2px;margin-bottom:10px;overflow:hidden}
+.progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width .4s}
+.step-label{color:var(--mut);font-size:12px;margin-bottom:22px}
+h2{font-size:20px;font-weight:650;margin:0 0 10px}
+.subtitle{color:var(--mut);margin:0 0 22px;font-size:14px;line-height:1.6}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+.card h3{font-size:11.5px;font-weight:600;color:var(--mut);letter-spacing:.07em;text-transform:uppercase;margin:0 0 12px}
+pre{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font-size:12.5px;line-height:1.5;margin:0;white-space:pre-wrap;word-break:break-all}
+.codewrap{position:relative;margin-bottom:4px}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--card);border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
+.copy-btn:hover{color:var(--txt)}
+.input-row{display:flex;gap:8px;margin-bottom:10px}
+.flbl{display:block;color:var(--mut);font-size:12px;margin:12px 0 5px}
+.flbl:first-child{margin-top:0}
+.ck{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13.5px;cursor:pointer}
+.ck input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+input[type=password]{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;color:var(--txt);font-size:13.5px;outline:none}
+input[type=password]:focus{border-color:var(--accent)}
+select{outline:none}
+input[type=text],input[type=number]{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;color:var(--txt);font-size:13.5px;outline:none}
+input[type=text]:focus,input[type=number]:focus{border-color:var(--accent)}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
+.btn{padding:10px 20px;border-radius:8px;border:none;font-size:13.5px;font-weight:600;cursor:pointer}
+.btn-primary{background:var(--accent);color:#04121f}.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-secondary{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.result{padding:10px 14px;border-radius:8px;margin-top:10px;font-size:13px}
+.result.ok{background:#0e2a1e;border:1px solid var(--good);color:var(--good)}
+.result.err{background:#2a0e0e;border:1px solid var(--bad);color:var(--bad)}
+.result.info{background:var(--card2);border:1px solid var(--line);color:var(--mut)}
+.big-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.big-btn{background:var(--card);border:2px solid var(--line);border-radius:12px;padding:20px;text-align:left;cursor:pointer;transition:border-color .2s}
+.big-btn:hover,.big-btn.sel{border-color:var(--accent)}
+.big-btn h3{margin:0 0 6px;font-size:14px;font-weight:650;color:var(--txt)}
+.big-btn p{margin:0;font-size:12.5px;color:var(--mut)}
+.nav{display:flex;gap:10px;margin-top:28px;padding-top:20px;border-top:1px solid var(--line);align-items:center}
+.nav .skip{margin-left:auto;color:var(--mut);background:none;border:none;font-size:12.5px;cursor:pointer;text-decoration:underline}
+.mark-done{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--card2);border-radius:8px;cursor:pointer;user-select:none;margin-top:4px;border:1px solid var(--line)}
+.mark-done input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+.mark-done span{font-size:13.5px}
+.check-row{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.check-row:last-child{border-bottom:0}
+.check-num{width:22px;height:22px;border-radius:50%;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:1px}
+.integration-opts{display:flex;flex-direction:column;gap:10px}
+.int-opt{background:var(--card2);border:2px solid var(--line);border-radius:10px;padding:14px;cursor:pointer}
+.int-opt:hover,.int-opt.sel{border-color:var(--accent)}
+.int-opt h4{margin:0 0 4px;font-size:13.5px;font-weight:650;color:var(--txt)}
+.int-opt p{margin:0;font-size:12px;color:var(--mut)}
+.int-opt pre{margin-top:12px;font-size:12px}
+.region-sel{display:flex;gap:8px;margin-bottom:14px}
+.region-btn{padding:7px 16px;border-radius:7px;border:1px solid var(--line);background:var(--card2);color:var(--mut);cursor:pointer;font-size:12.5px}
+.region-btn.sel{border-color:var(--accent);color:var(--accent);background:#0d1e36}
+.status-items{display:flex;flex-direction:column;gap:8px}
+.status-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:8px}
+.si-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.si-ok{background:#0e2a1e}.si-wait{background:#1b2435}.si-bad{background:#2a0e0e}
+.si-info{flex:1}.si-title{font-size:13px;font-weight:600}.si-sub{font-size:12px;color:var(--mut);margin-top:2px}
+.summary-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.summary-row:last-child{border-bottom:0}
+.sum-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.sum-ok{background:#0e2a1e;color:var(--good)}.sum-pending{background:var(--card2);color:var(--mut)}
+a{color:var(--accent)}
+ol{padding-left:20px;margin:0}ol li{line-height:1.9;font-size:13.5px}
+</style></head>
+<body><div class="wrap">
+<header>
+  <h1>⚡ Fleet Telemetry Setup</h1>
+  <a class="back" href="./">← Dashboard</a>
+</header>
+<div class="progress"><div class="progress-bar" id="pbar"></div></div>
+<div class="step-label" id="stepLabel"></div>
+<div id="stepContent"></div>
+<div class="nav" id="nav"></div>
+</div>
+<script>
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function ago(e){if(!e)return"never";const s=Math.max(0,Date.now()/1000-e);
+ if(s<60)return Math.round(s)+"s ago";if(s<3600)return Math.round(s/60)+"m ago";return Math.round(s/3600)+"h ago";}
+
+// W = UI navigation state (persisted to /api/wizard/save). C = authoritative settings
+// (persisted to /api/wizard/config; secrets come back masked as the SECRET sentinel).
+let W={user_type:null,completed:false,current_step:1,steps:{},inputs:{}};
+let C={};
+let HP={telemetry_host_port:4443,pubkey_host_port:8100};  // add-on host-mapped ports (from Supervisor)
+const SECRET="__SET__";
+let pollTimer=null;
+
+async function api(method,path,body){
+  const opts={method,headers:{"Content-Type":"application/json"},cache:"no-store"};
+  if(body)opts.body=JSON.stringify(body);
+  const r=await fetch(new URL(path,location.href),opts);
+  return r.json();
+}
+
+// Deep-merge a patch into a target object (mirrors the server-side merge).
+function deepMerge(t,p){for(const[k,v]of Object.entries(p)){
+  if(v&&typeof v==="object"&&!Array.isArray(v)&&t[k]&&typeof t[k]==="object")deepMerge(t[k],v);
+  else t[k]=v;}return t;}
+// Build a nested object {a:{b:{c:val}}} from a dotted path.
+function patchFrom(path,val){const o={};let d=o;const ps=path.split(".");
+  ps.forEach((p,i)=>{if(i===ps.length-1)d[p]=val;else{d[p]={};d=d[p];}});return o;}
+// Read a dotted path from C (or default).
+function gc(path,dflt){let d=C;for(const p of path.split(".")){if(d&&typeof d==="object"&&p in d)d=d[p];else return dflt;}return d==null?dflt:d;}
+function secretSet(path){return gc(path,"")===SECRET;}
+
+async function save(patch){   // UI navigation state
+  deepMerge(W,patch);
+  await api("POST","api/wizard/save",patch);
+}
+async function saveConfig(patch){   // authoritative settings (triggers run.sh reconcile)
+  deepMerge(C,patch);
+  await api("POST","api/wizard/config",patch);
+}
+async function reloadConfig(){try{const c=await api("GET","api/wizard/config");if(c&&typeof c==="object")C=c;}catch(e){}}
+// Persist a single dotted setting; skip empty secret inputs so we never clobber a saved secret.
+async function saveField(path,val,isSecret){if(isSecret&&!val)return;await saveConfig(patchFrom(path,val));updateNav();}
+// Live (per-keystroke) LOCAL update so the Next button reflects typing immediately. No network —
+// persistence still happens on `change` (blur) via saveField. Bound to `oninput`.
+function setField(path,val,isSecret){if(!(isSecret&&!val))deepMerge(C,patchFrom(path,val));updateNav();}
+// Step 9 telemetry port: update C + the live "public port" displays in place (no re-render, so the
+// input keeps focus while typing).
+function onTelPort(v){
+  const p=parseInt(String(v).trim(),10)||4443;
+  setField("tesla.telemetry_port",p);
+  document.querySelectorAll(".js-tport").forEach(el=>{el.textContent=p;});
+}
+
+function visibleSteps(){
+  const ut=W.user_type;
+  if(!ut)return[1];
+  // 17 = pair virtual key (must precede 13 = send vehicle config). 14 = TeslaMate, TeslaMate paths only.
+  if(ut==="new")return[1,2,3,4,5,6,7,8,9,10,11,12,17,13,15,16];
+  return[1,2,3,4,5,6,7,8,9,10,11,12,17,13,14,15,16];
+}
+
+function codebox(code,id){
+  return `<div class="codewrap"><pre id="${esc(id)}">${esc(code)}</pre><button class="copy-btn" onclick="copyCode('${esc(id)}')">Copy</button></div>`;
+}
+
+function markDone(n){
+  const done=W.steps[String(n)]==="done";
+  return `<label class="mark-done"><input type="checkbox" ${done?"checked":""} onchange="toggleDone(${n},this.checked)"><span>I've completed this step</span></label>`;
+}
+
+function checkResultHtml(r){
+  if(!r)return"";
+  const warn=r.warning?`<div class="result info" style="margin-top:8px">ⓘ ${esc(r.warning)}</div>`:"";
+  if(r.ok){
+    const head=r.subject?esc(r.subject)+(r.days_left!=null?" · "+r.days_left+" days left":""):r.url?esc(r.url):"Check passed";
+    const m=(r.matches===true)?" · key matches ✓":"";
+    return`<div class="result ok">✓ ${head}${m}</div>${warn}`;
+  }
+  return`<div class="result err">✗ ${esc(r.error||"Check failed")}</div>${warn}`;
+}
+
+function configResultHtml(r){
+  if(!r)return"";
+  if(r.ok){
+    const vins=(r.vins||[]).map(v=>"…"+v.slice(-6)).join(", ");
+    return`<div class="result ok">✓ Sent to ${(r.vins||[]).length} vehicle(s)${vins?" ("+vins+")":""}</div>`;
+  }
+  return`<div class="result err">✗ ${esc(r.error||"Send failed")}</div>`;
+}
+
+// ---- Step renderers ----
+
+function renderStep1(){
+  const ut=W.user_type;
+  const tmSel=ut==="teslamate_broken"||ut==="teslamate_working";
+  return`
+<h2>Welcome to Fleet Telemetry</h2>
+<p class="subtitle">Let's get you set up. Which best describes your situation?</p>
+<div class="big-btns">
+  <div class="big-btn${ut==="new"?" sel":""}" onclick="selectType('new')">
+    <h3>I'm new to Fleet Telemetry</h3>
+    <p>Set up Tesla streaming telemetry from scratch</p>
+  </div>
+  <div class="big-btn${tmSel?" sel":""}" onclick="showTMFollow()">
+    <h3>I'm migrating TeslaMate to Fleet Telemetry</h3>
+    <p>TeslaMate is already running — add streaming telemetry as its data source</p>
+  </div>
+</div>
+<div id="tmfollow" style="display:${tmSel?"block":"none"};margin-top:16px">
+  <div class="card"><h3>Is TeslaMate currently working?</h3>
+  <div style="display:flex;gap:10px;margin-top:4px">
+    <button class="btn ${ut==="teslamate_working"?"btn-primary":"btn-secondary"}" onclick="selectType('teslamate_working')">Yes — it's working</button>
+    <button class="btn ${ut==="teslamate_broken"?"btn-primary":"btn-secondary"}" onclick="selectType('teslamate_broken')">No — it stopped working</button>
+  </div></div>
+</div>`;
+}
+
+function renderStep2(){
+  return`
+<h2>Prerequisites</h2>
+<p class="subtitle">The wizard does the heavy lifting (keypair, public-key hosting, partner registration, vehicle config). Just have these ready first.</p>
+<div class="card">
+  <h3>What you'll need</h3>
+  <div class="check-row"><div class="check-num">1</div><div><b>A Tesla Developer account</b> at <a href="https://developer.tesla.com" target="_blank">developer.tesla.com</a>. <b>Don't create the app yet</b> — Tesla won't accept your domain until it's serving the public key, which this wizard does for you first. You'll create the app and paste its Client ID/Secret a few steps in.</div></div>
+  <div class="check-row"><div class="check-num">2</div><div><b>A public domain</b> pointing at your home IP — e.g. <code>fleet.example.org</code>. The same domain serves the public key (HTTPS :443) and the telemetry stream (a configurable port). A separate sub-domain also works.</div></div>
+  <div class="check-row"><div class="check-num">3</div><div><b>NGINX Proxy Manager</b> running, reachable on its admin API, able to issue Let's Encrypt certs. The wizard creates the public-key proxy host for you.</div></div>
+  <div class="check-row"><div class="check-num">4</div><div><b>Router port-forwards</b> to NPM: <b>443</b> (public key + LE challenge) and your chosen <b>telemetry port</b> (default 4443).</div></div>
+</div>
+<div class="card" style="border-color:var(--accent)"><p style="margin:0;font-size:13px">Order matters: this wizard sets up NPM → keypair → public-key hosting <b>first</b>, then walks you through creating the Tesla app (whose domain Tesla validates against your now-live public key).</p></div>`;
+}
+
+function renderStep3(){
+  const region=gc("tesla.region","na");
+  const dom=gc("tesla.pubkey_domain","")||"&lt;your-domain&gt;";
+  return`
+<h2>Tesla Developer App</h2>
+<p class="subtitle">Your public key is now live, so Tesla will accept your domain. Create the app, then paste its credentials here.</p>
+<div class="card"><h3>Create your app at developer.tesla.com</h3>
+  <ol>
+    <li>Open <a href="https://developer.tesla.com/en_US/dashboard" target="_blank">developer.tesla.com</a> → <b>Create App</b></li>
+    <li><b>Allowed Origin:</b> <code>https://${esc(dom)}</code></li>
+    <li><b>Redirect URI:</b> <code>https://${esc(dom)}/callback</code> (used by the login step later)</li>
+    <li><b>Scopes:</b> <code>vehicle_device_data</code> + <code>vehicle_location</code></li>
+    <li>Tesla validates the public key at your domain — it's already being served, so this should pass.</li>
+  </ol>
+</div>
+<div class="card"><h3>App credentials</h3>
+  <label class="flbl">Client ID</label>
+  <input type="text" style="width:100%" placeholder="abcd1234-..." value="${esc(gc("tesla.client_id",""))}" oninput="setField('tesla.client_id',this.value.trim())" onchange="saveField('tesla.client_id',this.value.trim())">
+  <label class="flbl">Client Secret</label>
+  <input type="password" placeholder="${secretSet("tesla.client_secret")?"•••••••• (saved)":"ta-secret...."}" oninput="setField('tesla.client_secret',this.value.trim(),true)" onchange="saveField('tesla.client_secret',this.value.trim(),true)">
+</div>
+<div class="card"><h3>Region</h3>
+  <div class="region-sel">
+    <button class="region-btn${region==="na"?" sel":""}" onclick="setRegion('na')">North America</button>
+    <button class="region-btn${region==="eu"?" sel":""}" onclick="setRegion('eu')">Europe</button>
+    <button class="region-btn${region==="cn"?" sel":""}" onclick="setRegion('cn')">China</button>
+  </div>
+</div>`;
+}
+
+function renderStep4(){
+  return`
+<h2>NGINX Proxy Manager</h2>
+<p class="subtitle">The add-on talks to NPM's admin API to fetch your TLS certificate and create the public-key proxy host automatically.</p>
+<div class="card"><h3>Admin connection</h3>
+  <label class="flbl">Admin API URL</label>
+  <input type="text" style="width:100%" placeholder="https://proxy.example.org:81" value="${esc(gc("npm.url",""))}" oninput="setField('npm.url',this.value.trim())" onchange="saveField('npm.url',this.value.trim())">
+  <label class="flbl">Admin email</label>
+  <input type="text" style="width:100%" placeholder="admin@example.org" value="${esc(gc("npm.email",""))}" oninput="setField('npm.email',this.value.trim())" onchange="saveField('npm.email',this.value.trim())">
+  <label class="flbl">Admin password</label>
+  <input type="password" placeholder="${secretSet("npm.password")?"•••••••• (saved)":"password"}" oninput="setField('npm.password',this.value,true)" onchange="saveField('npm.password',this.value,true)">
+  <label class="flbl">Home Assistant host IP <span style="color:var(--mut)">(what NPM forwards to)</span></label>
+  <input type="text" style="width:100%" placeholder="192.168.1.10" value="${esc(gc("npm.forward_host",""))}" oninput="setField('npm.forward_host',this.value.trim())" onchange="saveField('npm.forward_host',this.value.trim())">
+  <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Use the same host IP your telemetry Stream forwards to. The add-on can't detect this itself.</p>
+</div>`;
+}
+
+function renderStep5(){
+  const gen=gc("tesla.keypair_generated",false);
+  const res=W.inputs.keypair_result||null;
+  return`
+<h2>Generate Signing Key</h2>
+<p class="subtitle">The add-on generates an EC key pair. The private key signs vehicle commands and never leaves the add-on; the public key is hosted for Tesla and registered to your account.</p>
+<div class="card"><h3>EC key pair (prime256v1)</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">${gen?"A key pair has already been generated.":"No key pair yet."}</p>
+  <button class="btn btn-outline" onclick="genKeypair()">${gen?"Regenerate key pair":"Generate key pair"}</button>
+  <div id="kpResult">${res?(res.ok?`<div class="result ok">✓ Key ready${res.fingerprint?" · fp "+esc(res.fingerprint):""}</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(gen?`<div class="result ok">✓ Key present</div>`:"")}</div>
+  ${gen?`<p style="color:var(--warn);font-size:12px;margin:12px 0 0">Regenerating after registration breaks trust — only do it if you re-register the domain afterwards.</p>`:""}
+</div>`;
+}
+
+function renderStep6(){
+  const dom=gc("tesla.pubkey_domain","");
+  const created=gc("npm.pubkey_proxy_host_id",null);
+  const res=W.inputs.proxy_result||null;
+  return`
+<h2>Public-Key Domain</h2>
+<p class="subtitle">Enter the domain Tesla will use. The add-on creates an NPM proxy host (HTTPS :443, Let's Encrypt) serving your public key at the required <code>.well-known</code> path.</p>
+<div class="card"><h3>Domain</h3>
+  <input type="text" id="f_pubkey_domain" style="width:100%" placeholder="fleet.example.org" value="${esc(dom)}" oninput="setField('tesla.pubkey_domain',this.value.trim())" onchange="onDomainChange(this.value.trim())">
+  <p style="color:var(--mut);font-size:12px;margin:8px 0 0">DNS for this domain must already point at your public IP (NPM needs it for the Let's Encrypt challenge).</p>
+</div>
+<div class="card"><h3>Create proxy host</h3>
+  <button class="btn btn-outline" onclick="createProxyHost()">${created?"Re-create proxy host":"Create proxy host in NPM"}</button>
+  <div id="phResult">${res?(res.ok?`<div class="result ok">✓ Proxy host ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""}</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(created!=null?`<div class="result ok">✓ Proxy host id ${esc(String(created))}</div>`:"")}</div>
+</div>`;
+}
+
+function renderStep7(){
+  const res=W.inputs.pubkey_check||null;
+  const dom=gc("tesla.pubkey_domain","");
+  return`
+<h2>Verify Public Key</h2>
+<p class="subtitle">Confirm the public key is reachable over the internet at the path Tesla checks during registration.</p>
+<div class="card"><h3>Reachability test</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 10px">Tests <code>https://${esc(dom||"&lt;domain&gt;")}/.well-known/appspecific/com.tesla.3p.public-key.pem</code></p>
+  <button class="btn btn-outline" onclick="checkPubkey()">Test public key URL</button>
+  <div id="pubkeyResult">${checkResultHtml(res)}</div>
+</div>`;
+}
+
+function renderStep8(){
+  const reg=gc("tesla.partner_registered",false);
+  const res=W.inputs.partner_result||null;
+  return`
+<h2>Register with Tesla</h2>
+<p class="subtitle">Register your domain as a partner account. The add-on does this automatically using your client credentials.</p>
+<div class="card"><h3>Partner registration</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">${reg?"Your domain is registered.":"Registers "+esc(gc("tesla.pubkey_domain","your domain"))+" with the "+esc(gc("tesla.region","na").toUpperCase())+" Fleet API."}</p>
+  <button class="btn btn-outline" onclick="registerPartner()">${reg?"Re-register":"Register domain"}</button>
+  <div id="regResult">${res?(res.ok?`<div class="result ok">✓ Registered</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(reg?`<div class="result ok">✓ Registered</div>`:"")}</div>
+</div>`;
+}
+
+function renderStep9(){
+  const tdom=gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain","");
+  const tport=gc("tesla.telemetry_port",4443);
+  const sid=gc("npm.stream_id",null);
+  const res=W.inputs.stream_result||null;
+  return`
+<h2>Telemetry Stream</h2>
+<p class="subtitle">Your vehicle connects here over mTLS. The add-on creates an NPM <b>Stream</b> (TCP passthrough) — not a proxy host — so the TLS handshake reaches the add-on directly.</p>
+<div class="card"><h3>Endpoint</h3>
+  <label class="flbl">Telemetry domain</label>
+  <input type="text" style="width:100%" placeholder="fleet.example.org" value="${esc(tdom)}" oninput="setField('tesla.telemetry_domain',this.value.trim());setField('npm.cert_domain',this.value.trim())" onchange="saveField('tesla.telemetry_domain',this.value.trim());saveField('npm.cert_domain',this.value.trim())">
+  <label class="flbl">Public telemetry port</label>
+  <input type="number" style="width:120px" placeholder="4443" value="${esc(String(tport))}" oninput="onTelPort(this.value)" onchange="saveField('tesla.telemetry_port',parseInt(this.value.trim(),10)||4443)">
+  <p style="color:var(--mut);font-size:12px;margin:8px 0 0">Can be any port (not required to be 443) — that keeps 443 free for the public-key proxy host.</p>
+</div>
+<div class="card"><h3>Create the Stream</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 10px">The add-on creates the NPM Stream for you: a TCP passthrough from public port <b class="js-tport">${esc(String(tport))}</b> → <code>${esc(gc("npm.forward_host","&lt;HA host&gt;"))}:${esc(String(HP.telemetry_host_port||4443))}</code>, with <b>no SSL termination</b>. The forward host is your NPM connection setting; the port is auto-detected from this add-on's Network settings (so it's correct even if you remapped it).</p>
+  <button class="btn btn-outline" onclick="createStream()">${sid!=null?"Re-create Stream":"Create Stream in NPM"}</button>
+  <div id="streamResult">${res?(res.ok?`<div class="result ok">✓ Stream ready (id ${esc(String(res.id))})${res.reused?" · reused existing":""} · ${esc(String(res.incoming_port||tport))} → ${esc(String(res.forwarding_host||""))}:${esc(String(res.forwarding_port||HP.telemetry_host_port||4443))}</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(sid!=null?`<div class="result ok">✓ Stream id ${esc(String(sid))}</div>`:"")}</div>
+  <p style="color:var(--mut);font-size:12px;margin:10px 0 0">Make sure your router forwards port <b class="js-tport">${esc(String(tport))}</b> to NPM.</p>
+</div>
+<details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--mut);font-size:12.5px">Prefer to create the Stream manually?</summary>
+  <div class="card" style="margin-top:8px"><ol>
+    <li>NPM → <b>Streams</b> → <b>Add Stream</b></li>
+    <li>Incoming port: <b class="js-tport">${esc(String(tport))}</b></li>
+    <li>Forward host: <b>${esc(gc("npm.forward_host","your Home Assistant IP"))}</b></li>
+    <li>Forward port: <b>${esc(String(HP.telemetry_host_port||4443))}</b> (this add-on's mapped host port)</li>
+    <li>TCP on; <b>do NOT</b> enable SSL termination</li>
+  </ol>${markDone(9)}</div>
+</details>`;
+}
+
+function renderStep10(){
+  const res=W.inputs.cert_check||null;
+  return`
+<h2>Verify Certificate</h2>
+<p class="subtitle">The add-on fetches the TLS certificate for your telemetry domain from NPM. Confirm it loaded.</p>
+<div class="card"><h3>Certificate</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">If this fails, make sure NPM has issued a Let's Encrypt certificate for <code>${esc(gc("npm.cert_domain","your telemetry domain"))}</code>, then wait a few seconds and retry.</p>
+  <button class="btn btn-outline" onclick="checkCert()">Verify certificate</button>
+  <div id="certResult">${checkResultHtml(res)}</div>
+</div>`;
+}
+
+function renderStep11(){
+  const tokenSet=secretSet("tesla.shim_refresh_token")||gc("tesla.shim_refresh_token","")!=="";
+  const dom=gc("tesla.pubkey_domain","");
+  const ru=W.inputs.redirect_uri||(dom?`https://${dom}/callback`:"");
+  const res=W.inputs.oauth_result||null;
+  return`
+<h2>Tesla Account Login</h2>
+<p class="subtitle">Log in with your Tesla account so the add-on can read vehicle data and send the telemetry config. The resulting token is stored locally.</p>
+<div class="card"><h3>1 — Redirect URI</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">Must match a redirect URI registered in your Tesla app.</p>
+  <input type="text" style="width:100%" value="${esc(ru)}" onchange="save({inputs:{...W.inputs,redirect_uri:this.value.trim()}})">
+</div>
+<div class="card"><h3>2 — Authorize</h3>
+  <button class="btn btn-outline" onclick="genOauthUrl()">Generate login link</button>
+  <div id="oauthUrl"></div>
+</div>
+<div class="card"><h3>3 — Paste the result</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">After logging in you'll be redirected to a URL containing <code>?code=…</code>. Paste the full URL (or just the code).</p>
+  <div class="input-row"><input type="text" id="f_oauth_code" placeholder="https://.../callback?code=..."><button class="btn btn-outline" onclick="exchangeOauth()">Complete login</button></div>
+  <div id="oauthResult">${res?(res.ok?`<div class="result ok">✓ Logged in — token saved</div>`:`<div class="result err">✗ ${esc(res.error||"failed")}</div>`):(tokenSet?`<div class="result ok">✓ Token saved</div>`:"")}</div>
+</div>`;
+}
+
+function renderStep12(){
+  const mq=gc("backends.mqtt.enabled",false),ps=gc("backends.pubsub.enabled",false),lg=gc("backends.logger",true);
+  const ll=gc("server.log_level","info");
+  return`
+<h2>Backends &amp; Tuning</h2>
+<p class="subtitle">Where telemetry records are sent, plus a few server settings. Defaults are fine for most users.</p>
+<div class="card"><h3>Backends</h3>
+  <label class="ck"><input type="checkbox" ${lg?"checked":""} onchange="saveField('backends.logger',this.checked)"> Logger (powers the dashboard + TeslaMate shim)</label>
+  <label class="ck"><input type="checkbox" ${mq?"checked":""} onchange="saveField('backends.mqtt.enabled',this.checked);render()"> MQTT</label>
+  ${mq?`<div style="margin:6px 0 6px 24px">
+    <label class="flbl">Broker (blank = auto-discover HA broker)</label><input type="text" style="width:100%" value="${esc(gc("backends.mqtt.broker",""))}" onchange="saveField('backends.mqtt.broker',this.value.trim())">
+    <label class="flbl">Topic base</label><input type="text" style="width:100%" value="${esc(gc("backends.mqtt.topic_base","telemetry"))}" onchange="saveField('backends.mqtt.topic_base',this.value.trim())">
+  </div>`:""}
+  <label class="ck"><input type="checkbox" ${ps?"checked":""} onchange="saveField('backends.pubsub.enabled',this.checked);render()"> Google Pub/Sub</label>
+  ${ps?`<div style="margin:6px 0 6px 24px">
+    <label class="flbl">GCP project ID</label><input type="text" style="width:100%" value="${esc(gc("backends.pubsub.gcp_project_id",""))}" onchange="saveField('backends.pubsub.gcp_project_id',this.value.trim())">
+    <label class="flbl">Service account JSON</label><textarea rows="3" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px;font-size:12.5px" placeholder="${secretSet("backends.pubsub.service_account_json")?"(saved)":"{...}"}" onchange="saveField('backends.pubsub.service_account_json',this.value.trim(),true)"></textarea>
+  </div>`:""}
+</div>
+<div class="card"><h3>Server</h3>
+  <label class="flbl">Log level</label>
+  <select onchange="saveField('server.log_level',this.value)" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px">
+    ${["trace","debug","info","warn","error"].map(l=>`<option ${l===ll?"selected":""}>${l}</option>`).join("")}
+  </select>
+  <label class="flbl">Namespace</label>
+  <input type="text" style="width:100%" value="${esc(gc("server.namespace","tesla_telemetry"))}" onchange="saveField('server.namespace',this.value.trim())">
+  <label class="ck" style="margin-top:10px"><input type="checkbox" ${gc("server.metrics_enabled",false)?"checked":""} onchange="saveField('server.metrics_enabled',this.checked)"> Prometheus metrics (:9090)</label>
+</div>`;
+}
+
+function renderStep13(){
+  const res=W.inputs.telemetry_config_result||null;
+  const ep=esc(gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain",""));
+  return`
+<h2>Configure Your Vehicle</h2>
+<p class="subtitle">Send the streaming configuration to your vehicle(s). It is signed with your private key and tells the car where to stream telemetry.</p>
+<div class="card"><h3>Send configuration</h3>
+  <p style="color:var(--mut);font-size:13px;margin:0 0 12px">Endpoint <code>${ep}:${esc(String(gc("tesla.telemetry_port",4443)))}</code> · region ${esc(gc("tesla.region","na").toUpperCase())}. VINs are read automatically once the shim has primed (this can take a minute after the server starts).</p>
+  <button class="btn btn-outline" onclick="sendTelemetryConfig()">Send to vehicle</button>
+  <div id="telCfgResult">${configResultHtml(res)}</div>
+</div>`;
+}
+
+function renderStep14(){
+  const haHost=location.hostname;
+  const be=gc("teslamate.bridge_enabled",false);
+  return`
+<h2>TeslaMate Integration</h2>
+<p class="subtitle">Optional. Feed this add-on's data into TeslaMate.</p>
+<div class="card"><h3>Fleet-API shim (polling)</h3>
+  <p style="color:var(--mut);font-size:12.5px;margin:0 0 8px">Point TeslaMate at the built-in shim — no real Tesla API calls.</p>
+  ${codebox("# TeslaMate environment:\nTESLA_API_HOST=http://"+haHost+":8085\n\n# Per car in TeslaMate:\nuse_streaming_api = false","tm-shim")}
+</div>
+<div class="card"><h3>Streaming bridge (optional)</h3>
+  <label class="ck"><input type="checkbox" ${be?"checked":""} onchange="saveField('teslamate.bridge_enabled',this.checked);render()"> Run the bundled websocket server on :8081</label>
+  <label class="flbl">External websocket URL (optional)</label>
+  <input type="text" style="width:100%" value="${esc(gc("teslamate.bridge_url",""))}" placeholder="leave blank to use the bundled server" onchange="saveField('teslamate.bridge_url',this.value.trim())">
+</div>
+${markDone(14)}`;
+}
+
+function renderStep15(){
+  const st=W.inputs.verify_state||{};
+  function si(icon,cls,title,sub){return`<div class="status-item"><div class="si-icon ${cls}">${icon}</div><div class="si-info"><div class="si-title">${title}</div><div class="si-sub">${sub}</div></div></div>`;}
+  const certOk=st.cert_ok,recOk=st.records_ok,vins=st.vins||[];
+  return`
+<h2>Verification</h2>
+<p class="subtitle">Confirming everything is connected. Vehicles stream every few minutes when awake — you may need to wake the car from the Tesla app.</p>
+<div class="card"><div class="status-items">
+  ${si(certOk?"✓":"…",certOk?"si-ok":"si-wait","TLS Certificate",certOk?`Valid · ${esc(st.cert_subject||"")} · ${st.cert_expiry} days remaining`:"Checking…")}
+  ${si(recOk?"✓":"…",recOk?"si-ok":"si-wait","Telemetry Records",recOk?`${esc(String(st.total_records||0))} records · last ${esc(ago(st.last_epoch||0))} · VIN …${esc((vins[0]||"").slice(-6))}`:"Waiting for the first record from your vehicle…")}
+</div></div>
+<p style="color:var(--mut);font-size:12.5px;text-align:center;margin-top:14px">${recOk?"Records are flowing — you're all set!":"Polling every 5 seconds…"}</p>`;
+}
+
+function renderStep16(){
+  const ssor=p=>secretSet(p)||gc(p,"")!=="";
+  const items=[
+    {label:"Tesla credentials saved",ok:!!gc("tesla.client_id","")&&ssor("tesla.client_secret")},
+    {label:"NGINX Proxy Manager connected",ok:!!gc("npm.url","")},
+    {label:"Signing key generated",ok:!!gc("tesla.keypair_generated",false)},
+    {label:"Public-key proxy host created",ok:gc("npm.pubkey_proxy_host_id",null)!=null},
+    {label:"Public key verified",ok:!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok)},
+    {label:"Partner account registered",ok:!!gc("tesla.partner_registered",false)},
+    {label:"Telemetry stream &amp; certificate",ok:!!(W.inputs.cert_check&&W.inputs.cert_check.ok)},
+    {label:"Tesla account login",ok:ssor("tesla.shim_refresh_token")},
+    {label:"Virtual key paired with vehicle",ok:W.steps["17"]==="done"},
+    {label:"Vehicle telemetry configured",ok:!!(W.inputs.telemetry_config_result&&W.inputs.telemetry_config_result.ok)},
+    {label:"Telemetry records verified",ok:!!(W.inputs.verify_state&&W.inputs.verify_state.records_ok)},
+  ];
+  return`
+<h2>Setup Complete 🎉</h2>
+<p class="subtitle">Your Fleet Telemetry add-on is configured. Here's a summary.</p>
+<div class="card"><h3>Setup summary</h3>
+  ${items.map(i=>`<div class="summary-row"><div class="sum-icon ${i.ok?"sum-ok":"sum-pending"}">${i.ok?"✓":"○"}</div><div style="font-size:13px">${i.label}</div></div>`).join("")}
+</div>
+<div class="card" style="background:transparent;border-color:var(--accent)">
+  <p style="margin:0;font-size:13.5px">The <b>Setup Guide</b> is always available from the dashboard header if you need to revisit any step.</p>
+</div>`;
+}
+
+function renderStep17(){
+  const dom=gc("tesla.pubkey_domain","")||"<your-domain>";
+  return`
+<h2>Pair the Virtual Key with Your Vehicle</h2>
+<p class="subtitle">Tesla requires the vehicle owner to approve your app's key on each car before it will accept any signed command — including the telemetry config you send in the next step.</p>
+<div class="card"><h3>On your phone (Tesla app installed, signed in as the owner)</h3>
+  <ol>
+    <li>Open this link on the phone — it launches the Tesla app's <b>Add Virtual Key</b> prompt:</li>
+  </ol>
+  <p style="margin:6px 0 10px"><a href="https://tesla.com/_ak/${esc(dom)}" target="_blank" rel="noopener" style="font-size:14px;word-break:break-all">https://tesla.com/_ak/${esc(dom)}</a></p>
+  ${codebox("https://tesla.com/_ak/"+dom,"pair-url")}
+  <p style="color:var(--mut);font-size:12.5px;margin:8px 0 0">Approve adding the key to your vehicle. Repeat for each car. (Tip: email yourself the link or use a QR generator to open it on the phone.)</p>
+</div>
+<div class="card" style="border-color:var(--warn)"><p style="margin:0;font-size:13px">Without pairing, the next step (<b>Send to vehicle</b>) and every signed command will fail with a key/authentication error.</p></div>
+${markDone(17)}`;
+}
+
+// ---- Interactions ----
+
+async function selectType(t){await save({user_type:t,current_step:1});render();}
+function showTMFollow(){const el=document.getElementById("tmfollow");if(el)el.style.display="block";}
+async function toggleDone(n,checked){const steps={...W.steps};if(checked)steps[String(n)]="done";else delete steps[String(n)];await save({steps});updateNav();}
+async function setRegion(r){await saveField("tesla.region",r);render();}
+async function onDomainChange(v){
+  const patch={tesla:{pubkey_domain:v}};
+  if(!gc("tesla.telemetry_domain",""))patch.tesla.telemetry_domain=v;
+  if(!gc("npm.cert_domain",""))patch.npm={cert_domain:v};
+  await saveConfig(patch);updateNav();
+}
+
+async function genKeypair(){
+  const el=document.getElementById("kpResult");if(el)el.innerHTML=`<div class="result info">Generating…</div>`;
+  const r=await api("POST","api/wizard/keypair",{force:!!gc("tesla.keypair_generated",false)});
+  await reloadConfig();await save({inputs:{...W.inputs,keypair_result:r}});render();
+}
+async function createProxyHost(){
+  // Flush the domain field to the server first (in case it wasn't blurred) — the endpoint reads
+  // pubkey_domain from the persisted config file, not from C.
+  const di=document.getElementById("f_pubkey_domain");
+  if(di&&di.value.trim()){await onDomainChange(di.value.trim());}
+  const el=document.getElementById("phResult");if(el)el.innerHTML=`<div class="result info">Creating proxy host &amp; requesting a certificate… this can take ~30s.</div>`;
+  const r=await api("POST","api/wizard/npm-proxy-host",{});
+  await reloadConfig();await save({inputs:{...W.inputs,proxy_result:r}});render();
+}
+async function createStream(){
+  const el=document.getElementById("streamResult");if(el)el.innerHTML=`<div class="result info">Creating the Stream in NPM…</div>`;
+  // Persist domain + port first — the endpoint reads them from the config file, not from C.
+  const dom=gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain","");
+  await saveConfig({tesla:{telemetry_domain:dom,telemetry_port:gc("tesla.telemetry_port",4443)},npm:{cert_domain:dom}});
+  const r=await api("POST","api/wizard/npm-stream",{});
+  await reloadConfig();await save({inputs:{...W.inputs,stream_result:r}});render();
+}
+async function registerPartner(){
+  const el=document.getElementById("regResult");if(el)el.innerHTML=`<div class="result info">Registering…</div>`;
+  const r=await api("POST","api/wizard/register-partner",{});
+  await reloadConfig();await save({inputs:{...W.inputs,partner_result:r}});render();
+}
+async function checkPubkey(){
+  const dom=gc("tesla.pubkey_domain","");
+  const el=document.getElementById("pubkeyResult");if(el)el.innerHTML=`<div class="result info">Checking ${esc(dom)}…</div>`;
+  const r=await api("POST","api/wizard/check",{check:"pubkey",domain:dom});
+  await save({inputs:{...W.inputs,pubkey_check:r}});if(el)el.innerHTML=checkResultHtml(r);updateNav();
+}
+async function checkCert(){
+  const el=document.getElementById("certResult");if(el)el.innerHTML=`<div class="result info">Checking…</div>`;
+  const r=await api("POST","api/wizard/check",{check:"cert"});
+  await save({inputs:{...W.inputs,cert_check:r}});if(el)el.innerHTML=checkResultHtml(r);updateNav();
+}
+async function genOauthUrl(){
+  const ru=W.inputs.redirect_uri||(gc("tesla.pubkey_domain","")?`https://${gc("tesla.pubkey_domain","")}/callback`:"");
+  if(!ru){alert("Set a redirect URI first.");return;}
+  const state="ft"+Math.random().toString(36).slice(2,12);
+  await save({inputs:{...W.inputs,oauth_state:state,redirect_uri:ru}});
+  const r=await api("POST","api/wizard/oauth-url",{redirect_uri:ru,state});
+  const el=document.getElementById("oauthUrl");
+  if(r.url)el.innerHTML=`<div class="result info" style="margin-top:10px"><a href="${esc(r.url)}" target="_blank">Open Tesla login →</a></div>`;
+  else el.innerHTML=`<div class="result err">✗ ${esc(r.error||"failed")}</div>`;
+}
+async function exchangeOauth(){
+  const inp=document.getElementById("f_oauth_code");const raw=inp?inp.value.trim():"";
+  let code=raw;const m=raw.match(/[?&]code=([^&]+)/);if(m)code=decodeURIComponent(m[1]);
+  const ru=W.inputs.redirect_uri||"";
+  const el=document.getElementById("oauthResult");if(el)el.innerHTML=`<div class="result info">Exchanging…</div>`;
+  const r=await api("POST","api/wizard/oauth-exchange",{code,redirect_uri:ru});
+  await reloadConfig();await save({inputs:{...W.inputs,oauth_result:r}});render();
+}
+async function sendTelemetryConfig(){
+  const el=document.getElementById("telCfgResult");if(el)el.innerHTML=`<div class="result info">Sending… up to 30s while the signing proxy starts.</div>`;
+  const r=await api("POST","api/wizard/check",{check:"send_telemetry_config"});
+  const newSteps=r.ok?{...W.steps,"13":"done"}:W.steps;
+  await save({inputs:{...W.inputs,telemetry_config_result:r},steps:newSteps});
+  if(el)el.innerHTML=configResultHtml(r);updateNav();
+}
+function copyCode(id){const el=document.getElementById(id);if(!el)return;navigator.clipboard.writeText(el.textContent).then(()=>{const b=el.parentElement.querySelector(".copy-btn");if(b){b.textContent="Copied!";setTimeout(()=>b.textContent="Copy",1500);}});}
+
+// ---- Navigation ----
+
+function canAdvance(){
+  const s=W.current_step;
+  const ssor=p=>secretSet(p)||gc(p,"")!=="";
+  if(s===1)return!!W.user_type;
+  if(s===3)return!!gc("npm.url","")&&!!gc("npm.email","")&&ssor("npm.password")&&!!gc("npm.forward_host","");
+  if(s===4)return!!gc("tesla.keypair_generated",false);
+  if(s===5)return gc("npm.pubkey_proxy_host_id",null)!=null;
+  if(s===6)return!!(W.inputs.pubkey_check&&W.inputs.pubkey_check.ok);
+  if(s===7)return!!gc("tesla.client_id","")&&ssor("tesla.client_secret");
+  if(s===8)return!!gc("tesla.partner_registered",false);
+  if(s===9)return!!gc("tesla.telemetry_domain","")&&(gc("npm.stream_id",null)!=null||W.steps["9"]==="done");
+  if(s===10)return!!(W.inputs.cert_check&&W.inputs.cert_check.ok);
+  if(s===11)return ssor("tesla.shim_refresh_token");
+  if(s===17)return W.steps["17"]==="done";
+  if(s===13)return!!(W.inputs.telemetry_config_result&&W.inputs.telemetry_config_result.ok);
+  return true;
+}
+
+async function goNext(){
+  if(!canAdvance())return;
+  const vs=visibleSteps();const idx=vs.indexOf(W.current_step);
+  if(idx<vs.length-1){const next=vs[idx+1];const patch={current_step:next};if(next===16)patch.completed=true;await save(patch);render();window.scrollTo(0,0);}
+}
+async function goPrev(){const vs=visibleSteps();const idx=vs.indexOf(W.current_step);if(idx>0){await save({current_step:vs[idx-1]});render();window.scrollTo(0,0);}}
+async function skipVerify(){await save({current_step:16,completed:true});render();window.scrollTo(0,0);}
+
+// ---- Verify polling ----
+
+function startVerifyPoll(){if(pollTimer)return;pollVerify();pollTimer=setInterval(pollVerify,5000);}
+function stopVerifyPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+async function pollVerify(){
+  try{
+    const[cr,rr]=await Promise.all([api("POST","api/wizard/check",{check:"cert"}),api("POST","api/wizard/check",{check:"records"})]);
+    const st={cert_ok:cr.ok,cert_subject:cr.subject||"",cert_expiry:cr.days_left,records_ok:rr.ok,total_records:rr.total||0,last_epoch:rr.last_epoch||0,vins:rr.vins||[]};
+    W.inputs={...W.inputs,verify_state:st};
+    await api("POST","api/wizard/save",{inputs:{verify_state:st}});
+    const sc=document.getElementById("stepContent");if(sc&&W.current_step===15)sc.innerHTML=renderStep15();
+    if(rr.ok){stopVerifyPoll();updateNav();}
+  }catch(e){}
+}
+
+// ---- Render ----
+
+const STEP_TITLES={1:"Welcome",2:"Prerequisites",3:"NGINX Proxy Manager",4:"Signing Key",5:"Public-Key Domain",
+  6:"Verify Public Key",7:"Tesla App",8:"Register Partner",9:"Telemetry Stream",10:"Verify Certificate",
+  11:"Tesla Login",12:"Backends & Tuning",17:"Pair Virtual Key",13:"Vehicle Config",14:"TeslaMate",15:"Verification",16:"Done"};
+// NOTE: function names are historical; the WIZARD ORDER is defined here. NPM/keypair/public-key
+// hosting must come BEFORE entering Tesla app credentials — Tesla's developer portal only issues a
+// Client ID/Secret once it can validate the public key at your live domain.
+const RENDERERS={1:renderStep1,2:renderStep2,
+  3:renderStep4,   // NGINX Proxy Manager connection
+  4:renderStep5,   // Generate signing key
+  5:renderStep6,   // Public-key domain + auto proxy host
+  6:renderStep7,   // Verify public key reachable
+  7:renderStep3,   // Tesla app credentials (now that the domain validates)
+  8:renderStep8,9:renderStep9,10:renderStep10,11:renderStep11,12:renderStep12,
+  17:renderStep17,  // Pair virtual key (ordered before 13 via visibleSteps)
+  13:renderStep13,14:renderStep14,15:renderStep15,16:renderStep16};
+
+function render(){
+  const vs=visibleSteps();const idx=vs.indexOf(W.current_step);
+  document.getElementById("pbar").style.width=((idx+1)/vs.length*100)+"%";
+  document.getElementById("stepLabel").textContent=`Step ${idx+1} of ${vs.length} · ${STEP_TITLES[W.current_step]||""}`;
+  const fn=RENDERERS[W.current_step];
+  document.getElementById("stepContent").innerHTML=fn?fn():`<p style="color:var(--mut)">Unknown step.</p>`;
+  updateNav();
+  if(W.current_step===15&&!(W.inputs.verify_state&&W.inputs.verify_state.records_ok))startVerifyPoll();else stopVerifyPoll();
+}
+
+function updateNav(){
+  const vs=visibleSteps();const idx=vs.indexOf(W.current_step);
+  const isFirst=idx===0,isLast=W.current_step===16,ok=canAdvance();
+  let html="";
+  if(!isFirst)html+=`<button class="btn btn-secondary" onclick="goPrev()">← Back</button>`;
+  if(!isLast)html+=`<button class="btn btn-primary" onclick="goNext()"${ok?"":" disabled"}>Next →</button>`;
+  else html+=`<a class="btn btn-primary" href="./" style="text-decoration:none">Go to Dashboard →</a>`;
+  if(W.current_step===15&&!(W.inputs.verify_state&&W.inputs.verify_state.records_ok))html+=`<button class="skip" onclick="skipVerify()">Skip for now</button>`;
+  document.getElementById("nav").innerHTML=html;
+}
+
+// ---- Init ----
+(async()=>{
+  try{
+    const data=await api("GET","api/wizard/state");
+    if(data&&typeof data==="object")W=Object.assign({user_type:null,completed:false,current_step:1,steps:{},inputs:{}},data);
+  }catch(e){}
+  await reloadConfig();
+  try{const hp=await api("GET","api/wizard/hostports");if(hp&&typeof hp==="object")HP=hp;}catch(e){}
+  render();
+})();
+</script>
+</body></html>
