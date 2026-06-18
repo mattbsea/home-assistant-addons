@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.4
+
+### Fixed
+- **TeslaMate no longer gets stuck in "driving" after you park.** On park, Tesla streams
+  `Gear: "<invalid>"` (its parked sentinel), not `"P"`. Two bugs turned that into a permanently
+  open drive:
+  - The streaming-ws builder treated a `None` gear as "not ready yet" and **suppressed the frame
+    entirely**, so TeslaMate never received the park transition — its last frame still said
+    `shift_state=D`. It now emits the frame with `shift_state=""` once a gear has been seen, so a
+    park ends the drive (frames are still suppressed before the first gear is ever seen).
+  - The Fleet-API shim **backfilled `shift_state`/`speed` from the prime snapshot**, which can be up
+    to one re-prime interval (30 min) stale. A poll after parking kept reporting "driving at 38" from
+    a snapshot captured mid-drive. Ephemeral drive-state fields are now live-or-nothing — never
+    inherited from prime. (Static/charge/climate fields still backfill from prime as before.)
+
 ## 1.0.3
 
 ### Fixed

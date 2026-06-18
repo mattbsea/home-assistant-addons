@@ -66,7 +66,10 @@ def accumulate(last_values, rec):
 def build_data_update(vin, last_values, created_at):
     """Build a TeslaMate ``data:update`` message, or None if position/gear aren't known yet."""
     lv = last_values.get(vin, {})
-    if lv.get("Latitude") is None or lv.get("Longitude") is None or not lv.get("Gear"):
+    # Gear must have been *seen* at least once (key present) — but once seen it can be None, which is
+    # how a park reads: Tesla streams Gear="<invalid>" on park, strip_state -> None. We must still emit
+    # that frame (shift_state="") so TeslaMate sees the drive END; suppressing it strands the drive.
+    if lv.get("Latitude") is None or lv.get("Longitude") is None or "Gear" not in lv:
         return None
     power = 0
     p = fields.num(lv.get("Power"))
@@ -86,7 +89,7 @@ def build_data_update(vin, last_values, created_at):
         lv["Latitude"],                          # est_lat
         lv["Longitude"],                         # est_lng
         power,
-        lv.get("Gear", ""),                      # shift_state
+        _blank_if_none(lv.get("Gear")),          # shift_state ("" when parked / Gear=<invalid>)
         _blank_if_none(lv.get("RatedRange")),    # range
         _blank_if_none(lv.get("EstBatteryRange")),  # est_range
         _blank_if_none(lv.get("GpsHeading")),    # heading

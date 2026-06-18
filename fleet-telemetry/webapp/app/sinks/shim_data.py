@@ -88,11 +88,22 @@ def assemble(f, *, ts, identity, charge_baseline=None):
             "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": {}}
 
 
+# Ephemeral drive-state fields are LIVE-or-nothing: never backfill them from the prime snapshot,
+# which can be up to a re-prime interval (30 min) stale. Backfilling shift_state/speed from a prime
+# captured mid-drive made the shim keep reporting "driving at 38" after the car parked (the live
+# telemetry correctly had shift_state=None/speed=None, but prime overwrote it). power is already 0
+# when parked via assemble, so it needs no exclusion.
+_PRIME_BACKFILL_SKIP = {"drive_state": ("shift_state", "speed")}
+
+
 def vehicle_data(f, *, ts, identity, charge_baseline=None, prime=None):
     tele = assemble(f, ts=ts, identity=identity, charge_baseline=charge_baseline)
     if prime:
         for sec in ("drive_state", "charge_state", "climate_state", "vehicle_state"):
+            skip = _PRIME_BACKFILL_SKIP.get(sec, ())
             for k, v in (prime.get(sec) or {}).items():
+                if k in skip:
+                    continue
                 if tele[sec].get(k) is None and v not in ("<invalid>", "invalid"):
                     tele[sec][k] = v
         if not tele.get("vehicle_config"):

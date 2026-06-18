@@ -52,6 +52,26 @@ def test_build_update_csv_columns():
     assert int(p[0]) > 0         # time_ms parsed from ISO CreatedAt
 
 
+def test_park_emits_blank_shift_state():
+    """Regression: on park Tesla streams Gear='<invalid>' -> strip_state -> None. The frame must
+    STILL be emitted with shift_state='' so TeslaMate ends the drive (suppressing it stranded it)."""
+    last = {}
+    ws_stream.accumulate(last, rec(Location={"latitude": 47.77, "longitude": -122.15}))
+    ws_stream.accumulate(last, rec(Gear="D"))
+    ws_stream.accumulate(last, rec(Gear="<invalid>"))      # parked
+    lv = last[VIN]
+    assert lv["Gear"] is None and "Gear" in lv             # seen, then went None
+    msg = ws_stream.build_data_update(VIN, {VIN: lv}, "2026-06-18T01:21:45Z")
+    assert msg is not None                                 # NOT suppressed
+    assert msg["value"].split(",")[9] == ""                # shift_state blank, not "None"/"D"
+
+
+def test_build_update_suppressed_until_gear_seen():
+    """Before Gear is ever seen, suppress (can't tell driving from parked yet)."""
+    lv = {"Latitude": 47.77, "Longitude": -122.15, "Soc": 50}   # no Gear key
+    assert ws_stream.build_data_update(VIN, {VIN: lv}, "2026-06-18T01:21:45Z") is None
+
+
 # --- end-to-end over a real websocket ------------------------------------------------
 async def test_end_to_end_subscribe_and_update():
     stream = ws_stream.Stream()
