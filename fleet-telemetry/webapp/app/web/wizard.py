@@ -1,7 +1,6 @@
-"""Wizard web app: serves the setup page and the config/keypair control-plane endpoints.
-
-Backed by the ported control modules (config, keys). The Tesla OAuth / partner-registration /
-NPM-provisioning / send-config routes are added on top of this same app as those flows are wired.
+"""Wizard web app: serves the setup page and the control-plane endpoints, wired onto the ported
+control modules (config, keys, tesla, npm, sendconfig). The route layer reads/persists config; the
+modules do the external work.
 """
 import json
 import os
@@ -11,7 +10,7 @@ from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
 from app.control import config as cfgmod
-from app.control import keys
+from app.control import keys, npm, sendconfig, tesla
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -26,9 +25,13 @@ async def _json_body(req):
         return None
 
 
-def build_wizard_app(*, config_path, private_key_path, public_key_path):
+def build_wizard_app(*, config_path, private_key_path, public_key_path,
+                     cert_file=None, certs_dir=None, registry=None):
     with open(os.path.join(_STATIC, "wizard.html")) as fh:
         page = fh.read()
+
+    def cfg():
+        return cfgmod.load(config_path)
 
     async def index(_req):
         return HTMLResponse(page)
@@ -51,9 +54,84 @@ def build_wizard_app(*, config_path, private_key_path, public_key_path):
             cfgmod.save(config_path, {"tesla": {"keypair_generated": True}})
         return JSONResponse(r)
 
+    async def oauth_url(req):
+        c = cfg()["tesla"]
+        url = tesla.authorize_url(c.get("client_id", ""), req.query_params.get("redirect_uri", ""),
+                                  req.query_params.get("state", ""))
+        return JSONResponse({"url": url})
+
+    async def oauth_exchange(req):
+        body = await _json_body(req) or {}
+        c = cfg()["tesla"]
+        r = tesla.exchange_code(client_id=c.get("client_id", ""), client_secret=c.get("client_secret", ""),
+                                code=body.get("code", ""), redirect_uri=body.get("redirect_uri", ""),
+                                region=c.get("region", "na"))
+        if r.get("ok"):
+            cfgmod.save(config_path, {"tesla": {"shim_refresh_token": r["refresh_token"]}})
+            return JSONResponse({"ok": True})
+        return JSONResponse(r)
+
+    async def partner(_req):
+        c = cfg()["tesla"]
+        r = tesla.register_partner(client_id=c.get("client_id", ""), client_secret=c.get("client_secret", ""),
+                                   domain=c.get("pubkey_domain", ""), region=c.get("region", "na"))
+        if r.get("ok"):
+            cfgmod.save(config_path, {"tesla": {"partner_registered": True}})
+        return JSONResponse(r)
+
+    async def npm_cert(_req):
+        n = cfg()["npm"]
+        r = npm.fetch_cert(n.get("url", ""), n.get("email", ""), n.get("password", ""),
+                           n.get("cert_domain", ""), certs_dir or ".")
+        return JSONResponse(r)
+
+    async def npm_pubkey_host(_req):
+        c, n = cfg()["tesla"], cfg()["npm"]
+        r = npm.create_pubkey_host(base=n.get("url", ""), email=n.get("email", ""), password=n.get("password", ""),
+                                   domain=c.get("pubkey_domain", ""), forward_host=n.get("forward_host", ""),
+                                   forward_port=int(os.environ.get("FT_PUBKEY_PORT", "8100")))
+        if r.get("ok"):
+            cfgmod.save(config_path, {"npm": {"pubkey_proxy_host_id": r["id"]}})
+        return JSONResponse(r)
+
+    async def npm_stream(_req):
+        c, n = cfg()["tesla"], cfg()["npm"]
+        try:
+            port = int(c.get("telemetry_port") or 4443)
+        except (TypeError, ValueError):
+            port = 4443
+        r = npm.create_stream(base=n.get("url", ""), email=n.get("email", ""), password=n.get("password", ""),
+                              incoming_port=port, forward_host=n.get("forward_host", ""),
+                              forward_port=int(os.environ.get("FT_TELEMETRY_HOST_PORT", "4443")))
+        if r.get("ok"):
+            cfgmod.save(config_path, {"npm": {"stream_id": r["id"]}})
+        return JSONResponse(r)
+
+    async def send_config(_req):
+        c = cfg()["tesla"]
+        vins = registry.vins() if registry else []
+        try:
+            port = int(c.get("telemetry_port") or 4443)
+        except (TypeError, ValueError):
+            port = 4443
+        r = sendconfig.send(vins=vins, client_id=c.get("client_id", ""),
+                            refresh_token=c.get("shim_refresh_token", ""),
+                            domain=c.get("telemetry_domain", ""), region=c.get("region", "na"), port=port,
+                            cert_file=cert_file or "", private_key_file=private_key_path)
+        if r.get("ok") and r.get("new_refresh_token"):
+            cfgmod.save(config_path, {"tesla": {"shim_refresh_token": r["new_refresh_token"]}})
+        return JSONResponse(r)
+
     return Starlette(routes=[
         Route("/", index),
         Route("/api/config", get_config, methods=["GET"]),
         Route("/api/config", post_config, methods=["POST"]),
         Route("/api/keypair", post_keypair, methods=["POST"]),
+        Route("/api/oauth/url", oauth_url, methods=["GET"]),
+        Route("/api/oauth/exchange", oauth_exchange, methods=["POST"]),
+        Route("/api/partner", partner, methods=["POST"]),
+        Route("/api/npm/cert", npm_cert, methods=["POST"]),
+        Route("/api/npm/pubkey-host", npm_pubkey_host, methods=["POST"]),
+        Route("/api/npm/stream", npm_stream, methods=["POST"]),
+        Route("/api/send-config", send_config, methods=["POST"]),
     ])
