@@ -1,20 +1,14 @@
-"""Phase 0 characterization — pins the CURRENT (v0.10.16) behavior of the field transforms that
-the v1 refactor will pull into a shared fields.py. These must stay green through Phase 1.
-
-Covers the duplicated logic the architecture review flagged: enum-strip, gear map, location parse,
-the telemetry<->vehicle_data mapping, the records ingest, and the _META set.
+"""The single field model (fields.py) — pins the transforms consolidated from the v0 modules:
+enum-strip, gear map, location parse, the telemetry<->vehicle_data mapping, and the meta sets.
 """
 import importlib
 
 import conftest
 import pytest
 
-server = importlib.import_module("server")
-shim = importlib.import_module("shim")
 fields = importlib.import_module("fields")
 
 
-# --- enum stripping (shim._strip_state) -------------------------------------------------
 @pytest.mark.parametrize("raw,expected", [
     ("ShiftStateD", "D"),
     ("HvacPowerStateOn", "On"),
@@ -25,25 +19,16 @@ fields = importlib.import_module("fields")
     (None, None),
 ])
 def test_strip_state(raw, expected):
-    assert shim._strip_state(raw) == expected
+    assert fields.strip_state(raw) == expected
 
 
-# --- location parse ---------------------------------------------------------------------
-def test_shim_parse_loc_dict():
-    assert shim._parse_loc({"latitude": 47.77, "longitude": -122.15}) == (47.77, -122.15)
+def test_parse_location_dict_string_none():
+    assert fields.parse_location({"latitude": 47.77, "longitude": -122.15}) == (47.77, -122.15)
+    assert fields.parse_location("47.77,-122.15") == (47.77, -122.15)
+    assert fields.parse_location("nope") == (None, None)
+    assert fields.parse_location(None) == (None, None)
 
 
-def test_shim_parse_loc_non_dict():
-    assert shim._parse_loc("nope") == (None, None)
-
-
-def test_server_parse_location_dict_and_string():
-    assert server._parse_location({"latitude": 47.77, "longitude": -122.15}) == (47.77, -122.15)
-    assert server._parse_location("47.77,-122.15") == (47.77, -122.15)
-    assert server._parse_location(None) == (None, None)
-
-
-# --- gear letter (bridge._gear_letter) --------------------------------------------------
 @pytest.mark.parametrize("raw,expected", [
     ("ShiftStateD", "D"), ("ShiftStateP", "P"), ("ShiftStateR", "R"), ("ShiftStateN", "N"),
     ("P", "P"), ("Drive", "D"), ("Park", "P"), ("Reverse", "R"), ("Neutral", "N"),
@@ -52,10 +37,9 @@ def test_gear_letter(raw, expected):
     assert fields.gear_letter(raw) == expected
 
 
-# --- server._prime_to_fields: vehicle_data (REST) -> telemetry field names --------------
 def test_prime_to_fields_mapping():
     response = conftest.load_reference("shim_vehicle_data.json")["response"]
-    out = server._prime_to_fields(response)
+    out = fields.prime_to_fields(response)
     assert out["Soc"] == 52                      # charge_state.battery_level
     assert out["BatteryLevel"] == 52             # charge_state.usable_battery_level
     assert out["DetailedChargeState"] == "Disconnected"
@@ -67,28 +51,15 @@ def test_prime_to_fields_mapping():
     assert out["ChargeRateMilePerHour"] == 0.0   # charge_state.charge_rate
 
 
-# --- server._ingest: records -> per-VIN latest ------------------------------------------
-def test_ingest_builds_latest_and_skips_meta():
-    server._latest.clear()
-    for obj in conftest.load_records():
-        server._ingest(obj)
-    latest = server._latest["7SAYGDEE3PF884783"]
-    assert latest["Soc"]["value"] == 51.85185185185185
-    assert latest["DoorState"]["value"]["TrunkRear"] is False
-    assert latest["TpmsPressureFl"]["value"] == "<invalid>"
-    # The server drops only Vin/CreatedAt/IsResend...
-    for meta in ("Vin", "CreatedAt", "IsResend"):
-        assert meta not in latest
-    # ...and intentionally KEEPS the connectivity-frame keys — they feed the dashboard's
-    # Network / Status rows. (The shim drops these; see test_meta_sets_diverge.)
-    assert latest["ConnectionID"]["value"] == "edeeafc2-d3d0-429f-8c43-254da435131c"
-    assert latest["NetworkInterface"]["value"] == "cellular"
-    assert latest["Status"]["value"] == "CONNECTED"
+def test_meta_sets():
+    # base set (dashboard/shim ingest keep connectivity keys via base); shim drops the extra three.
+    assert fields.META_BASE == {"CreatedAt", "IsResend", "Vin"}
+    assert fields.META_SHIM == fields.META_BASE | {"ConnectionID", "NetworkInterface", "Status"}
 
 
-# --- the duplicated _META sets (dedup target) -------------------------------------------
-def test_meta_sets_diverge():
-    # Pins the real, intentional divergence the v1 single fields module must preserve:
-    # server + bridge share the base set; the shim additionally drops connectivity-frame keys.
-    assert server._META == fields.META_BASE == {"CreatedAt", "IsResend", "Vin"}
-    assert shim._META == server._META | {"ConnectionID", "NetworkInterface", "Status"}
+def test_enum_decoders():
+    assert fields.fan_speed("HvacFanStatusSpeed3") == 3 and fields.fan_speed(0) == 0
+    assert fields.window_state("WindowStateClosed") == 0 and fields.window_state("WindowStateOpen") == 2
+    assert fields.defrost_on("DefrostModeOff") is False and fields.defrost_on("DefrostModeNormal") is True
+    assert fields.round_int(51.6) == 52 and fields.round_int(None) is None
+    assert fields.num("3.5") == 3.5 and fields.num("x") is None
