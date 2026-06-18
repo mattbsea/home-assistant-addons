@@ -1,0 +1,24 @@
+{
+  "host": "0.0.0.0",
+  "port": 4443,
+  "status_port": 8080,
+  "log_level": "info",
+  "json_log_enable": true,
+  "namespace": "tesla_telemetry",
+  "reliable_ack": false,
+  "rate_limit": {
+    "enabled": true,
+    "message_interval_time": 30,
+    "message_limit": 1000
+  },
+  "records": {
+    "V": ["logger"],
+    "connectivity": ["logger"],
+    "alerts": ["logger"],
+    "errors": ["logger"]
+  },
+  "tls": {
+    "server_cert": "/data/certs/server.crt",
+    "server_key": "/data/certs/server.key"
+  }
+}
