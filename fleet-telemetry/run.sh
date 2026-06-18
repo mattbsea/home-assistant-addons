@@ -52,7 +52,8 @@ fleet_host_for() {
 # static paths; credentials are read from the config file by the Python process itself.
 : > "${RECORDS_FILE}" 2>/dev/null || true
 export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" FT_PUBKEY_PORT="${PUBKEY_PORT}" \
-       FT_TELEMETRY_PORT="${TELEMETRY_PORT}" \
+       FT_SHIM_PORT="8085" FT_WS_PORT="8081" \
+       FT_TELEMETRY_PORT="${TELEMETRY_PORT}" FT_TELEMETRY_HOST_PORT="${TELEMETRY_PORT}" \
        FT_CERT_FILE="${CERTS_DIR}/server.crt" \
        FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
        FT_WIZARD_STATE="${DATA_DIR}/wizard-state.json" \
@@ -61,13 +62,16 @@ export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WEB_PORT="${WEB_PORT}" FT_PUBKEY_POR
        FT_PUBLIC_KEY="${KEYS_DIR}/public-key.pem" \
        FT_AUTH_HOST="https://auth.tesla.com"
 # FT_ADDON_VERSION is provided as a container ENV by the Dockerfile (from BUILD_VERSION).
+# The unified app serves the wizard/dashboard (ingress), the Fleet-API shim, the TeslaMate
+# streaming ws and the public-key listener from ONE process, fed by one records tail into one
+# Store. It reads the config file live per request, so it is never restarted on config change.
 ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
   while true; do
-    python3 /opt/webapp/server.py & child=$!; wait "${child}"
-    bashio::log.warning "web UI exited; restarting in 3s"
+    ( cd /opt/webapp && exec python3 -m app.main ) & child=$!; wait "${child}"
+    bashio::log.warning "app exited; restarting in 3s"
     sleep 3
   done ) &
-bashio::log.info "Setup wizard + dashboard available via ingress (internal port ${WEB_PORT}); public-key listener on :${PUBKEY_PORT}"
+bashio::log.info "Unified app: wizard/dashboard :${WEB_PORT} · shim :8085 · stream ws :8081 · pubkey :${PUBKEY_PORT}"
 
 # --- Generate /data/config.json from the wizard config file ------------------------------------
 generate_config() {
@@ -159,11 +163,11 @@ fetch_cert() {
     export NPM_URL="$(cfg 'npm.url')" NPM_EMAIL="$(cfg 'npm.email')" \
            NPM_PASSWORD="$([ -f "${CFG}" ] && jq -r '.npm.password // ""' "${CFG}" 2>/dev/null)" \
            NPM_CERT_DOMAIN="$(cfg 'npm.cert_domain')" CERTS_DIR
-    /opt/scripts/fetch-npm-cert.sh
+    ( cd /opt/webapp && python3 cert_fetch.py )
 }
 
 # --- Process management ------------------------------------------------------------------------
-SERVER_PID=""; SHIM_PID=""; BRIDGE_PID=""
+SERVER_PID=""
 
 stop_pid() {  # $1 = name of the variable holding the pid
     local var="$1" pid="${!1}"
@@ -177,37 +181,6 @@ start_server() {
     "${BINARY}" -config="${CONFIG_JSON}" > >(tee -a "${RECORDS_FILE}") 2>&1 &
     SERVER_PID=$!
     bashio::log.info "fleet-telemetry started (pid ${SERVER_PID}) on :${TELEMETRY_PORT} (telemetry), :${STATUS_PORT} (status)"
-}
-
-start_shim() {
-    export FT_SHIM_PORT="8085" FT_SHIM_STATE="${DATA_DIR}/shim-state.json" \
-           FT_SHIM_CLIENT_ID="$(cfg 'tesla.client_id')" \
-           FT_SHIM_REFRESH_TOKEN="$([ -f "${CFG}" ] && jq -r '.tesla.shim_refresh_token // ""' "${CFG}" 2>/dev/null)" \
-           FT_SHIM_FLEET_HOST="$(fleet_host_for "$(cfg 'tesla.region')")"
-    # The wrapper traps TERM and kills its python child — otherwise stop_pid would only kill the
-    # subshell and orphan python, which would keep holding :8085 and block the restarted instance.
-    ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
-      while true; do
-        python3 /opt/webapp/shim.py & child=$!; wait "${child}"
-        bashio::log.warning "Fleet-API shim exited; restarting in 3s"; sleep 3
-      done ) &
-    SHIM_PID=$!
-    bashio::log.info "Fleet-API shim listening on :8085"
-}
-
-start_bridge() {
-    # v1: a single Python asyncio server tails the records file and serves TeslaMate's streaming
-    # websocket directly on :8081 (no Node, no Pub/Sub envelope). Point TeslaMate's TESLA_WSS_HOST
-    # at ws://<this-addon>:8081 (it connects to /streaming/ and subscribes by VIN).
-    [ "$(cfgb 'teslamate.bridge_enabled')" = "true" ] || return 0
-    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WS_PORT="8081"
-    ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
-      while true; do
-        python3 /opt/webapp/ws_stream.py & child=$!; wait "${child}"
-        bashio::log.warning "TeslaMate streaming server exited; restarting in 5s"; sleep 5
-      done ) &
-    BRIDGE_PID=$!
-    bashio::log.info "TeslaMate streaming websocket server listening on :8081/streaming/"
 }
 
 # Re-(generate config, fetch cert, launch services) to match the current config file.
@@ -232,17 +205,13 @@ reconcile() {
     else
         bashio::log.info "Telemetry server deferred until a certificate is available."
     fi
-
-    # Shim + bridge do not need the cert; (re)start them to pick up credential/integration changes.
-    stop_pid SHIM_PID
-    start_shim
-    stop_pid BRIDGE_PID
-    start_bridge
+    # The unified app (shim + stream + wizard + dashboard) reads config live and is never restarted
+    # here — only the cert and the fleet-telemetry binary are reconciled on config change.
 }
 
 shutdown() {
     bashio::log.info "Shutting down…"
-    stop_pid SERVER_PID; stop_pid SHIM_PID; stop_pid BRIDGE_PID
+    stop_pid SERVER_PID
     exit 0
 }
 trap shutdown SIGTERM SIGINT

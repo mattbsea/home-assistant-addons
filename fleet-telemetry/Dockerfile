@@ -34,14 +34,15 @@ RUN apt-get update \
         openssl \
         python3 \
         python3-websockets \
+        python3-starlette \
+        python3-uvicorn \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=upstream /fleet-telemetry /usr/local/bin/fleet-telemetry
 COPY --from=proxy_builder /tesla-http-proxy /usr/local/bin/tesla-http-proxy
 
 COPY run.sh /run.sh
-COPY scripts/ /opt/scripts/
 COPY webapp/ /opt/webapp/
-RUN chmod +x /run.sh /opt/scripts/*.sh
+RUN chmod +x /run.sh
 
 CMD ["/run.sh"]

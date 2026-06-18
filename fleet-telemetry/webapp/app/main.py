@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 
 import uvicorn
 import websockets
@@ -80,15 +81,23 @@ def _save_refresh_token(rt):
         pass
 
 
-def start_prime(registry):
-    cid = os.environ.get("FT_SHIM_CLIENT_ID", "")
-    rt = _load_refresh_token() or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+def start_prime(registry, config_path, interval=1800):
+    """Fleet-API cold-start prime, re-run periodically so creds set later (after OAuth) are picked
+    up without restarting the app. Reads creds live from config (decoupled from run.sh env)."""
+    from app.control import config as cfgmod
+    from app.control import tesla
     auth = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
-    fleet = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.cloud.tesla.com")
 
     def run():
-        prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
-                         fleet_host=fleet, on_token=_save_refresh_token)
+        while True:
+            c = cfgmod.load(config_path).get("tesla", {})
+            cid = c.get("client_id", "")
+            rt = _load_refresh_token() or c.get("shim_refresh_token", "")
+            if cid and rt:
+                prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
+                                 fleet_host=tesla.fleet_host(c.get("region", "na")),
+                                 on_token=_save_refresh_token)
+            time.sleep(interval)
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -121,7 +130,7 @@ def main():
         store=store, version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry")
     pubkey_app = build_pubkey_app(pub)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
-    start_prime(registry)
+    start_prime(registry, cfg_path)
     asyncio.run(run(store, shim_app=shim_app, ingress_app=ingress_app, pubkey_app=pubkey_app,
                     shim_port=int(os.environ.get("FT_SHIM_PORT", "8085")),
                     ws_port=int(os.environ.get("FT_WS_PORT", "8081")),
