@@ -11,7 +11,7 @@ import pytest
 
 server = importlib.import_module("server")
 shim = importlib.import_module("shim")
-bridge = importlib.import_module("bridge")
+fields = importlib.import_module("fields")
 
 
 # --- enum stripping (shim._strip_state) -------------------------------------------------
@@ -49,25 +49,7 @@ def test_server_parse_location_dict_and_string():
     ("P", "P"), ("Drive", "D"), ("Park", "P"), ("Reverse", "R"), ("Neutral", "N"),
 ])
 def test_gear_letter(raw, expected):
-    assert bridge._gear_letter(raw) == expected
-
-
-# --- bridge.to_payload: telemetry record -> protojson Payload ---------------------------
-def test_to_payload_value_typing_and_meta_exclusion():
-    rec = {"vin": "7SAYGDEE3PF884783", "data": {
-        "CreatedAt": "2026-06-18T01:21:13Z", "IsResend": False, "Vin": "7SAYGDEE3PF884783",
-        "Soc": 51.85, "Locked": True, "Gear": "ShiftStateD",
-        "Location": {"latitude": 47.77, "longitude": -122.15},
-    }}
-    out = bridge.to_payload(rec)
-    assert out["vin"] == "7SAYGDEE3PF884783"
-    items = {i["key"]: i["value"] for i in out["data"]}
-    # _META keys never forwarded
-    assert "Vin" not in items and "CreatedAt" not in items and "IsResend" not in items
-    assert items["Soc"] == {"doubleValue": 51.85}
-    assert items["Locked"] == {"booleanValue": True}
-    assert items["Gear"] == {"shiftStateValue": "ShiftStateD"}
-    assert items["Location"] == {"locationValue": {"latitude": 47.77, "longitude": -122.15}}
+    assert fields.gear_letter(raw) == expected
 
 
 # --- server._prime_to_fields: vehicle_data (REST) -> telemetry field names --------------
@@ -108,5 +90,5 @@ def test_ingest_builds_latest_and_skips_meta():
 def test_meta_sets_diverge():
     # Pins the real, intentional divergence the v1 single fields module must preserve:
     # server + bridge share the base set; the shim additionally drops connectivity-frame keys.
-    assert server._META == bridge._META == {"CreatedAt", "IsResend", "Vin"}
+    assert server._META == fields.META_BASE == {"CreatedAt", "IsResend", "Vin"}
     assert shim._META == server._META | {"ConnectionID", "NetworkInterface", "Status"}

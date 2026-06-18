@@ -17,16 +17,6 @@ RUN git clone --depth 1 --branch v0.4.1 \
 WORKDIR /src
 RUN go build -o /tesla-http-proxy ./cmd/tesla-http-proxy
 
-# MyTeslaMate websocket server (bundled, optional). We vendor the upstream "master" source — the
-# HTTP-receiver variant (POST / accepts the Pub/Sub-push envelope; NO google-cloud subscriber) — and
-# npm-install its pure-JS deps here. The published Docker image is the Pub/Sub-pull variant and is
-# deliberately NOT used. node_modules built here run under the add-on's Node runtime (both glibc).
-FROM node:20-bookworm-slim AS teslamate_ws
-WORKDIR /opt/teslamate-ws
-COPY teslamate-ws/package*.json ./
-RUN npm install --omit=dev
-COPY teslamate-ws/ ./
-
 FROM ${BUILD_FROM}
 
 # Supervisor passes the add-on version as a build arg; surface it to the dashboard.
@@ -43,12 +33,11 @@ RUN apt-get update \
         unzip \
         openssl \
         python3 \
-        nodejs \
+        python3-websockets \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=upstream /fleet-telemetry /usr/local/bin/fleet-telemetry
 COPY --from=proxy_builder /tesla-http-proxy /usr/local/bin/tesla-http-proxy
-COPY --from=teslamate_ws /opt/teslamate-ws /opt/teslamate-ws
 
 COPY run.sh /run.sh
 COPY scripts/ /opt/scripts/

@@ -163,7 +163,7 @@ fetch_cert() {
 }
 
 # --- Process management ------------------------------------------------------------------------
-SERVER_PID=""; SHIM_PID=""; BRIDGE_PID=""; TMWS_PID=""
+SERVER_PID=""; SHIM_PID=""; BRIDGE_PID=""
 
 stop_pid() {  # $1 = name of the variable holding the pid
     local var="$1" pid="${!1}"
@@ -196,31 +196,18 @@ start_shim() {
 }
 
 start_bridge() {
-    local target="" ext
-    ext="$(cfg 'teslamate.bridge_url')"
-    if [ -n "${ext}" ]; then
-        target="${ext}"
-        bashio::log.info "TeslaMate bridge -> external websocket server ${target}"
-    elif [ "$(cfgb 'teslamate.bridge_enabled')" = "true" ]; then
-        ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
-          while true; do
-            node /opt/teslamate-ws/index.js & child=$!; wait "${child}"
-            bashio::log.warning "TeslaMate websocket server exited; restarting in 5s"; sleep 5
-          done ) &
-        TMWS_PID=$!
-        target="http://127.0.0.1:8081/"
-        bashio::log.info "Bundled TeslaMate websocket server started on :8081"
-    fi
-    if [ -n "${target}" ]; then
-        export FT_RECORDS_FILE="${RECORDS_FILE}" FT_BRIDGE_URL="${target}"
-        ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
-          while true; do
-            python3 /opt/webapp/bridge.py & child=$!; wait "${child}"
-            bashio::log.warning "TeslaMate bridge exited; restarting in 5s"; sleep 5
-          done ) &
-        BRIDGE_PID=$!
-        bashio::log.info "TeslaMate bridge forwarding telemetry to ${target}"
-    fi
+    # v1: a single Python asyncio server tails the records file and serves TeslaMate's streaming
+    # websocket directly on :8081 (no Node, no Pub/Sub envelope). Point TeslaMate's TESLA_WSS_HOST
+    # at ws://<this-addon>:8081 (it connects to /streaming/ and subscribes by VIN).
+    [ "$(cfgb 'teslamate.bridge_enabled')" = "true" ] || return 0
+    export FT_RECORDS_FILE="${RECORDS_FILE}" FT_WS_PORT="8081"
+    ( trap 'if [ -n "${child:-}" ]; then kill "${child}" 2>/dev/null; fi; exit 0' TERM
+      while true; do
+        python3 /opt/webapp/ws_stream.py & child=$!; wait "${child}"
+        bashio::log.warning "TeslaMate streaming server exited; restarting in 5s"; sleep 5
+      done ) &
+    BRIDGE_PID=$!
+    bashio::log.info "TeslaMate streaming websocket server listening on :8081/streaming/"
 }
 
 # Re-(generate config, fetch cert, launch services) to match the current config file.
@@ -250,13 +237,12 @@ reconcile() {
     stop_pid SHIM_PID
     start_shim
     stop_pid BRIDGE_PID
-    stop_pid TMWS_PID
     start_bridge
 }
 
 shutdown() {
     bashio::log.info "Shutting down…"
-    stop_pid SERVER_PID; stop_pid SHIM_PID; stop_pid BRIDGE_PID; stop_pid TMWS_PID
+    stop_pid SERVER_PID; stop_pid SHIM_PID; stop_pid BRIDGE_PID
     exit 0
 }
 trap shutdown SIGTERM SIGINT
