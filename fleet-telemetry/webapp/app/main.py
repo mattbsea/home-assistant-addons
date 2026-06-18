@@ -9,6 +9,7 @@ Ports/paths come from the environment (set by run.sh):
   FT_WS_PORT       TeslaMate streaming ws port (default 8081)
 """
 import asyncio
+import json
 import os
 import threading
 
@@ -17,6 +18,7 @@ import websockets
 
 import records
 from app import state
+from app.control import prime
 from app.sinks import shim_rest, stream
 
 
@@ -37,6 +39,48 @@ def start_ingest(store, records_file):
     return t
 
 
+def _state_path():
+    return os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
+
+
+def _load_refresh_token():
+    try:
+        with open(_state_path()) as fh:
+            return json.load(fh).get("refresh_token", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def _save_refresh_token(rt):
+    p = _state_path()
+    try:
+        data = {}
+        try:
+            with open(p) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            data = {}
+        data["refresh_token"] = rt
+        with open(p + ".tmp", "w") as fh:
+            json.dump(data, fh)
+        os.replace(p + ".tmp", p)
+    except OSError:
+        pass
+
+
+def start_prime(registry):
+    """One-shot Fleet-API cold-start prime in a background thread (blocking urllib)."""
+    cid = os.environ.get("FT_SHIM_CLIENT_ID", "")
+    rt = _load_refresh_token() or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
+    auth = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
+    fleet = os.environ.get("FT_SHIM_FLEET_HOST", "https://fleet-api.prd.na.vn.cloud.tesla.com")
+
+    def run():
+        prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
+                         fleet_host=fleet, on_token=_save_refresh_token)
+    threading.Thread(target=run, daemon=True).start()
+
+
 async def run(store, app, shim_port, ws_port):
     sink = stream.StreamSink(store)
     bus_task = asyncio.create_task(sink.run())
@@ -55,6 +99,7 @@ async def run(store, app, shim_port, ws_port):
 def main():
     store, registry, app = build()
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
+    start_prime(registry)
     asyncio.run(run(store, app,
                     int(os.environ.get("FT_SHIM_PORT", "8085")),
                     int(os.environ.get("FT_WS_PORT", "8081"))))
