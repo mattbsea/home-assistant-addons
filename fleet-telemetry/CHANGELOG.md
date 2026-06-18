@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.16
+
+### Fixed
+- **Door rows no longer pulse "closed" every tick.** The change-pulse animation keyed rows by
+  label text alone; after the Doors/Windows split both tiles have rows labelled "Front left" etc.,
+  so the keys collided and the door rows flashed on every refresh even with unchanged data. Rows
+  are now keyed by tile title + label.
+
+### Changed
+- **Map fills its tile.** The map card is now a flex column and the iframe grows to fill the
+  available height, so it matches the height of neighbouring tiles instead of leaving a gap below a
+  fixed-height map.
+
 ## 0.10.15
 
 ### Removed

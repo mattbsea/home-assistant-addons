@@ -1303,7 +1303,9 @@ h1{font-size:18px;margin:0;font-weight:650}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
 .pill{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--mut)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
-.mapcard{grid-column:span 2}@media(max-width:480px){.mapcard{grid-column:auto}}
+.mapcard{grid-column:span 2;display:flex;flex-direction:column}
+.mapframe{flex:1;height:auto;min-height:220px}
+@media(max-width:480px){.mapcard{grid-column:auto}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;min-height:120px}
 .card h3{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:600}
 .big{font-size:34px;font-weight:680;line-height:1}
@@ -1582,8 +1584,11 @@ async function tick(){
    {const pk=prevKV[v.vin]||{};const nk={};
     el.querySelectorAll('.gridslot .kv').forEach(div=>{
       const sp=div.children;if(sp.length<2)return;
-      const lbl=sp[0].textContent,val=sp[1].textContent;
-      nk[lbl]=val;if(pk[lbl]!=null&&pk[lbl]!==val)div.classList.add('kv-pulse');
+      // Key by tile title + label: the Doors and Windows tiles share positional labels
+      // ("Front left", …), so keying by label alone collides and pulses every tick.
+      const c=div.closest('.card'),h=c&&c.querySelector('h3');
+      const key=(h?h.textContent:'')+'|'+sp[0].textContent,val=sp[1].textContent;
+      nk[key]=val;if(pk[key]!=null&&pk[key]!==val)div.classList.add('kv-pulse');
     });prevKV[v.vin]=nk;}
    const mapcard=el.querySelector(".mapcard"),frame=el.querySelector(".mapframe");
    if(v.location&&v.location.lat!=null){
