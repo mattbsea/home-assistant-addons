@@ -11,6 +11,7 @@ main = importlib.import_module("app.main")
 def _client(tmp_path, store):
     return TestClient(wizard.build_wizard_app(
         config_path=str(tmp_path / "c.json"), wizard_state_path=str(tmp_path / "ws.json"),
+        shim_state_path=str(tmp_path / "shim.json"),
         private_key_path=str(tmp_path / "p.pem"), public_key_path=str(tmp_path / "pub.pem"),
         cert_file=str(tmp_path / "server.crt"), certs_dir=str(tmp_path),
         store=store, registry=None, version="1.0.0"))

@@ -12,6 +12,7 @@ tesla = importlib.import_module("app.control.tesla")
 def _client(tmp_path, store=None):
     return TestClient(wizard.build_wizard_app(
         config_path=str(tmp_path / "c.json"), wizard_state_path=str(tmp_path / "ws.json"),
+        shim_state_path=str(tmp_path / "shim.json"),
         private_key_path=str(tmp_path / "priv.pem"), public_key_path=str(tmp_path / "pub.pem"),
         cert_file=str(tmp_path / "server.crt"), certs_dir=str(tmp_path),
         store=store or state.Store(), registry=None, version="1.0.0"))
@@ -77,3 +78,20 @@ def test_check_records_and_unknown(tmp_path):
     c = _client(tmp_path)
     assert c.post("/api/wizard/check", json={"check": "records"}).json()["ok"] is False  # nothing yet
     assert c.post("/api/wizard/check", json={"check": "bogus"}).status_code == 400
+
+
+def test_send_config_rotation_goes_to_shim_state_not_config(tmp_path, monkeypatch):
+    """Regression: a rotated refresh token from send-config must NOT be written to wizard-config.json
+    (run.sh watches it -> would bounce the telemetry binary and drop the vehicle)."""
+    import importlib
+    import json
+    sendconfig = importlib.import_module("app.control.sendconfig")
+    tokens = importlib.import_module("app.control.tokens")
+    monkeypatch.setattr(sendconfig, "send",
+                        lambda **kw: {"ok": True, "vins": kw.get("vins"), "new_refresh_token": "NEWTOKEN"})
+    c = _client(tmp_path)
+    c.post("/api/wizard/config", json={"tesla": {"client_id": "c", "shim_refresh_token": "SEED",
+                                                  "telemetry_domain": "d.org"}})
+    assert c.post("/api/wizard/check", json={"check": "send_telemetry_config"}).json()["ok"]
+    assert tokens.load(str(tmp_path / "shim.json")) == "NEWTOKEN"          # rotation -> shim-state
+    assert json.load(open(tmp_path / "c.json"))["tesla"]["shim_refresh_token"] == "SEED"  # config untouched

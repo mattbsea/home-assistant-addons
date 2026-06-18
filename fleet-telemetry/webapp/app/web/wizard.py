@@ -9,7 +9,7 @@ from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.routing import Route
 
-from app.control import checks, config as cfgmod, hostports, keys, npm, sendconfig, tesla
+from app.control import checks, config as cfgmod, hostports, keys, npm, sendconfig, tesla, tokens
 from app.web import api
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -27,7 +27,7 @@ async def _json_body(req):
         return None
 
 
-def build_wizard_app(*, config_path, wizard_state_path, private_key_path, public_key_path,
+def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private_key_path, public_key_path,
                      cert_file, certs_dir, store, registry, version="", namespace="tesla_telemetry"):
     with open(os.path.join(_STATIC, "wizard.html")) as fh:
         wizard_page = fh.read()
@@ -168,11 +168,13 @@ def build_wizard_app(*, config_path, wizard_state_path, private_key_path, public
                 port = int(body.get("port") or c.get("telemetry_port") or 4443)
             except (TypeError, ValueError):
                 port = 4443
+            refresh_token = tokens.load(shim_state_path) or c.get("shim_refresh_token", "")
             r = sendconfig.send(vins=registry.vins() if registry else [], client_id=c.get("client_id", ""),
-                                refresh_token=c.get("shim_refresh_token", ""), domain=domain, region=region,
+                                refresh_token=refresh_token, domain=domain, region=region,
                                 port=port, cert_file=cert_file, private_key_file=private_key_path)
             if r.get("ok") and r.get("new_refresh_token"):
-                cfgmod.save(config_path, {"tesla": {"shim_refresh_token": r["new_refresh_token"]}})
+                # Rotated token -> shim-state (NOT the watched config; would bounce the binary).
+                tokens.save(shim_state_path, r["new_refresh_token"])
             return JSONResponse(r)
         return JSONResponse({"error": "unknown check type"}, status_code=400)
 

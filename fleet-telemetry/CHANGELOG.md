@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2
+
+### Fixed
+- **Telemetry no longer drops when the refresh token rotates.** Tesla rotates the refresh token on
+  every use (priming, send-config). The v1.0.0/1.0.1 send-config route persisted the rotated token
+  to `wizard-config.json` — the file `run.sh` watches as its restart signal — which bounced the
+  fleet-telemetry binary and dropped the vehicle's mTLS connection (telemetry gap until Tesla
+  reconnects). Operational token rotations now go to `shim-state.json` (unwatched), matching v0, so
+  the binary is never restarted by a token rotation. `wizard-config.json`'s `shim_refresh_token`
+  stays only the initial OAuth seed.
+
 ## 1.0.1
 
 ### Fixed

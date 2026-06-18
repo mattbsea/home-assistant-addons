@@ -127,6 +127,7 @@ def main():
     ingress_app = wizard.build_wizard_app(
         config_path=cfg_path,
         wizard_state_path=os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json"),
+        shim_state_path=os.environ.get("FT_SHIM_STATE", "/data/shim-state.json"),
         private_key_path=priv, public_key_path=pub,
         cert_file=cert_file, certs_dir=os.path.dirname(cert_file),
         store=store, registry=registry,
