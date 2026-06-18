@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.5
+
+### Changed
+- **Unified data model: the Store is now the single superset both sources refresh and both
+  consumers read.** Previously the dashboard read only live telemetry while the Fleet-API "prime"
+  snapshot lived in a separate table that only the TeslaMate shim merged (at request time). After a
+  restart — or any time a parked car streams almost nothing (telemetry is on-change) — the dashboard
+  was nearly empty even though a full Fleet-API snapshot was available.
+  - The Fleet-API prime now lives in the Store alongside live telemetry (one structure per VIN).
+  - `Store.merged_fields()` exposes the superset: prime as the base layer, overlaid by live telemetry
+    (which always wins). The dashboard renders this, so a freshly-restarted/parked car shows a full
+    picture immediately.
+  - Ephemeral drive fields (`Gear`/`VehicleSpeed`) are never sourced from the prime (v1.0.4
+    principle), so the dashboard never shows a stale gear/speed.
+  - The TeslaMate shim keeps its own ephemeral-safe `vehicle_data` projection (it needs prime-only
+    fields like vehicle config/media that don't map to telemetry names); it now reads the prime from
+    the Store. Each dashboard field also carries its `source` (`telemetry`/`prime`) and the payload a
+    `prime_epoch`, for future "live vs snapshot" indicators.
+
 ## 1.0.4
 
 ### Fixed

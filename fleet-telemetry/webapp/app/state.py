@@ -16,6 +16,10 @@ import fields
 
 HISTORY_MAX = 600  # samples kept per sparkline series
 
+# Ephemeral drive fields are LIVE-or-nothing: a prime snapshot can be up to a re-prime interval
+# (30 min) stale, so we never let it supply gear/speed — that once stranded TeslaMate "driving".
+PRIME_EPHEMERAL_FIELDS = ("Gear", "VehicleSpeed")
+
 
 class Store:
     def __init__(self):
@@ -49,7 +53,7 @@ class Store:
         v = self.vehicles.get(vin)
         if v is None:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
-                 "charge_baseline": None,
+                 "charge_baseline": None, "prime": None, "tesla_id": None, "prime_epoch": 0.0,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -106,12 +110,60 @@ class Store:
         else:
             v["charge_baseline"] = None
 
+    # --- Fleet-API prime (the *other* source feeding the same superset) ---------------
+    def set_prime(self, vin, prime, tesla_id=None, display_name=None):
+        """Fold a Fleet-API vehicle_data snapshot into the per-VIN record. Lives in the Store (not a
+        side table) so both the dashboard and the shim read one structure that both sources refresh."""
+        now = time.time()
+        with self._lock:
+            v = self._vehicle(vin)
+            v["prime"] = prime
+            v["prime_epoch"] = now
+            if tesla_id is not None:
+                v["tesla_id"] = tesla_id
+            if display_name:
+                v["display_name"] = display_name
+
+    def get_prime(self, vin):
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return v.get("prime") if v else None
+
+    def display_name(self, vin):
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return (v.get("display_name") if v else None) or vin
+
     # --- read helpers ------------------------------------------------------------------
     def snapshot(self, vin):
-        """A plain dict of {field: value} for the VIN (latest values only)."""
+        """A plain dict of {field: value} for the VIN from LIVE telemetry only (no prime). Used by
+        the shim/stream, which apply their own prime-merge with ephemeral-safe rules."""
         with self._lock:
             v = self.vehicles.get(vin)
             return {k: f["value"] for k, f in v["fields"].items()} if v else {}
+
+    def merged_fields(self, vin):
+        """The telemetry-named *superset* for a VIN: Fleet-API prime as the base layer, overlaid by
+        live telemetry (which always wins). Ephemeral gear/speed are never taken from the prime. This
+        is what the dashboard renders, so a freshly-restarted (or parked) car still shows a full
+        picture from the prime until the live stream fills it in."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v:
+                return {}
+            live = {k: dict(f) for k, f in v["fields"].items()}
+            prime = v.get("prime")
+            prime_epoch = v.get("prime_epoch", 0.0)
+        merged = {}
+        if prime:
+            for k, val in fields.prime_to_fields(prime).items():
+                if k in PRIME_EPHEMERAL_FIELDS:
+                    continue
+                merged[k] = {"value": val, "created_at": "", "received_at": prime_epoch, "source": "prime"}
+        for k, entry in live.items():
+            entry.setdefault("source", "telemetry")
+            merged[k] = entry
+        return merged
 
     def vins(self):
         with self._lock:

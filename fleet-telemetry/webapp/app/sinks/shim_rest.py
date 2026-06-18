@@ -26,29 +26,24 @@ def synth_id(vin, salt):
 class Registry:
     def __init__(self, store):
         self.store = store
-        self._meta = {}   # vin -> {prime, tesla_id, display_name, charge_baseline}
 
     def _m(self, vin):
-        return self._meta.setdefault(vin, {"prime": None, "tesla_id": None,
-                                           "display_name": None, "charge_baseline": None})
+        """Compatibility view over the Store, which now owns prime/tesla_id/display_name."""
+        v = self.store.vehicles.get(vin) or {}
+        return {"prime": v.get("prime"), "tesla_id": v.get("tesla_id"),
+                "display_name": v.get("display_name"), "charge_baseline": None}
 
     def set_prime(self, vin, prime, tesla_id=None, display_name=None):
-        m = self._m(vin)
-        m["prime"] = prime
-        if tesla_id is not None:
-            m["tesla_id"] = tesla_id
-        if display_name:
-            m["display_name"] = display_name
+        self.store.set_prime(vin, prime, tesla_id=tesla_id, display_name=display_name)
 
     def vins(self):
-        return sorted(set(self.store.vins()) | set(self._meta.keys()))
+        return sorted(self.store.vins())
 
     def display_name(self, vin):
-        v = self.store.vehicles.get(vin) or {}
-        return self._m(vin)["display_name"] or v.get("display_name") or vin
+        return self.store.display_name(vin)
 
     def ready(self, vin):
-        if self._m(vin)["prime"]:
+        if self.store.get_prime(vin):
             return True
         f = self.store.snapshot(vin)
         has_batt = fields.num(f.get("Soc")) is not None or fields.num(f.get("BatteryLevel")) is not None
@@ -71,14 +66,12 @@ class Registry:
         return None
 
     def vehicle_data(self, vin):
-        m = self._m(vin)
-        # Baseline is tracked live by the Store as records arrive (m["charge_baseline"] is legacy/prime-only).
-        baseline = self.store.charge_baseline(vin)
-        if baseline is None:
-            baseline = m["charge_baseline"]
+        # All state now lives in the Store: live telemetry snapshot, the Fleet-API prime, and the
+        # live charge baseline. The ephemeral-safe merge happens in shim_data.vehicle_data.
         return shim_data.vehicle_data(self.store.snapshot(vin), ts=int(time.time() * 1000),
-                                      identity=self.identity(vin), charge_baseline=baseline,
-                                      prime=m["prime"])
+                                      identity=self.identity(vin),
+                                      charge_baseline=self.store.charge_baseline(vin),
+                                      prime=self.store.get_prime(vin))
 
 
 def build_app(store, registry):
