@@ -106,9 +106,13 @@ def send(*, vins, client_id, refresh_token, domain, region, port=4443, cert_file
                 return {"ok": True, "vins": vins, "response": json.load(r), "new_refresh_token": new_rt}
         except urllib.error.HTTPError as e:
             body = e.read(2048).decode("utf-8", "replace")
-            return {"ok": False, "error": f"fleet_telemetry_config failed HTTP {e.code}: {body[:500]}"}
+            # new_rt surfaced even on failure: the token was already rotated by the refresh above, so
+            # the caller must persist it or the old token is left stale.
+            return {"ok": False, "error": f"fleet_telemetry_config failed HTTP {e.code}: {body[:500]}",
+                    "new_refresh_token": new_rt}
         except Exception as e:
-            return {"ok": False, "error": f"fleet_telemetry_config request failed: {e}"}
+            return {"ok": False, "error": f"fleet_telemetry_config request failed: {e}",
+                    "new_refresh_token": new_rt}
     finally:
         if proxy_proc:
             proxy_proc.terminate()

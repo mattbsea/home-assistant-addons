@@ -116,6 +116,7 @@ def prime_to_fields(p):
     won't) provide."""
     ds = p.get("drive_state") or {}; cs = p.get("charge_state") or {}
     cl = p.get("climate_state") or {}; vs = p.get("vehicle_state") or {}; vc = p.get("vehicle_config") or {}
+    gs = p.get("gui_settings") or {}
     out = {}
 
     def put(k, v):
@@ -201,6 +202,8 @@ def prime_to_fields(p):
     put("Trim", vc.get("trim_badging"))
     put("ExteriorColor", vc.get("exterior_color"))
     put("Wheels", vc.get("wheel_type"))
+    put("SettingTemperatureUnit", gs.get("gui_temperature_units"))
+    put("SettingDistanceUnit", gs.get("gui_distance_units"))
     return out
 
 
@@ -208,7 +211,7 @@ def prime_to_fields(p):
 # of the roster used to build the fleet_telemetry_config sent to the car.
 TELEMETRY_FIELDS = {
     "VehicleSpeed":              {"interval_seconds": 10},
-    "Location":                  {"interval_seconds": 30},
+    "Location":                  {"interval_seconds": 10},
     "GpsHeading":                {"interval_seconds": 10},
     "Soc":                       {"interval_seconds": 30},
     "BatteryLevel":              {"interval_seconds": 30},
@@ -218,6 +221,7 @@ TELEMETRY_FIELDS = {
     "RatedRange":                {"interval_seconds": 60},
     "EstBatteryRange":           {"interval_seconds": 60},
     "IdealBatteryRange":         {"interval_seconds": 60},
+    "EnergyRemaining":           {"interval_seconds": 30},
     "DetailedChargeState":       {"interval_seconds": 30},
     "ACChargingPower":           {"interval_seconds": 30},
     "DCChargingPower":           {"interval_seconds": 30},
@@ -252,6 +256,9 @@ TELEMETRY_FIELDS = {
     "RearDefrostEnabled":        {"interval_seconds": 30},
     "Odometer":                  {"interval_seconds": 60},
     "Version":                   {"interval_seconds": 3600},
+    "SoftwareUpdateVersion":                    {"interval_seconds": 300},
+    "SoftwareUpdateInstallationPercentComplete": {"interval_seconds": 60},
+    "SoftwareUpdateDownloadPercentComplete":    {"interval_seconds": 60},
     "VehicleName":               {"interval_seconds": 3600},
     "LocatedAtHome":             {"interval_seconds": 60},
     "LocatedAtWork":             {"interval_seconds": 60},
@@ -267,6 +274,8 @@ TELEMETRY_FIELDS = {
     "TpmsPressureFr":            {"interval_seconds": 300},
     "TpmsPressureRl":            {"interval_seconds": 300},
     "TpmsPressureRr":            {"interval_seconds": 300},
+    "TpmsHardWarnings":          {"interval_seconds": 300},
+    "TpmsSoftWarnings":          {"interval_seconds": 300},
     "DestinationName":                       {"interval_seconds": 30},
     "DestinationLocation":                   {"interval_seconds": 30},
     "MilesToArrival":                        {"interval_seconds": 30},
@@ -275,3 +284,11 @@ TELEMETRY_FIELDS = {
     "RouteTrafficMinutesDelay":              {"interval_seconds": 30},
     "ExpectedEnergyPercentAtTripArrival":    {"interval_seconds": 30},
 }
+
+
+def telemetry_fields_hash():
+    """Stable fingerprint of the requested-field roster. Used to auto-resend fleet_telemetry_config
+    when (and only when) the roster changes — e.g. across an add-on upgrade that adds fields."""
+    import hashlib
+    import json as _json
+    return hashlib.sha256(_json.dumps(TELEMETRY_FIELDS, sort_keys=True).encode()).hexdigest()

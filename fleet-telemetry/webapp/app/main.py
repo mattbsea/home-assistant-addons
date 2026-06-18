@@ -95,10 +95,18 @@ def _save_refresh_token(rt):
 
 def start_prime(registry, config_path, interval=1800):
     """Fleet-API cold-start prime, re-run periodically so creds set later (after OAuth) are picked
-    up without restarting the app. Reads creds live from config (decoupled from run.sh env)."""
+    up without restarting the app. Reads creds live from config (decoupled from run.sh env).
+
+    After each prime, auto-resend fleet_telemetry_config if the requested-field roster changed since
+    the last successful send (e.g. across an upgrade that added fields) — see app.control.autosend."""
+    from app.control import autosend
     from app.control import config as cfgmod
     from app.control import tesla
     auth = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
+    shim_state = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
+    wizard_state = os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json")
+    cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
+    priv = os.environ.get("FT_PRIVATE_KEY", "/data/keys/private-key.pem")
 
     def run():
         while True:
@@ -109,6 +117,10 @@ def start_prime(registry, config_path, interval=1800):
                 prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
                                  fleet_host=tesla.fleet_host(c.get("region", "na")),
                                  on_token=_save_refresh_token)
+                autosend.maybe_resend(vins=registry.vins(), config_path=config_path,
+                                      shim_state_path=shim_state, wizard_state_path=wizard_state,
+                                      cert_file=cert_file, private_key_path=priv, auth_host=auth,
+                                      log=lambda m: print(m, flush=True))
             time.sleep(interval)
     threading.Thread(target=run, daemon=True).start()
 

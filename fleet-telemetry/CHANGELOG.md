@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.7
+
+### Added
+- **Auto re-send of `fleet_telemetry_config` when the requested-field roster changes.** The add-on
+  now fingerprints `TELEMETRY_FIELDS` and stores the last successfully-sent hash in `shim-state.json`
+  (the unwatched file). After each prime, if the roster differs (e.g. after an upgrade that adds
+  fields), it re-sends the config to the car automatically — no manual "Send to Vehicle" needed. A
+  rejected send is **inert** (verified: Tesla validates the config atomically and the car keeps its
+  existing config), so a bad roster field can't drop telemetry; the failed send is logged and retried.
+- **More telemetry fields requested** (from a completeness review): `EnergyRemaining` (battery energy
+  in kWh), `SoftwareUpdateVersion` + install/download percent (OTA status), and `TpmsHardWarnings` /
+  `TpmsSoftWarnings` (the car's own tire alerts). `Location` interval tightened 30s → 10s for usable
+  drive traces. (These reach the car via the auto-resend above.)
+- **`gui_settings` retained and mapped.** It was fetched from the Fleet API then discarded; it's now
+  kept and `SettingTemperatureUnit` / `SettingDistanceUnit` are surfaced in the superset.
+
+### Fixed
+- `sendconfig.send` now returns the rotated refresh token on failure too (it rotates during the token
+  refresh regardless of whether the POST succeeds), so a failed send can't strand a stale token. The
+  wizard's manual send persists it on both paths and records the roster hash on success.
+
 ## 1.0.6
 
 ### Fixed

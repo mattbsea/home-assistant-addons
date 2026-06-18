@@ -10,25 +10,30 @@ import json
 import os
 
 
-def load(state_path):
+def read_state(state_path):
+    """The whole shim-state dict (refresh_token + any operational keys like the roster hash)."""
     try:
         with open(state_path) as fh:
-            return json.load(fh).get("refresh_token", "")
+            return json.load(fh)
     except (OSError, ValueError):
-        return ""
+        return {}
 
 
-def save(state_path, rt):
+def write_state(state_path, **updates):
+    """Merge keys into shim-state atomically. Never write to the watched wizard-config.json."""
+    data = read_state(state_path)
+    data.update(updates)
     try:
-        data = {}
-        try:
-            with open(state_path) as fh:
-                data = json.load(fh)
-        except (OSError, ValueError):
-            data = {}
-        data["refresh_token"] = rt
         with open(state_path + ".tmp", "w") as fh:
             json.dump(data, fh)
         os.replace(state_path + ".tmp", state_path)
     except OSError:
         pass
+
+
+def load(state_path):
+    return read_state(state_path).get("refresh_token", "")
+
+
+def save(state_path, rt):
+    write_state(state_path, refresh_token=rt)

@@ -10,7 +10,8 @@ import urllib.parse
 import urllib.request
 
 _VEHICLE_DATA_ENDPOINTS = "charge_state;climate_state;drive_state;location_data;vehicle_config;vehicle_state;gui_settings"
-_PRIME_SECTIONS = ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config")
+_PRIME_SECTIONS = ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config",
+                   "gui_settings")
 
 
 def _post_form(url, data):

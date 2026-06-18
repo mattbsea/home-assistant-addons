@@ -172,9 +172,14 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
             r = sendconfig.send(vins=registry.vins() if registry else [], client_id=c.get("client_id", ""),
                                 refresh_token=refresh_token, domain=domain, region=region,
                                 port=port, cert_file=cert_file, private_key_file=private_key_path)
-            if r.get("ok") and r.get("new_refresh_token"):
-                # Rotated token -> shim-state (NOT the watched config; would bounce the binary).
+            if r.get("new_refresh_token"):
+                # Rotated token -> shim-state (NOT the watched config; would bounce the binary). Persist
+                # on success OR failure: the token rotates during the refresh regardless of the POST.
                 tokens.save(shim_state_path, r["new_refresh_token"])
+            if r.get("ok"):
+                # Record the roster fingerprint so the post-prime auto-resend doesn't re-fire needlessly.
+                import fields
+                tokens.write_state(shim_state_path, telemetry_fields_hash=fields.telemetry_fields_hash())
             return JSONResponse(r)
         return JSONResponse({"error": "unknown check type"}, status_code=400)
 

@@ -56,6 +56,32 @@ def test_prime_to_fields_mapping():
     assert out["ExpectedEnergyPercentAtTripArrival"] == 49
 
 
+def test_gui_settings_reverse_mapped():
+    out = fields.prime_to_fields({"gui_settings": {"gui_temperature_units": "F", "gui_distance_units": "mi/hr"}})
+    assert out["SettingTemperatureUnit"] == "F"
+    assert out["SettingDistanceUnit"] == "mi/hr"
+
+
+def test_roster_additions_and_intervals():
+    r = fields.TELEMETRY_FIELDS
+    for name in ("EnergyRemaining", "SoftwareUpdateVersion", "SoftwareUpdateInstallationPercentComplete",
+                 "SoftwareUpdateDownloadPercentComplete", "TpmsHardWarnings", "TpmsSoftWarnings"):
+        assert name in r, name
+    assert r["Location"]["interval_seconds"] == 10          # tightened for usable drive traces
+
+
+def test_telemetry_fields_hash_stable_and_sensitive():
+    h = fields.telemetry_fields_hash()
+    assert isinstance(h, str) and len(h) == 64
+    assert fields.telemetry_fields_hash() == h              # stable across calls
+    saved = dict(fields.TELEMETRY_FIELDS)
+    try:
+        fields.TELEMETRY_FIELDS = dict(saved, ZzzNewField={"interval_seconds": 99})
+        assert fields.telemetry_fields_hash() != h          # changes when roster changes
+    finally:
+        fields.TELEMETRY_FIELDS = saved
+
+
 def test_meta_sets():
     # base set (dashboard/shim ingest keep connectivity keys via base); shim drops the extra three.
     assert fields.META_BASE == {"CreatedAt", "IsResend", "Vin"}
