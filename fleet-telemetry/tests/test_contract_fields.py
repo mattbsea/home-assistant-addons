@@ -62,6 +62,16 @@ def test_gui_settings_reverse_mapped():
     assert out["SettingDistanceUnit"] == "mi/hr"
 
 
+def test_software_update_reverse_mapped_from_prime():
+    """vehicle_state.software_update is in the Fleet-API prime, so the software fields populate on
+    start (not only from the live stream)."""
+    out = fields.prime_to_fields({"vehicle_state": {"software_update":
+                                  {"version": "2026.20.1", "install_perc": 30, "download_perc": 100}}})
+    assert out["SoftwareUpdateVersion"] == "2026.20.1"
+    assert out["SoftwareUpdateInstallationPercentComplete"] == 30
+    assert out["SoftwareUpdateDownloadPercentComplete"] == 100
+
+
 def test_roster_additions_and_intervals():
     r = fields.TELEMETRY_FIELDS
     for name in ("EnergyRemaining", "SoftwareUpdateVersion", "SoftwareUpdateInstallationPercentComplete",

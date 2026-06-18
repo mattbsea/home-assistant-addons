@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.9
+
+### Fixed
+- **Software-update status now populates from the Fleet-API prime on start** (not only from the live
+  stream). `vehicle_state.software_update` is already fetched by the prime; `prime_to_fields` now
+  reverse-maps it to `SoftwareUpdateVersion` / `SoftwareUpdateInstallationPercentComplete` /
+  `SoftwareUpdateDownloadPercentComplete`, so the Vehicle tile's Update row is correct immediately
+  after a restart. (`EnergyRemaining` stays telemetry-only — the Fleet API exposes no energy-in-kWh
+  field, only %/range — so it fills within ~30s of streaming.)
+
 ## 1.0.8
 
 ### Added / Fixed (dashboard)

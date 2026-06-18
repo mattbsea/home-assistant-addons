@@ -183,6 +183,10 @@ def prime_to_fields(p):
     put("Odometer", vs.get("odometer"))
     put("Version", vs.get("car_version"))
     put("VehicleName", vs.get("vehicle_name"))
+    sw = vs.get("software_update") or {}        # Fleet API exposes pending-update status here
+    put("SoftwareUpdateVersion", sw.get("version"))
+    put("SoftwareUpdateInstallationPercentComplete", sw.get("install_perc"))
+    put("SoftwareUpdateDownloadPercentComplete", sw.get("download_perc"))
     if isinstance(vs.get("locked"), bool):
         put("Locked", vs["locked"])
     if isinstance(vs.get("sentry_mode"), bool):
