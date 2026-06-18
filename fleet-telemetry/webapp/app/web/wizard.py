@@ -11,8 +11,14 @@ from starlette.routing import Route
 
 from app.control import config as cfgmod
 from app.control import keys, npm, sendconfig, tesla
+from app.web import api
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
+
+
+def _configured(c):
+    """The setup is complete enough to show the dashboard instead of the wizard."""
+    return bool(c["npm"].get("url") and c["npm"].get("cert_domain") and c["tesla"].get("client_id"))
 
 
 async def _json_body(req):
@@ -26,15 +32,27 @@ async def _json_body(req):
 
 
 def build_wizard_app(*, config_path, private_key_path, public_key_path,
-                     cert_file=None, certs_dir=None, registry=None):
+                     cert_file=None, certs_dir=None, registry=None,
+                     store=None, version="", namespace="", cert_getter=None):
     with open(os.path.join(_STATIC, "wizard.html")) as fh:
-        page = fh.read()
+        wizard_page = fh.read()
+    dash_page = None
+    if store is not None:
+        with open(os.path.join(_STATIC, "dashboard.html")) as fh:
+            dash_page = fh.read()
 
     def cfg():
         return cfgmod.load(config_path)
 
     async def index(_req):
-        return HTMLResponse(page)
+        # Show the dashboard once configured; otherwise the setup wizard.
+        if store is not None and _configured(cfg()):
+            return HTMLResponse(dash_page)
+        return HTMLResponse(wizard_page)
+
+    async def state(_req):
+        cert = cert_getter() if cert_getter else {}
+        return JSONResponse(api.state_payload(store, version=version, cert=cert, namespace=namespace))
 
     async def get_config(_req):
         return JSONResponse(cfgmod.redacted(config_path))
@@ -122,7 +140,7 @@ def build_wizard_app(*, config_path, private_key_path, public_key_path,
             cfgmod.save(config_path, {"tesla": {"shim_refresh_token": r["new_refresh_token"]}})
         return JSONResponse(r)
 
-    return Starlette(routes=[
+    routes = [
         Route("/", index),
         Route("/api/config", get_config, methods=["GET"]),
         Route("/api/config", post_config, methods=["POST"]),
@@ -134,4 +152,7 @@ def build_wizard_app(*, config_path, private_key_path, public_key_path,
         Route("/api/npm/pubkey-host", npm_pubkey_host, methods=["POST"]),
         Route("/api/npm/stream", npm_stream, methods=["POST"]),
         Route("/api/send-config", send_config, methods=["POST"]),
-    ])
+    ]
+    if store is not None:
+        routes.append(Route("/api/state", state, methods=["GET"]))
+    return Starlette(routes=routes)

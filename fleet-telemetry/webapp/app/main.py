@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Unified Fleet Telemetry app process: one records tail feeds one Store; the Fleet-API shim (HTTP)
-and the TeslaMate streaming ws are served from it — replacing the separate shim.py + ws_stream.py
-processes (and their two independent tails) with one.
-
-Ports/paths come from the environment (set by run.sh):
-  FT_RECORDS_FILE  records file to tail
-  FT_SHIM_PORT     Fleet-API shim HTTP port (default 8085)
-  FT_WS_PORT       TeslaMate streaming ws port (default 8081)
+"""Unified Fleet Telemetry app: one process, one records tail feeding one Store, serving every
+surface — the ingress dashboard+wizard (:web), the Fleet-API shim (:shim), the TeslaMate streaming
+ws (:ws), and the public-key .well-known listener (:pubkey). Replaces the v0 server.py + shim.py +
+ws_stream.py + bridge.py processes.
 """
 import asyncio
 import json
@@ -15,18 +11,34 @@ import threading
 
 import uvicorn
 import websockets
+from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse, Response
+from starlette.routing import Route
 
 import records
 from app import state
 from app.control import prime
 from app.sinks import shim_rest, stream
+from app.web import wizard
+
+PUBKEY_WELL_KNOWN = "/.well-known/appspecific/com.tesla.3p.public-key.pem"
+
+
+def build_pubkey_app(public_key_path):
+    async def pubkey(_req):
+        try:
+            with open(public_key_path, "rb") as fh:
+                return Response(fh.read(), media_type="application/x-pem-file")
+        except OSError:
+            return PlainTextResponse("public key not generated yet", status_code=404)
+    return Starlette(routes=[Route(PUBKEY_WELL_KNOWN, pubkey)])
 
 
 def build():
     store = state.Store()
     registry = shim_rest.Registry(store)
-    app = shim_rest.build_app(store, registry)
-    return store, registry, app
+    shim_app = shim_rest.build_app(store, registry)
+    return store, registry, shim_app
 
 
 def start_ingest(store, records_file):
@@ -69,7 +81,6 @@ def _save_refresh_token(rt):
 
 
 def start_prime(registry):
-    """One-shot Fleet-API cold-start prime in a background thread (blocking urllib)."""
     cid = os.environ.get("FT_SHIM_CLIENT_ID", "")
     rt = _load_refresh_token() or os.environ.get("FT_SHIM_REFRESH_TOKEN", "")
     auth = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
@@ -81,28 +92,41 @@ def start_prime(registry):
     threading.Thread(target=run, daemon=True).start()
 
 
-async def run(store, app, shim_port, ws_port):
+async def _serve(app, port):
+    await uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")).serve()
+
+
+async def run(store, *, shim_app, ingress_app, pubkey_app, shim_port, ws_port, web_port, pubkey_port):
     sink = stream.StreamSink(store)
-    bus_task = asyncio.create_task(sink.run())
-    ws_server = await websockets.serve(sink.handler, "0.0.0.0", ws_port)
-    print(f"[app] TeslaMate streaming ws on :{ws_port}/streaming/", flush=True)
-    config = uvicorn.Config(app, host="0.0.0.0", port=shim_port, log_level="warning")
-    server = uvicorn.Server(config)
-    print(f"[app] Fleet-API shim on :{shim_port}", flush=True)
-    try:
-        await server.serve()
-    finally:
-        bus_task.cancel()
-        ws_server.close()
+    asyncio.create_task(sink.run())
+    await websockets.serve(sink.handler, "0.0.0.0", ws_port)
+    print(f"[app] dashboard+wizard :{web_port} · shim :{shim_port} · stream ws :{ws_port} · pubkey :{pubkey_port}",
+          flush=True)
+    await asyncio.gather(
+        _serve(ingress_app, web_port),
+        _serve(shim_app, shim_port),
+        _serve(pubkey_app, pubkey_port),
+    )
 
 
 def main():
-    store, registry, app = build()
+    cfg_path = os.environ.get("FT_WIZARD_CONFIG", "/data/wizard-config.json")
+    priv = os.environ.get("FT_PRIVATE_KEY", "/data/keys/private-key.pem")
+    pub = os.environ.get("FT_PUBLIC_KEY", "/data/keys/public-key.pem")
+    cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
+    store, registry, shim_app = build()
+    ingress_app = wizard.build_wizard_app(
+        config_path=cfg_path, private_key_path=priv, public_key_path=pub,
+        cert_file=cert_file, certs_dir=os.path.dirname(cert_file), registry=registry,
+        store=store, version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry")
+    pubkey_app = build_pubkey_app(pub)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
     start_prime(registry)
-    asyncio.run(run(store, app,
-                    int(os.environ.get("FT_SHIM_PORT", "8085")),
-                    int(os.environ.get("FT_WS_PORT", "8081"))))
+    asyncio.run(run(store, shim_app=shim_app, ingress_app=ingress_app, pubkey_app=pubkey_app,
+                    shim_port=int(os.environ.get("FT_SHIM_PORT", "8085")),
+                    ws_port=int(os.environ.get("FT_WS_PORT", "8081")),
+                    web_port=int(os.environ.get("FT_WEB_PORT", "8099")),
+                    pubkey_port=int(os.environ.get("FT_PUBKEY_PORT", "8100"))))
 
 
 if __name__ == "__main__":
