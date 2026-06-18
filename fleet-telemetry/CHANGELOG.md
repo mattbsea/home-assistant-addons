@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.12
+
+### Fixed (dashboard)
+- **Uptime always showed `0m`.** `state_payload` derives uptime from a `start_time`, but the dashboard
+  route never passed one, so it defaulted to 0. The ingress app now records its start time and feeds
+  it through, so uptime is real.
+- **Header counters now tick every second.** The "last record … ago" pill (and uptime) were repainted
+  only on each 5 s poll, so the "seconds since last message" appeared frozen. A 1 s client-side timer
+  now extrapolates both from the last snapshot using the local clock (skew-immune: only locally
+  elapsed time is added to server-accurate values), so they count up smoothly between polls.
+  - Note: the dashboard data feed is a 5 s poll of `/api/state` (the websocket on :8081 is the
+    separate TeslaMate streaming feed, not the dashboard). A per-second counter is intentionally
+    client-side — no point round-tripping the network once a second just to advance a clock.
+
 ## 1.0.11
 
 ### Added

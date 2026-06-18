@@ -1,5 +1,6 @@
 """Phase 3 — dashboard data API (/api/state) built from the Store."""
 import importlib
+import time
 
 import conftest
 
@@ -43,6 +44,13 @@ def test_state_payload_injects_elevation_from_resolver():
     f = api.state_payload(store, elevation_resolver=res)["vehicles"][0]["fields"]
     assert f["Elevation"]["value"] == 55 and f["Elevation"]["source"] == "derived"
     assert res.calls == [(47.768839, -122.155053)]   # resolved at the vehicle's location
+
+def test_state_payload_uptime_from_start_time():
+    store = state.Store()
+    p = api.state_payload(store, start_time=time.time() - 125)
+    assert 120 <= p["uptime_seconds"] <= 135          # real uptime, not the always-0 default
+    assert api.state_payload(store)["uptime_seconds"] == 0   # no start_time -> 0 (unchanged default)
+
 
 def test_state_payload_no_elevation_without_resolver():
     store = state.Store()

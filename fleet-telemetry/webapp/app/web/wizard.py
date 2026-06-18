@@ -4,6 +4,7 @@ v0) dashboard/wizard pages call — /setup, /api/state, and /api/wizard/*.
 import json
 import os
 import re
+import time
 
 from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -34,6 +35,7 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         wizard_page = fh.read()
     with open(os.path.join(_STATIC, "dashboard.html")) as fh:
         dash_page = fh.read()
+    start_time = time.time()   # app start, for the dashboard uptime readout
 
     def cfg():
         return cfgmod.load(config_path)
@@ -51,7 +53,8 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
     # --- dashboard data ----------------------------------------------------------------
     async def state(_req):
         return JSONResponse(api.state_payload(store, version=version, cert=checks.cert_detail(cert_file),
-                                              namespace=namespace, elevation_resolver=elevation))
+                                              namespace=namespace, elevation_resolver=elevation,
+                                              start_time=start_time))
 
     # --- wizard reads ------------------------------------------------------------------
     async def wiz_state(_req):

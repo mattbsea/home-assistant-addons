@@ -57,7 +57,8 @@ iframe{width:100%;height:200px;border:0;border-radius:10px;margin-top:6px;backgr
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function ago(epoch){if(!epoch)return"never";const s=Math.max(0,Date.now()/1000-epoch);
+function ago(epoch){if(!epoch)return"never";return fmtAgo(Date.now()/1000-epoch);}
+function fmtAgo(s){if(s==null)return"never";s=Math.max(0,s);
  if(s<60)return Math.round(s)+"s ago";if(s<3600)return Math.round(s/60)+"m ago";
  if(s<86400)return Math.round(s/3600)+"h ago";return Math.round(s/86400)+"d ago";}
 function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
@@ -79,6 +80,17 @@ function card(t,inner){return `<div class="card"><h3>${t}</h3>${inner}</div>`;}
 // reload the OpenStreetMap embed when the vehicle actually moves (not every refresh).
 const mapKeys={};
 const prevKV={}; // vin -> {label -> valueText}, used to detect changed fields for pulse animation
+// Last /api/state snapshot + the local clock at fetch, so the header counters (uptime, seconds since
+// last record) tick every second between the 5s polls — extrapolated from the client clock, which is
+// immune to any client/server clock skew (we only add locally-elapsed time to server-accurate values).
+let view=null;
+function paintHeader(){
+ if(!view)return;
+ const el=Date.now()/1000-view.clientT, st=view.st, c=st.cert||{};
+ $("#updatedPill").textContent="last record "+(st.last_record_epoch?fmtAgo((st.now-st.last_record_epoch)+el):"never");
+ $("#foot").innerHTML=`add-on v${esc(st.version||"—")} · uptime ${dur((st.uptime_seconds||0)+el)} · namespace <b>${esc(st.namespace)}</b>`
+   +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${esc(c.not_after)})`:"");
+}
 let useImperial=localStorage.getItem('ft_units')!=='metric';
 document.getElementById('unitBtn').textContent=useImperial?'°F · mi · psi':'°C · km · bar';
 function toggleUnits(){
@@ -278,11 +290,9 @@ async function tick(){
  $("#statusTxt").textContent=fresh?"streaming":"no recent data";
  $("#ratePill").textContent=fmt(st.records_per_min,1)+" rec/min";
  $("#totalPill").textContent=fmt(st.total_records)+" records";
- $("#updatedPill").textContent="last record "+ago(st.last_record_epoch);
  $("#verPill").textContent="v"+(st.version||"—");
- const c=st.cert||{};
- $("#foot").innerHTML=`add-on v${esc(st.version||"—")} · uptime ${dur(st.uptime_seconds)} · namespace <b>${esc(st.namespace)}</b>`
-   +(c.days_left!=null?` · TLS cert ${c.days_left>0?"valid "+fmt(c.days_left)+"d":"EXPIRED"} (${esc(c.not_after)})`:"");
+ view={st,clientT:Date.now()/1000};   // anchor for the per-second header counters
+ paintHeader();
  const vehiclesEl=$("#vehicles");
  $("#empty").style.display=st.vehicles.length?"none":"";
  const seen=new Set();
@@ -335,6 +345,6 @@ async function tick(){
  // Drop any vehicle shells that are no longer present.
  Array.from(vehiclesEl.children).forEach(ch=>{if(ch.id&&!seen.has(ch.id))ch.remove();});
 }
-tick();setInterval(tick,5000);
+tick();setInterval(tick,5000);setInterval(paintHeader,1000);
 </script>
 </body></html>
