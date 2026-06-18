@@ -7,7 +7,7 @@ import re
 import time
 
 from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.routing import Route
 
 from app.control import checks, config as cfgmod, hostports, keys, npm, sendconfig, tesla, tokens
@@ -51,10 +51,19 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         return HTMLResponse(wizard_page)
 
     # --- dashboard data ----------------------------------------------------------------
+    def _payload():
+        return api.state_payload(store, version=version, cert=checks.cert_detail(cert_file),
+                                 namespace=namespace, elevation_resolver=elevation, start_time=start_time)
+
     async def state(_req):
-        return JSONResponse(api.state_payload(store, version=version, cert=checks.cert_detail(cert_file),
-                                              namespace=namespace, elevation_resolver=elevation,
-                                              start_time=start_time))
+        return JSONResponse(_payload())
+
+    async def state_stream(_req):
+        """Server-Sent Events: push the full superset payload the instant a record lands in the Store,
+        replacing the dashboard's 5s poll (the dashboard falls back to polling if this isn't available).
+        Same Store event bus the TeslaMate stream sink uses; see api.sse_stream."""
+        return StreamingResponse(api.sse_stream(store, _payload), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # --- wizard reads ------------------------------------------------------------------
     async def wiz_state(_req):
@@ -191,6 +200,7 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         Route("/", index),
         Route("/setup", setup),
         Route("/api/state", state),
+        Route("/api/stream", state_stream),
         Route("/api/wizard/state", wiz_state),
         Route("/api/wizard/config", get_config, methods=["GET"]),
         Route("/api/wizard/hostports", host_ports),

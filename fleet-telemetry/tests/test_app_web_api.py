@@ -1,4 +1,5 @@
 """Phase 3 — dashboard data API (/api/state) built from the Store."""
+import asyncio
 import importlib
 import time
 
@@ -44,6 +45,28 @@ def test_state_payload_injects_elevation_from_resolver():
     f = api.state_payload(store, elevation_resolver=res)["vehicles"][0]["fields"]
     assert f["Elevation"]["value"] == 55 and f["Elevation"]["source"] == "derived"
     assert res.calls == [(47.768839, -122.155053)]   # resolved at the vehicle's location
+
+async def test_sse_stream_initial_snapshot_then_event():
+    """sse_stream emits an immediate snapshot on connect, then a fresh payload on each Store change,
+    and unsubscribes on close (no leaked bus subscribers)."""
+    store = state.Store()
+    store.ingest({"msg": "record_payload", "vin": "V", "data": {"Soc": 50.0}})
+    calls = {"n": 0}
+
+    def payload():
+        calls["n"] += 1
+        return {"vins": store.vins(), "seq": calls["n"]}
+
+    gen = api.sse_stream(store, payload, idle_timeout=5, coalesce=0)
+    first = await gen.__anext__()                       # initial snapshot, no wait
+    assert first.startswith("data: ") and '"vins": ["V"]' in first
+    assert len(store._subscribers) == 1                 # subscribed
+    store.ingest({"msg": "record_payload", "vin": "V2", "data": {"Soc": 1.0}})  # publishes a change
+    nxt = await asyncio.wait_for(gen.__anext__(), 2)
+    assert nxt.startswith("data: ") and '"V2"' in nxt   # pushed a fresh payload on the event
+    await gen.aclose()
+    assert store._subscribers == []                     # cleaned up on close
+
 
 def test_state_payload_uptime_from_start_time():
     store = state.Store()

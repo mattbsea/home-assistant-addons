@@ -3,6 +3,8 @@
 Shape matches the v0 dashboard so the existing dashboard JS consumes it unchanged once served from
 the app.
 """
+import asyncio
+import json
 import time
 
 import fields
@@ -47,3 +49,27 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
             "total_records": total, "records_per_min": store.rate_per_min(),
             "last_record_epoch": last, "namespace": namespace,
             "version": version, "cert": cert or {}, "vehicles": vehicles}
+
+
+async def sse_stream(store, payload_fn, *, idle_timeout=20.0, coalesce=0.2):
+    """SSE generator for the dashboard push feed: emit an initial snapshot, then one event per Store
+    change (bursts coalesced into a single payload), with a heartbeat comment when idle so the ingress
+    proxy keeps the connection open. ``payload_fn`` builds the JSON payload (state_payload). Subscribes
+    to the Store's event bus and always unsubscribes on close."""
+    loop = asyncio.get_running_loop()
+    q = store.subscribe(loop)
+    try:
+        yield "data: " + json.dumps(payload_fn()) + "\n\n"      # initial snapshot, no wait
+        while True:
+            try:
+                await asyncio.wait_for(q.get(), timeout=idle_timeout)
+            except asyncio.TimeoutError:
+                yield "event: hb\ndata: 1\n\n"                  # heartbeat: keeps ingress open AND
+                continue                                       # lets the client detect a silent stall
+            if coalesce:
+                await asyncio.sleep(coalesce)                   # let a burst of field updates pile up
+            while not q.empty():
+                q.get_nowait()
+            yield "data: " + json.dumps(payload_fn()) + "\n\n"
+    finally:
+        store.unsubscribe(q)

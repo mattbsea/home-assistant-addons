@@ -285,6 +285,9 @@ function buildCards(v){
 async function tick(){
  let st;try{st=await (await fetch(new URL('api/state',location.href),{cache:'no-store'})).json();}
  catch(e){$("#statusTxt").textContent="dashboard offline";return;}
+ render(st);
+}
+function render(st){
  const fresh=st.last_record_epoch&&(st.now-st.last_record_epoch<600);
  $("#statusDot").style.background=fresh?"var(--good)":"var(--bad)";
  $("#statusTxt").textContent=fresh?"streaming":"no recent data";
@@ -345,6 +348,23 @@ async function tick(){
  // Drop any vehicle shells that are no longer present.
  Array.from(vehiclesEl.children).forEach(ch=>{if(ch.id&&!seen.has(ch.id))ch.remove();});
 }
-tick();setInterval(tick,5000);setInterval(paintHeader,1000);
+// Live data via SSE push (server emits the full superset the instant a record lands). Fall back to
+// 5s polling if EventSource is unavailable or the stream drops (EventSource auto-reconnects; the poll
+// just covers the gap). The per-second header counters run client-side regardless.
+let pollTimer=null,lastLive=0;
+function startPoll(){if(!pollTimer)pollTimer=setInterval(tick,5000);}
+function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+tick();   // immediate first paint
+if(window.EventSource){
+ const es=new EventSource(new URL('api/stream',location.href)),live=()=>lastLive=Date.now();
+ live();
+ es.onmessage=e=>{live();stopPoll();try{render(JSON.parse(e.data));}catch(_){}};   // data event -> proven live
+ es.addEventListener('hb',live);                                                    // heartbeat -> still live
+ es.onerror=()=>startPoll();             // TCP drop -> poll while the browser auto-reconnects SSE
+ // Silent-stall failover: if the proxy holds the connection open but delivers nothing (no data and no
+ // heartbeat) for 45s, fall back to polling. A healthy SSE (data or 20s heartbeats) keeps poll off.
+ setInterval(()=>{if(Date.now()-lastLive>45000)startPoll();},5000);
+}else{startPoll();}
+setInterval(paintHeader,1000);
 </script>
 </body></html>

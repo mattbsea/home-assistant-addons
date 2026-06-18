@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.13
+
+### Added (dashboard)
+- **Live push feed (SSE) — the dashboard no longer polls on a fixed 5 s loop.** A new `/api/stream`
+  Server-Sent Events endpoint pushes the full superset payload the instant a record lands in the
+  Store (reusing the same event bus the TeslaMate stream sink subscribes to). Bursts of field updates
+  are coalesced into one payload; a 20 s heartbeat keeps the HA ingress connection open.
+- **Robust fallback.** The dashboard subscribes via `EventSource` and renders the instant data
+  arrives. If SSE is unavailable, drops (TCP error), or silently stalls behind a proxy (no data and
+  no heartbeat for 45 s), it automatically falls back to the 5 s poll; when SSE recovers it stops
+  polling again. Browsers without `EventSource` just poll.
+- Net effect: updates are now effectively instant instead of up to 5 s stale, with no steady-state
+  polling when the stream is healthy. (The per-second header counters remain client-side.)
+
 ## 1.0.12
 
 ### Fixed (dashboard)
