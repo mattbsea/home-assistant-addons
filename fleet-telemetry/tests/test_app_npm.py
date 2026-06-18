@@ -55,6 +55,51 @@ def test_fetch_cert_writes_files(tmp_path):
     assert oct((tmp_path / "server.key").stat().st_mode)[-3:] == "600"
 
 
+def test_create_pubkey_host_reuse_and_create():
+    def hj_reuse(method, url, headers=None, data=None, timeout=30):
+        if url.endswith("/api/tokens"):
+            return 200, {"token": "T"}
+        if url.endswith("/api/nginx/proxy-hosts") and method == "GET":
+            return 200, [{"id": 5, "domain_names": ["doodle.mbarclay.org"]}]
+        raise AssertionError(url)
+    r = npm.create_pubkey_host(base="https://npm", email="e", password="p", domain="Doodle.MBarclay.org",
+                               forward_host="192.168.161.3", forward_port=8100, http_json=hj_reuse)
+    assert r["ok"] and r.get("reused") and r["id"] == 5
+
+    seq = []
+
+    def hj_create(method, url, headers=None, data=None, timeout=30):
+        if url.endswith("/api/tokens"):
+            return 200, {"token": "T"}
+        if url.endswith("/api/nginx/proxy-hosts") and method == "GET":
+            return 200, []
+        if url.endswith("/api/nginx/certificates") and method == "POST":
+            return 201, {"id": 9}
+        if url.endswith("/api/nginx/proxy-hosts") and method == "POST":
+            seq.append(data)
+            return 201, {"id": 12}
+        raise AssertionError(url)
+    r = npm.create_pubkey_host(base="https://npm", email="e", password="p", domain="d.org",
+                               forward_host="h", forward_port=8100, http_json=hj_create)
+    assert r["ok"] and r["id"] == 12 and r["certificate_id"] == 9
+    assert seq[0]["forward_port"] == 8100 and seq[0]["certificate_id"] == 9 and seq[0]["ssl_forced"] is True
+
+
+def test_create_stream_passthrough():
+    def hj(method, url, headers=None, data=None, timeout=30):
+        if url.endswith("/api/tokens"):
+            return 200, {"token": "T"}
+        if url.endswith("/api/nginx/streams") and method == "GET":
+            return 200, []
+        if url.endswith("/api/nginx/streams") and method == "POST":
+            assert data["certificate_id"] == 0 and data["tcp_forwarding"] is True
+            return 201, {"id": 3}
+        raise AssertionError(url)
+    r = npm.create_stream(base="https://npm", email="e", password="p", incoming_port=4443,
+                          forward_host="h", forward_port=4543, http_json=hj)
+    assert r["ok"] and r["id"] == 3 and r["incoming_port"] == 4443
+
+
 def test_fetch_cert_no_match():
     def http_json(method, url, headers=None, data=None, timeout=30):
         if url.endswith("/api/tokens"):

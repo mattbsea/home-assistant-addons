@@ -55,6 +55,89 @@ def find_cert_id(base, tok, domain, http_json=_http_json):
     return None
 
 
+def find_proxy_host(base, tok, domain, http_json=_http_json):
+    status, body = http_json("GET", base.rstrip("/") + "/api/nginx/proxy-hosts",
+                             headers={"Authorization": "Bearer " + tok})
+    if isinstance(body, list):
+        d = domain.lower()
+        for h in body:
+            if d in [n.lower() for n in (h.get("domain_names") or [])]:
+                return h.get("id")
+    return None
+
+
+def find_stream(base, tok, incoming_port, http_json=_http_json):
+    status, body = http_json("GET", base.rstrip("/") + "/api/nginx/streams",
+                             headers={"Authorization": "Bearer " + tok})
+    if isinstance(body, list):
+        for s in body:
+            if int(s.get("incoming_port", -1)) == int(incoming_port):
+                return s.get("id")
+    return None
+
+
+def create_pubkey_host(*, base, email, password, domain, forward_host, forward_port, http_json=_http_json):
+    """Create (or reuse) the HTTPS proxy host that serves the public key for `domain` (Let's Encrypt
+    cert + forward to the add-on's pubkey listener). Returns {ok, id, ...} or {ok: False, error}."""
+    base = base.rstrip("/")
+    domain = (domain or "").strip().lower()
+    if not base or not email or not password:
+        return {"ok": False, "error": "NPM url, email and password must be set first."}
+    if not domain:
+        return {"ok": False, "error": "Set your public-key domain first."}
+    if not forward_host:
+        return {"ok": False, "error": "Set the HA host IP (forward_host) NPM should forward to."}
+    tok, err = token(base, email, password, http_json=http_json)
+    if not tok:
+        return {"ok": False, "error": err}
+    auth = {"Authorization": "Bearer " + tok}
+    existing = find_proxy_host(base, tok, domain, http_json=http_json)
+    if existing:
+        return {"ok": True, "id": existing, "reused": True}
+    cstatus, cbody = http_json("POST", base + "/api/nginx/certificates", headers=auth, timeout=120,
+                               data={"domain_names": [domain], "provider": "letsencrypt",
+                                     "meta": {"letsencrypt_email": email, "letsencrypt_agree": True, "dns_challenge": False}})
+    cert_id = cbody.get("id") if isinstance(cbody, dict) else None
+    if not cert_id:
+        return {"ok": False, "error": f"Let's Encrypt cert request failed (HTTP {cstatus}): {str(cbody)[:300]}. "
+                                      f"Confirm {domain} resolves to your public IP and 80/443 reach NPM."}
+    hstatus, hbody = http_json("POST", base + "/api/nginx/proxy-hosts", headers=auth, timeout=60, data={
+        "domain_names": [domain], "forward_scheme": "http", "forward_host": forward_host,
+        "forward_port": forward_port, "certificate_id": cert_id, "ssl_forced": True,
+        "block_exploits": True, "caching_enabled": False, "allow_websocket_upgrade": False,
+        "access_list_id": 0, "advanced_config": "", "locations": [], "http2_support": False,
+        "hsts_enabled": False, "hsts_subdomains": False,
+        "meta": {"letsencrypt_agree": False, "dns_challenge": False}})
+    host_id = hbody.get("id") if isinstance(hbody, dict) else None
+    if not host_id:
+        return {"ok": False, "error": f"Proxy host creation failed (HTTP {hstatus}): {str(hbody)[:300]}"}
+    return {"ok": True, "id": host_id, "certificate_id": cert_id}
+
+
+def create_stream(*, base, email, password, incoming_port, forward_host, forward_port, http_json=_http_json):
+    """Create (or reuse) a Layer-4 TCP passthrough Stream (no TLS termination — the add-on does mTLS)."""
+    base = base.rstrip("/")
+    if not base or not email or not password:
+        return {"ok": False, "error": "NPM url, email and password must be set first."}
+    if not forward_host:
+        return {"ok": False, "error": "Set the HA host IP (forward_host) NPM should forward to."}
+    tok, err = token(base, email, password, http_json=http_json)
+    if not tok:
+        return {"ok": False, "error": err}
+    auth = {"Authorization": "Bearer " + tok}
+    existing = find_stream(base, tok, incoming_port, http_json=http_json)
+    if existing:
+        return {"ok": True, "id": existing, "reused": True, "incoming_port": incoming_port}
+    sstatus, sbody = http_json("POST", base + "/api/nginx/streams", headers=auth, timeout=60, data={
+        "incoming_port": incoming_port, "forwarding_host": forward_host, "forwarding_port": forward_port,
+        "tcp_forwarding": True, "udp_forwarding": False, "certificate_id": 0, "meta": {}})
+    stream_id = sbody.get("id") if isinstance(sbody, dict) else None
+    if not stream_id:
+        return {"ok": False, "error": f"Stream creation failed (HTTP {sstatus}): {str(sbody)[:300]}. "
+                                      f"Confirm port {incoming_port} is forwarded from your router to NPM."}
+    return {"ok": True, "id": stream_id, "incoming_port": incoming_port}
+
+
 def extract_cert(zip_bytes):
     """Return (fullchain_pem, privkey_pem) bytes from an NPM cert bundle, classifying by content:
     the private key is the member with a PRIVATE KEY block; the chain is the member with the most
