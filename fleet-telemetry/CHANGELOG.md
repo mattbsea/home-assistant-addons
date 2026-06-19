@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.15
+
+### Added (diagnostics)
+- **Persistent telemetry capture log.** Every ingested record is now teed to an **append-only** JSONL
+  file on the persistent `/data` volume (`/data/telemetry-log.jsonl`), so past drives survive add-on
+  restarts and can be parsed offline. The live records file lives on `/tmp` (tmpfs) and is wiped at
+  boot, which made after-the-fact analysis — e.g. exactly how the `Gear` field behaves when the car
+  parks — impossible. The log is **never rotated, truncated, or deleted by the add-on**; it is
+  removed only when the add-on is uninstalled (Home Assistant wipes `/data`). It therefore grows
+  without bound — the operator owns it. Path via `FT_TELEMETRY_LOG` (empty disables). Writes are
+  best-effort and can never take down the ingest tail.
+- **Persistent Fleet API call log.** The recurring Tesla Fleet API poll — token refresh,
+  `/products`, and `/vehicle_data` (the 30-minute prime) — is appended to a parallel append-only log
+  (`/data/fleet-log.jsonl`) with the same durability guarantees, so the poll can be correlated
+  field-by-field against the telemetry stream. OAuth tokens are redacted before writing. Path via
+  `FT_FLEET_LOG` (empty disables). (One-time wizard calls — OAuth code exchange, partner
+  registration, fleet_telemetry_config send — are not yet routed through it.)
+
 ## 1.0.14
 
 ### Fixed (TeslaMate)

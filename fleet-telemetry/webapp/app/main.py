@@ -18,6 +18,7 @@ from starlette.routing import Route
 
 import elevation as elevation_mod
 import records
+from app import reclog
 from app import state
 from app.control import prime
 from app.sinks import shim_rest, stream
@@ -43,16 +44,21 @@ def build():
     return store, registry, shim_app
 
 
-def start_ingest(store, records_file):
+def start_ingest(store, records_file, capture=None):
     """Background thread: the single records tail that feeds the Store (and thus every sink).
 
     The tail is the lifeline of the whole app — every surface reads from the Store it feeds. It must
     never die: records.tail() already swallows I/O errors, and we additionally isolate each record so
-    one malformed payload can't take down the thread, and restart the loop if it ever exits."""
+    one malformed payload can't take down the thread, and restart the loop if it ever exits.
+
+    `capture`, if given, is a reclog.RecordLog that tees every record to the persistent /data volume
+    (the live records file is on tmpfs and lost at boot) so past drives can be parsed."""
     def run():
         while True:
             try:
                 for rec in records.tail(records_file):
+                    if capture is not None:
+                        capture.write(rec)
                     try:
                         store.ingest(rec)
                     except Exception as exc:   # one bad record must not kill the tail
@@ -94,20 +100,26 @@ def _save_refresh_token(rt):
         pass
 
 
-def start_prime(registry, config_path, interval=1800):
+def start_prime(registry, config_path, interval=1800, fleet_log=None):
     """Fleet-API cold-start prime, re-run periodically so creds set later (after OAuth) are picked
     up without restarting the app. Reads creds live from config (decoupled from run.sh env).
 
     After each prime, auto-resend fleet_telemetry_config if the requested-field roster changed since
-    the last successful send (e.g. across an upgrade that added fields) — see app.control.autosend."""
+    the last successful send (e.g. across an upgrade that added fields) — see app.control.autosend.
+
+    `fleet_log`, if given, is a reclog.RecordLog the recurring Fleet calls (token refresh, /products,
+    /vehicle_data) are appended to (secrets redacted) for correlation with the telemetry log."""
     from app.control import autosend
     from app.control import config as cfgmod
+    from app.control import fleetlog
     from app.control import tesla
     auth = os.environ.get("FT_SHIM_AUTH_HOST", "https://auth.tesla.com")
     shim_state = os.environ.get("FT_SHIM_STATE", "/data/shim-state.json")
     wizard_state = os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json")
     cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
     priv = os.environ.get("FT_PRIVATE_KEY", "/data/keys/private-key.pem")
+    logged_post_form = fleetlog.wrap_post_form(fleet_log, prime._post_form)
+    logged_get = fleetlog.wrap_get(fleet_log, prime._get)
 
     def run():
         while True:
@@ -117,7 +129,8 @@ def start_prime(registry, config_path, interval=1800):
             if cid and rt:
                 prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
                                  fleet_host=tesla.fleet_host(c.get("region", "na")),
-                                 on_token=_save_refresh_token)
+                                 on_token=_save_refresh_token,
+                                 post_form=logged_post_form, get=logged_get)
                 autosend.maybe_resend(vins=registry.vins(), config_path=config_path,
                                       shim_state_path=shim_state, wizard_state_path=wizard_state,
                                       cert_file=cert_file, private_key_path=priv, auth_host=auth,
@@ -185,8 +198,21 @@ def main():
         store=store, registry=registry,
         version=os.environ.get("FT_ADDON_VERSION", ""), namespace="tesla_telemetry", elevation=elev)
     pubkey_app = build_pubkey_app(pub)
-    start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"))
-    start_prime(registry, cfg_path)
+    # Append-only persistent capture of every record (the live tmpfs records file is wiped at boot),
+    # so past drives can be parsed. Never rotated/truncated/deleted by the add-on — removed only on
+    # uninstall (/data wipe). Path empty -> disabled.
+    capture = None
+    cap_path = os.environ.get("FT_TELEMETRY_LOG", "/data/telemetry-log.jsonl")
+    if cap_path:
+        capture = reclog.RecordLog(cap_path)
+    start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"), capture=capture)
+    # Parallel append-only log of every recurring Fleet API call (secrets redacted), same durability
+    # guarantees as the telemetry log. Path empty -> disabled.
+    fleet_log = None
+    fl_path = os.environ.get("FT_FLEET_LOG", "/data/fleet-log.jsonl")
+    if fl_path:
+        fleet_log = reclog.RecordLog(fl_path)
+    start_prime(registry, cfg_path, fleet_log=fleet_log)
     asyncio.run(run(store, shim_app=shim_app, ingress_app=ingress_app, pubkey_app=pubkey_app,
                     shim_port=int(os.environ.get("FT_SHIM_PORT", "8085")),
                     ws_port=int(os.environ.get("FT_WS_PORT", "8081")),
