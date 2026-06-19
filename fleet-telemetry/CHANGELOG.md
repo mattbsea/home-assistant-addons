@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.18
+
+### Fixed (dashboard)
+- **"Other signals" no longer shows the new SSOT seed fields as raw clutter.** The v1.0.17 seed added
+  `ChargerPilotCurrent`, `FastChargerBrand`, and the internal `VehicleConfig` blob to the field map;
+  ungrouped, they fell into the catch-all "Other signals" card (with `VehicleConfig` dumped as JSON).
+  Now `ChargerPilotCurrent` ("Pilot current") and `FastChargerBrand` ("Fast charger brand", only when
+  a real brand) render in the Charging card, and `VehicleConfig` is hidden (redundant with the Vehicle
+  card). "Other signals" is back to empty.
+
 ## 1.0.17
 
 ### Changed (architecture — single source of truth)
