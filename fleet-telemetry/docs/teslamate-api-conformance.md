@@ -211,9 +211,14 @@ validate the findings against real telemetry:
 - **F5 found (then fixed).** `ChargingCableType` = `"CableTypeSAE"` and a charge session followed
   (`DetailedChargeStateCharging`/`Starting` → strip_state → "Charging"/"Starting" ✓). `strip_state`
   cleaned the `...State` enums but left `CableTypeSAE` unchanged; `strip_enum` now yields `"SAE"`.
-- **Still open: `VehicleSpeed` unit.** The maneuver was a parking-lot crawl (max `VehicleSpeed` = 8,
-  0.1 mi), so mph-vs-km/h is still not stress-tested. Consistent with mph for this US (miles) vehicle;
-  a highway drive would confirm definitively.
+- **`VehicleSpeed` unit RESOLVED = mph** (later highway drive, id 1160: 50.21 km, max 122 km/h). The
+  recorded `positions.speed` integrated over time = **47.6 km** vs the odometer's **50.21 km** (~5%
+  under, as expected for left-Riemann integration of time-sampled integer speeds). A km/h
+  double-conversion would have integrated to **~81 km (1.609×)**. So the shim passes `VehicleSpeed`
+  correctly as mph; no double-conversion.
+- **F1 power fix VALIDATED end-to-end** (later drives, across the v1.0.16 restart at 18:46 UTC):
+  pre-fix drives had power on only **36/1132** and **5/126** positions (the sparse REST-polled ones);
+  the first post-fix drive had **28/28** positions with non-zero power. ~3% → 100% coverage.
 
 ## 6. Recommendations
 
@@ -226,4 +231,5 @@ validate the findings against real telemetry:
    mapping so that rare state is caught during drives (not just at prime cadence); deferred (per-user, docs-only).
 4. **F3 (deferred):** harden gear normalization (a safe `gear_letter` wrapper) — not triggered by
    observed telemetry.
-5. Confirm the `VehicleSpeed` unit on a highway drive (the only remaining open item).
+5. ~~Confirm the `VehicleSpeed` unit on a highway drive.~~ **Done** — drive 1160 integration (47.6 km
+   vs 50.21 km odometer) confirms mph. No open items remain.
