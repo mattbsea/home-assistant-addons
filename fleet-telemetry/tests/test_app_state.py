@@ -20,13 +20,26 @@ def test_ingest_matches_v0_field_keeping():
     snap = store.snapshot(VIN)
     assert snap["Soc"] == 51.85185185185185
     assert snap["DoorState"]["TrunkRear"] is False
-    assert snap["TpmsPressureFl"] == "<invalid>"
+    assert "TpmsPressureFl" not in snap   # "<invalid>" sentinel is not stored (would clobber good seed/prior)
     # base meta dropped; connectivity frame kept (dashboard renders it)
     for meta in ("Vin", "CreatedAt", "IsResend"):
         assert meta not in snap
     assert snap["ConnectionID"] == "edeeafc2-d3d0-429f-8c43-254da435131c"
     assert snap["NetworkInterface"] == "cellular"
     assert store.total_records == len(conftest.load_records())
+
+
+def test_charge_start_signal_fires_once_on_transition():
+    store = state.Store()
+    store.ingest({"msg": "record_payload", "vin": VIN, "data": {"Soc": 50}})   # not charging
+    assert store.charge_starts.empty()
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DetailedChargeState": "DetailedChargeStateCharging", "DCChargingEnergyIn": 1.0}})
+    assert store.charge_starts.get_nowait() == VIN          # signalled on the not-charging -> charging edge
+    assert store.charge_starts.empty()
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"DetailedChargeState": "DetailedChargeStateCharging", "Soc": 51}})
+    assert store.charge_starts.empty()                      # still charging -> no new signal
 
 
 def test_history_series_accumulate():

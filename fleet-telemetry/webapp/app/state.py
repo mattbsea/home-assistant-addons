@@ -1,13 +1,15 @@
 """Per-VIN telemetry state + async pub/sub event bus — the heart of the v1 app.
 
-A single records reader calls `Store.ingest(record)`; the store updates the per-VIN field map and
-short history series, then publishes a change event to every subscriber queue. Sinks (dashboard
-SSE, TeslaMate shim, streaming ws, MQTT) subscribe to the bus instead of each tailing the file.
-
-Field-keeping matches the v0 dashboard exactly: everything except the base meta keys (CreatedAt /
-IsResend / Vin) is stored — including the connectivity-frame keys the dashboard renders.
+ONE per-VIN field map is the single source of truth. Two writers feed it:
+  - the live telemetry stream (continuous) — the sole writer for every streamable field, and
+  - a one-time Fleet-API **seed** at startup, plus a targeted refresh of the two non-streamed charge
+    fields (charger_pilot_current / fast_charger_brand) when a charge session begins.
+Merge is **last-writer-wins**: telemetry writes continuously, so it owns every field it carries; the
+seed fills the rest. There is no read-time merge and no separate "prime" blob — sinks (dashboard SSE,
+TeslaMate shim, streaming ws) all read this one structure via `snapshot`/`fields_view`.
 """
 import asyncio
+import queue
 import threading
 import time
 from collections import deque
@@ -16,19 +18,20 @@ import fields
 
 HISTORY_MAX = 600  # samples kept per sparkline series
 
-# Ephemeral drive fields are LIVE-or-nothing: a prime snapshot can be up to a re-prime interval
-# (30 min) stale, so we never let it supply gear/speed — that once stranded TeslaMate "driving".
-PRIME_EPHEMERAL_FIELDS = ("Gear", "VehicleSpeed")
+# Fields the Fleet-API seed must NEVER write: telemetry expresses them by presence/absence, and a
+# (possibly mid-drive) snapshot would strand a live drive state. Telemetry is their sole source.
+LIVE_ONLY = ("Gear", "VehicleSpeed")
 
 
 class Store:
     def __init__(self):
         self._lock = threading.Lock()
-        self.vehicles = {}            # vin -> {fields, history, last_epoch, display_name}
+        self.vehicles = {}            # vin -> {fields, history, last_epoch, display_name, ...}
         self.total_records = 0
         self.last_record_epoch = 0.0
         self._record_times = deque(maxlen=5000)   # epochs, for the records/min stat
         self._subscribers = []        # list[(loop, asyncio.Queue)]
+        self.charge_starts = queue.Queue()        # vins whose charge session just began -> targeted Fleet fetch
 
     # --- subscription (event bus) ------------------------------------------------------
     def subscribe(self, loop):
@@ -53,7 +56,7 @@ class Store:
         v = self.vehicles.get(vin)
         if v is None:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
-                 "charge_baseline": None, "prime": None, "tesla_id": None, "prime_epoch": 0.0,
+                 "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -72,6 +75,7 @@ class Store:
         created = data.get("CreatedAt", "")
         cver = (rec.get("metadata") or {}).get("device_client_version")
         changed = {}
+        charge_started = False
         with self._lock:
             self.total_records += 1
             self.last_record_epoch = now
@@ -83,21 +87,29 @@ class Store:
             for k, val in data.items():
                 if k in fields.META_BASE:
                     continue
-                v["fields"][k] = {"value": val, "created_at": created, "received_at": now}
+                # An "<invalid>" sentinel means "no reading": it must not clobber a known-good value
+                # (seed or prior telemetry) — EXCEPT for LIVE_ONLY fields, where "<invalid>" is the
+                # meaningful signal that the live state ended (Gear -> parked) and must clear it.
+                if val in ("<invalid>", "invalid") and k not in LIVE_ONLY:
+                    continue
+                v["fields"][k] = {"value": val, "created_at": created, "received_at": now, "source": "telemetry"}
                 changed[k] = val
                 n = fields.num(val)
                 if k == "Soc" and n is not None:
                     v["history"]["soc"].append((now, n))
                 elif k == "VehicleSpeed" and n is not None:
                     v["history"]["speed"].append((now, n))
-            self._track_charge_baseline(v)
+            charge_started = self._track_charge_baseline(v)
+        if charge_started:
+            self.charge_starts.put(vin)   # signal the charge-field worker (off the tail thread)
         if changed:
             self._publish({"vin": vin, "changed": changed, "at": now})
 
     @staticmethod
     def _track_charge_baseline(v):
-        """Capture energy-in at charge-session start so charge_energy_added can be derived, and
-        reset it when not charging. Mirrors the v0 shim's per-session baseline."""
+        """Capture energy-in at charge-session start so charge_energy_added can be derived, and reset
+        it when not charging. Returns True on the not-charging -> Charging/Starting edge (so the caller
+        can trigger the one-shot Fleet fetch for the non-streamed charge fields)."""
         f = v["fields"]
 
         def val(k):
@@ -107,71 +119,60 @@ class Store:
             if v.get("charge_baseline") is None:
                 dc = fields.num(val("DCChargingEnergyIn"))
                 v["charge_baseline"] = dc if dc is not None else (fields.num(val("ACChargingEnergyIn")) or 0.0)
+                return True   # charge-session start edge
         else:
             v["charge_baseline"] = None
+        return False
 
-    # --- Fleet-API prime (the *other* source feeding the same superset) ---------------
-    def set_prime(self, vin, prime, tesla_id=None, display_name=None):
-        """Fold a Fleet-API vehicle_data snapshot into the per-VIN record. Lives in the Store (not a
-        side table) so both the dashboard and the shim read one structure that both sources refresh."""
+    # --- Fleet-API writer (seed once at startup + targeted charge-field refresh) -------
+    def _write_fleet(self, v, mapping):
+        """Write a telemetry-named mapping into the field map with source='fleet' (last-writer-wins;
+        telemetry overwrites later). LIVE_ONLY and None values are never written."""
         now = time.time()
+        for k, val in mapping.items():
+            if k in LIVE_ONLY or val is None:
+                continue
+            v["fields"][k] = {"value": val, "created_at": "", "received_at": now, "source": "fleet"}
+
+    def seed(self, vin, vehicle_data, tesla_id=None, display_name=None):
+        """Prime the field map once from a Fleet-API vehicle_data response (mapped to telemetry names)."""
         with self._lock:
             v = self._vehicle(vin)
-            v["prime"] = prime
-            v["prime_epoch"] = now
+            self._write_fleet(v, fields.fleet_api_to_fields(vehicle_data))
+            v["seed_epoch"] = time.time()
             if tesla_id is not None:
                 v["tesla_id"] = tesla_id
             if display_name:
                 v["display_name"] = display_name
 
-    def get_prime(self, vin):
+    def update_charge_fields(self, vin, mapping):
+        """Targeted write of the two non-streamed charge fields (telemetry-named:
+        ChargerPilotCurrent / FastChargerBrand) at charge start."""
+        with self._lock:
+            self._write_fleet(self._vehicle(vin), mapping)
+
+    def tesla_id(self, vin):
         with self._lock:
             v = self.vehicles.get(vin)
-            return v.get("prime") if v else None
+            return v.get("tesla_id") if v else None
 
     def display_name(self, vin):
         with self._lock:
             v = self.vehicles.get(vin)
             return (v.get("display_name") if v else None) or vin
 
-    # --- read helpers ------------------------------------------------------------------
+    # --- reads -------------------------------------------------------------------------
     def snapshot(self, vin):
-        """A plain dict of {field: value} for the VIN from LIVE telemetry only (no prime). Used by
-        the shim/stream, which apply their own prime-merge with ephemeral-safe rules."""
+        """Flat {field: value} for the VIN — the unified superset (telemetry overlaid on the seed)."""
         with self._lock:
             v = self.vehicles.get(vin)
             return {k: f["value"] for k, f in v["fields"].items()} if v else {}
 
-    def merged_snapshot(self, vin):
-        """Flat {field: value} of the merged superset (prime base, live overlay; ephemeral gear/speed
-        stay live-only). The streaming sink uses this instead of the live-only ``snapshot`` so a
-        drive's very first frame already carries the last-known Odometer/RatedRange from the prime.
-        Otherwise those slow 60 s fields are blank at second 0, TeslaMate anchors the drive's start
-        position to a null odometer, and the whole trip records a null start_km → null distance."""
-        return {k: entry["value"] for k, entry in self.merged_fields(vin).items()}
-
-    def merged_fields(self, vin):
-        """The telemetry-named *superset* for a VIN: Fleet-API prime as the base layer, overlaid by
-        live telemetry (which always wins). Ephemeral gear/speed are never taken from the prime. This
-        is what the dashboard renders, so a freshly-restarted (or parked) car still shows a full
-        picture from the prime until the live stream fills it in."""
+    def fields_view(self, vin):
+        """{field: {value, source, received_at, created_at}} — the unified entries (for the dashboard)."""
         with self._lock:
             v = self.vehicles.get(vin)
-            if not v:
-                return {}
-            live = {k: dict(f) for k, f in v["fields"].items()}
-            prime = v.get("prime")
-            prime_epoch = v.get("prime_epoch", 0.0)
-        merged = {}
-        if prime:
-            for k, val in fields.prime_to_fields(prime).items():
-                if k in PRIME_EPHEMERAL_FIELDS:
-                    continue
-                merged[k] = {"value": val, "created_at": "", "received_at": prime_epoch, "source": "prime"}
-        for k, entry in live.items():
-            entry.setdefault("source", "telemetry")
-            merged[k] = entry
-        return merged
+            return {k: dict(f) for k, f in v["fields"].items()} if v else {}
 
     def vins(self):
         with self._lock:

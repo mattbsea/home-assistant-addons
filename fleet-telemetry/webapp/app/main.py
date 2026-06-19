@@ -100,15 +100,18 @@ def _save_refresh_token(rt):
         pass
 
 
-def start_prime(registry, config_path, interval=1800, fleet_log=None):
-    """Fleet-API cold-start prime, re-run periodically so creds set later (after OAuth) are picked
-    up without restarting the app. Reads creds live from config (decoupled from run.sh env).
+def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
+    """Fleet-API seed + charge-field worker (the Store is the single source of truth thereafter).
 
-    After each prime, auto-resend fleet_telemetry_config if the requested-field roster changed since
-    the last successful send (e.g. across an upgrade that added fields) — see app.control.autosend.
+    Two daemon threads:
+      - **seed**: call Fleet-API vehicle_data ONCE to seed the SSOT, retrying only until the first
+        successful seed (creds may arrive after the wizard's OAuth; the car may be asleep at boot).
+        After it succeeds, no recurring poll — telemetry owns the structure. Auto-resends
+        fleet_telemetry_config if the requested-field roster changed (e.g. across an upgrade).
+      - **charge**: block on the Store's charge-start signal and do ONE targeted Fleet fetch of the
+        two non-streamed charge fields (charger_pilot_current / fast_charger_brand) per session.
 
-    `fleet_log`, if given, is a reclog.RecordLog the recurring Fleet calls (token refresh, /products,
-    /vehicle_data) are appended to (secrets redacted) for correlation with the telemetry log."""
+    `fleet_log`, if given, is a reclog.RecordLog the Fleet calls are appended to (secrets redacted)."""
     from app.control import autosend
     from app.control import config as cfgmod
     from app.control import fleetlog
@@ -121,22 +124,41 @@ def start_prime(registry, config_path, interval=1800, fleet_log=None):
     logged_post_form = fleetlog.wrap_post_form(fleet_log, prime._post_form)
     logged_get = fleetlog.wrap_get(fleet_log, prime._get)
 
-    def run():
+    def _creds():
+        c = cfgmod.load(config_path).get("tesla", {})
+        return (c.get("client_id", ""), _load_refresh_token() or c.get("shim_refresh_token", ""),
+                tesla.fleet_host(c.get("region", "na")))
+
+    def seed_loop():
         while True:
-            c = cfgmod.load(config_path).get("tesla", {})
-            cid = c.get("client_id", "")
-            rt = _load_refresh_token() or c.get("shim_refresh_token", "")
+            cid, rt, fleet_host = _creds()
             if cid and rt:
-                prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
-                                 fleet_host=tesla.fleet_host(c.get("region", "na")),
-                                 on_token=_save_refresh_token,
-                                 post_form=logged_post_form, get=logged_get)
+                n = prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
+                                     fleet_host=fleet_host, on_token=_save_refresh_token,
+                                     post_form=logged_post_form, get=logged_get)
                 autosend.maybe_resend(vins=registry.vins(), config_path=config_path,
                                       shim_state_path=shim_state, wizard_state_path=wizard_state,
                                       cert_file=cert_file, private_key_path=priv, auth_host=auth,
                                       log=lambda m: print(m, flush=True))
-            time.sleep(interval)
-    threading.Thread(target=run, daemon=True).start()
+                if n > 0:
+                    print("[app] seed complete; telemetry now owns the store (no recurring poll)", flush=True)
+                    return   # seeded ≥1 vehicle — stop; telemetry is the source of truth from here
+            time.sleep(seed_retry_secs)   # creds not ready or car asleep — retry until first seed
+
+    def charge_loop():
+        while True:
+            vin = registry.store.charge_starts.get()   # blocks until a charge session begins
+            try:
+                cid, rt, fleet_host = _creds()
+                prime.fetch_charge_fields(registry.store, vin=vin, tesla_id=registry.store.tesla_id(vin),
+                                          client_id=cid, refresh_token=rt, auth_host=auth, fleet_host=fleet_host,
+                                          post_form=logged_post_form, get=logged_get, on_token=_save_refresh_token,
+                                          log=lambda m: print(m, flush=True))
+            except Exception as exc:   # a charge-fetch failure must never kill the worker
+                print(f"[app] charge-fetch worker error: {exc!r}", flush=True)
+
+    threading.Thread(target=seed_loop, daemon=True).start()
+    threading.Thread(target=charge_loop, daemon=True).start()
 
 
 async def _serve(app, port):

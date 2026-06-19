@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.17
+
+### Changed (architecture — single source of truth)
+- **The Store is now one per-VIN field map that both sources write into**, replacing the previous
+  split (live telemetry map + a separate Fleet-API "prime" blob) and the three divergent read-time
+  merges (`snapshot`/`merged_fields`/`merged_snapshot` + the shim's raw-prime backfill). That
+  divergence was the root cause of the recurring "stuck-driving" / null-distance regressions. Merge is
+  now **last-writer-wins** at write time; reads are trivial (`snapshot` / `fields_view`).
+- **Fleet API is polled ONCE at startup to seed the structure**, then telemetry is the sole writer
+  (no more 30-minute recurring poll). The seed retries only until the first success (creds may arrive
+  after the wizard's OAuth; the car may be asleep at boot) and never wakes the car.
+- **The two fields Tesla does not stream — `charger_pilot_current`, `fast_charger_brand` — are
+  refreshed by a single targeted Fleet API call at the start of each charge session** (triggered off
+  the telemetry charge-state transition), instead of the recurring poll.
+- `battery_heater_no_power` is now populated **live** from the streamed `NotEnoughPowerToHeat`.
+- An `"<invalid>"` sentinel from telemetry no longer clobbers a known-good value (it means "no
+  reading") — except for `Gear`/`VehicleSpeed`, where it is the meaningful "parked" signal.
+- Behavior-preserving for the streaming case (verified by an equivalence golden, field-by-field, vs
+  the pre-refactor output); only inert raw-prime keys TeslaMate ignores are dropped. `fleet-api ->
+  fields` mapper renamed `prime_to_fields` → `fleet_api_to_fields`.
+
 ## 1.0.16
 
 ### Fixed (TeslaMate)

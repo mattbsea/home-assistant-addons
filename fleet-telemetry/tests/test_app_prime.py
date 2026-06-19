@@ -38,10 +38,34 @@ def test_prime_sets_registry_prime_for_online_vehicle():
     assert n == 1
     m = reg._m(VIN)
     assert m["tesla_id"] == 999 and m["display_name"] == "DoodleMobile"
-    assert m["prime"]["charge_state"]["battery_level"] == 52
+    assert store.snapshot(VIN)["Soc"] == 52       # seed folded into the unified field map
     assert rotated == ["rotated-token"]          # rotation surfaced
     # primed vehicle is now "ready" even with no telemetry yet
     assert reg.ready(VIN) is True
+
+
+def test_fetch_charge_fields_writes_pilot_and_brand():
+    store = state.Store()
+
+    def post_form(url, data):
+        return {"access_token": "AT"}
+
+    def get(url, token):
+        return {"response": {"charge_state": {"charger_pilot_current": 48, "fast_charger_brand": "Tesla"}}}
+    prime.fetch_charge_fields(store, vin=VIN, tesla_id=999, client_id="c", refresh_token="r",
+                              auth_host="a", fleet_host="f", post_form=post_form, get=get, log=lambda *_: None)
+    snap = store.snapshot(VIN)
+    assert snap["ChargerPilotCurrent"] == 48 and snap["FastChargerBrand"] == "Tesla"
+
+
+def test_fetch_charge_fields_skips_invalid_brand():
+    store = state.Store()
+    prime.fetch_charge_fields(store, vin=VIN, tesla_id=999, client_id="c", refresh_token="r",
+                              auth_host="a", fleet_host="f",
+                              post_form=lambda u, d: {"access_token": "AT"},
+                              get=lambda u, t: {"response": {"charge_state": {"fast_charger_brand": "<invalid>"}}},
+                              log=lambda *_: None)
+    assert "FastChargerBrand" not in store.snapshot(VIN)   # AC charging -> no brand, not "<invalid>"
 
 
 def test_prime_skips_asleep_and_handles_no_creds():
@@ -51,7 +75,7 @@ def test_prime_skips_asleep_and_handles_no_creds():
     post_form, get, _ = _fakes(products, {})
     assert prime.prime_once(reg, client_id="c", refresh_token="r", auth_host="a", fleet_host="f",
                             post_form=post_form, get=get, log=lambda *_: None) == 0
-    assert reg._m(VIN)["prime"] is None
+    assert store.snapshot(VIN) == {}             # asleep vehicle never seeded
     # no creds -> no-op
     assert prime.prime_once(reg, client_id="", refresh_token="", auth_host="a", fleet_host="f",
                             log=lambda *_: None) == 0

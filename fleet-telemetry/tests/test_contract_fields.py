@@ -37,9 +37,9 @@ def test_gear_letter(raw, expected):
     assert fields.gear_letter(raw) == expected
 
 
-def test_prime_to_fields_mapping():
+def test_fleet_api_to_fields_mapping():
     response = conftest.load_reference("shim_vehicle_data.json")["response"]
-    out = fields.prime_to_fields(response)
+    out = fields.fleet_api_to_fields(response)
     assert out["Soc"] == 52                      # charge_state.battery_level
     assert out["BatteryLevel"] == 52             # charge_state.usable_battery_level
     assert out["DetailedChargeState"] == "Disconnected"
@@ -68,7 +68,7 @@ def test_strip_enum(raw, expected):
 
 
 def test_gui_settings_reverse_mapped():
-    out = fields.prime_to_fields({"gui_settings": {"gui_temperature_units": "F", "gui_distance_units": "mi/hr"}})
+    out = fields.fleet_api_to_fields({"gui_settings": {"gui_temperature_units": "F", "gui_distance_units": "mi/hr"}})
     assert out["SettingTemperatureUnit"] == "F"
     assert out["SettingDistanceUnit"] == "mi/hr"
 
@@ -76,7 +76,7 @@ def test_gui_settings_reverse_mapped():
 def test_software_update_reverse_mapped_from_prime():
     """vehicle_state.software_update is in the Fleet-API prime, so the software fields populate on
     start (not only from the live stream)."""
-    out = fields.prime_to_fields({"vehicle_state": {"software_update":
+    out = fields.fleet_api_to_fields({"vehicle_state": {"software_update":
                                   {"version": "2026.20.1", "install_perc": 30, "download_perc": 100}}})
     assert out["SoftwareUpdateVersion"] == "2026.20.1"
     assert out["SoftwareUpdateInstallationPercentComplete"] == 30

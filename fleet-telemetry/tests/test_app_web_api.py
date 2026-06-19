@@ -88,31 +88,31 @@ def _prime():
             for k in ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config")}
 
 
-def test_dashboard_shows_superset_from_prime_when_telemetry_sparse():
-    """The fix: a freshly-restarted/parked car (almost nothing streamed yet) still shows a full
-    dashboard, because the prime fills the gaps via the merged superset."""
+def test_dashboard_shows_superset_from_seed_when_telemetry_sparse():
+    """A freshly-restarted/parked car (almost nothing streamed yet) still shows a full dashboard,
+    because the startup Fleet seed fills the gaps; live telemetry overwrites as it arrives."""
     store = state.Store()
-    # only a couple of live fields have streamed (parked car, on-change telemetry)
+    store.seed(VIN, _prime(), tesla_id=999, display_name="DoodleMobile")   # seed at startup…
+    # …then only a couple of live fields have streamed (parked car, on-change telemetry)
     store.ingest({"msg": "record_payload", "vin": VIN, "data": {"PackVoltage": 370.0, "Soc": 54.0}})
-    store.set_prime(VIN, _prime(), tesla_id=999, display_name="DoodleMobile")
     f = api.state_payload(store)["vehicles"][0]["fields"]
     assert f["PackVoltage"]["source"] == "telemetry"             # live
-    assert f["Soc"]["value"] == 54.0 and f["Soc"]["source"] == "telemetry"   # live wins over prime
-    assert f["Odometer"]["source"] == "prime"                    # filled from prime (not streamed)
-    assert f["RatedRange"]["source"] == "prime" and f["RatedRange"]["value"] is not None
-    assert "Gear" not in f and "VehicleSpeed" not in f           # ephemerals NEVER from prime
+    assert f["Soc"]["value"] == 54.0 and f["Soc"]["source"] == "telemetry"   # live overwrote the seed
+    assert f["Odometer"]["source"] == "fleet"                    # filled from the seed (not streamed)
+    assert f["RatedRange"]["source"] == "fleet" and f["RatedRange"]["value"] is not None
+    assert "Gear" not in f and "VehicleSpeed" not in f           # ephemerals NEVER from the seed
 
 
-def test_merged_fields_ephemeral_and_override_rules():
+def test_fields_view_seed_and_override_rules():
     store = state.Store()
-    store.set_prime(VIN, {"drive_state": {"shift_state": "D", "speed": 40,
-                                          "latitude": 47.4, "longitude": -122.2},
-                          "charge_state": {"battery_level": 60}}, display_name="X")
-    # prime-only: location filled, but gear/speed excluded as ephemeral
-    mf = store.merged_fields(VIN)
-    assert mf["Soc"]["value"] == 60 and mf["Soc"]["source"] == "prime"
-    assert "Location" in mf and "Gear" not in mf and "VehicleSpeed" not in mf
-    # live telemetry overrides prime for the same element
+    store.seed(VIN, {"drive_state": {"shift_state": "D", "speed": 40,
+                                     "latitude": 47.4, "longitude": -122.2},
+                     "charge_state": {"battery_level": 60}}, display_name="X")
+    # seed-only: location filled, but gear/speed excluded as ephemeral (LIVE_ONLY)
+    fv = store.fields_view(VIN)
+    assert fv["Soc"]["value"] == 60 and fv["Soc"]["source"] == "fleet"
+    assert "Location" in fv and "Gear" not in fv and "VehicleSpeed" not in fv
+    # live telemetry overwrites the seed for the same field
     store.ingest({"msg": "record_payload", "vin": VIN, "data": {"Soc": 58.0}})
-    mf = store.merged_fields(VIN)
-    assert mf["Soc"]["value"] == 58.0 and mf["Soc"]["source"] == "telemetry"
+    fv = store.fields_view(VIN)
+    assert fv["Soc"]["value"] == 58.0 and fv["Soc"]["source"] == "telemetry"

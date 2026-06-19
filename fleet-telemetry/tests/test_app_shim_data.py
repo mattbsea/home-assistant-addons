@@ -1,7 +1,9 @@
 """shim sink vehicle_data assembly — golden snapshot + behavior checks.
 
-(The v0-equivalence test that proved the port was byte-identical did its job during migration; with
-v0 removed we pin the assembled output to a committed golden instead.)
+Post-SSOT: the shim reads ONE unified snapshot (telemetry overlaid on the Fleet-API seed); there is
+no read-time prime-merge. The golden was captured from the pre-SSOT code (assemble + raw prime
+backfill); equivalence is asserted field-by-field, allowing only the inert raw-prime keys the old
+backfill leaked but `assemble` never produced (TeslaMate ignores them).
 """
 import importlib
 import json
@@ -17,6 +19,15 @@ PRIME_SECTIONS = ("drive_state", "charge_state", "climate_state", "vehicle_state
 IDENT = {"id": 1, "vehicle_id": 2, "vin": VIN, "display_name": "DoodleMobile", "in_service": False}
 _GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "shim_vehicle_data.golden.json")
 
+# Raw Fleet-API keys the OLD backfill copied verbatim into the output but `assemble` never produces.
+# TeslaMate doesn't persist any of these, so the SSOT (assemble-only) correctly drops them.
+INERT_DROPPED = {
+    "drive_state": {"gps_as_of", "native_latitude", "native_longitude",
+                    "native_location_supported", "native_type"},
+    "charge_state": {"charge_amps"},
+    "climate_state": {"defrost_mode"},
+}
+
 
 def _prime():
     resp = conftest.load_reference("shim_vehicle_data.json")["response"]
@@ -25,17 +36,31 @@ def _prime():
 
 def _assembled():
     store = state.Store()
-    for r in conftest.load_records():
+    store.seed(VIN, _prime())                       # Fleet seed first…
+    for r in conftest.load_records():               # …then live telemetry overwrites (last-writer-wins)
         store.ingest(r)
-    return shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT,
-                                  charge_baseline=None, prime=_prime())
+    return shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT, charge_baseline=None)
 
 
 def test_matches_golden():
-    assert _assembled() == json.load(open(_GOLDEN))
+    """Equivalence vs the pre-SSOT golden: every key/value preserved except documented inert drops,
+    and no surprise new keys."""
+    got = _assembled()
+    golden = json.load(open(_GOLDEN))
+    for sec, gval in golden.items():
+        if isinstance(gval, dict):
+            inert = INERT_DROPPED.get(sec, set())
+            for k, v in gval.items():
+                if k in inert:
+                    assert k not in got[sec], f"{sec}.{k} should be dropped (inert)"
+                else:
+                    assert got[sec].get(k) == v, f"{sec}.{k}: {got[sec].get(k)!r} != golden {v!r}"
+            assert set(got[sec]) - set(gval) == set(), f"unexpected new keys in {sec}: {set(got[sec]) - set(gval)}"
+        else:
+            assert got[sec] == gval
 
 
-def test_defaults_without_prime():
+def test_defaults_without_seed():
     store = state.Store()
     for r in conftest.load_records():
         store.ingest(r)
@@ -47,31 +72,37 @@ def test_defaults_without_prime():
     assert vd["vehicle_state"]["odometer"] == 35595.12119278515
 
 
-def test_live_charge_rate_wins_over_stale_prime():
-    """Regression (panel A1): ChargeRateMilePerHour is now forward-emitted by assemble, so a live
-    charge rate beats the (up-to-30-min) stale prime value instead of being masked by it."""
-    charging = {"Soc": 50, "Location": {"latitude": 47.4, "longitude": -122.2},
-                "ChargeRateMilePerHour": 25.0, "ChargePortLatch": "Engaged",
-                "CabinOverheatProtectionMode": "CabinOverheatProtectionModeStateOff", "VehicleName": "DoodleMobile"}
-    stale_prime = {"charge_state": {"charge_rate": 0.0, "charge_port_latch": "Disengaged"},
-                   "climate_state": {"cabin_overheat_protection": "FanOnly"},
-                   "vehicle_state": {"vehicle_name": "OldName"},
-                   "drive_state": {}, "vehicle_config": {}}
-    vd = shim_data.vehicle_data(charging, ts=0, identity=IDENT, charge_baseline=None, prime=stale_prime)
+def _rec(**data):
+    return {"msg": "record_payload", "vin": VIN, "data": data}
+
+
+def test_live_charge_rate_wins_over_stale_seed():
+    """Live telemetry overwrites the Fleet seed (last-writer-wins): a live charge rate beats the
+    seed's value rather than being masked by it."""
+    store = state.Store()
+    store.seed(VIN, {"charge_state": {"charge_rate": 0.0, "charge_port_latch": "Disengaged"},
+                     "climate_state": {"cabin_overheat_protection": "FanOnly"},
+                     "vehicle_state": {"vehicle_name": "OldName"}})
+    store.ingest(_rec(Soc=50, Location={"latitude": 47.4, "longitude": -122.2},
+                      ChargeRateMilePerHour=25.0, ChargePortLatch="Engaged",
+                      CabinOverheatProtectionMode="CabinOverheatProtectionModeStateOff",
+                      VehicleName="DoodleMobile"))
+    vd = shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT)
     assert vd["charge_state"]["charge_rate"] == 25.0          # live, not stale 0.0
     assert vd["charge_state"]["charge_port_latch"] == "Engaged"
     assert vd["climate_state"]["cabin_overheat_protection"] == "Off"
     assert vd["vehicle_state"]["vehicle_name"] == "DoodleMobile"
 
 
-def test_parked_does_not_inherit_stale_drive_state_from_prime():
-    """Regression: on park, live telemetry has shift_state/speed=None. The prime snapshot (captured
-    mid-drive) must NOT backfill them, or the shim keeps reporting 'driving at 38' after parking."""
-    parked = {"Soc": 54, "Location": {"latitude": 47.4, "longitude": -122.2},
-              "Gear": "<invalid>", "VehicleSpeed": "<invalid>"}
-    stale_prime = {"drive_state": {"shift_state": "D", "speed": 38, "heading": 200},
-                   "charge_state": {}, "climate_state": {}, "vehicle_state": {}, "vehicle_config": {}}
-    vd = shim_data.vehicle_data(parked, ts=0, identity=IDENT, charge_baseline=None, prime=stale_prime)
+def test_seed_never_supplies_ephemeral_gear_speed():
+    """On park, live telemetry has shift_state/speed=None. The Fleet seed (LIVE_ONLY-skipped) must
+    never supply gear/speed, or the shim keeps reporting 'driving at 38' after parking. Non-ephemeral
+    seed fields (heading) still show through until telemetry overrides."""
+    store = state.Store()
+    store.seed(VIN, {"drive_state": {"shift_state": "D", "speed": 38, "heading": 200}})
+    store.ingest(_rec(Soc=54, Location={"latitude": 47.4, "longitude": -122.2},
+                      Gear="<invalid>", VehicleSpeed="<invalid>"))
+    vd = shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT)
     assert vd["drive_state"]["shift_state"] is None    # parked, not stale "D"
-    assert vd["drive_state"]["speed"] is None          # not stale 38
-    assert vd["drive_state"]["heading"] == 200         # non-ephemeral prime fields still backfill
+    assert vd["drive_state"]["speed"] is None           # not stale 38
+    assert vd["drive_state"]["heading"] == 200          # non-ephemeral seed field shows through

@@ -3,7 +3,7 @@
 Ports the v0 shim's HTTP surface (identity synthesis, readiness, the vehicle_data/products/token
 routes) but reads vehicle data from the shared Store via shim_data instead of its own tail+state.
 Priming (the optional Fleet-API cold-start snapshot) is driven by the control plane, which sets
-``Registry.set_prime`` — kept out of the request path.
+``Registry.seed`` — kept out of the request path.
 """
 import hashlib
 import time
@@ -28,13 +28,12 @@ class Registry:
         self.store = store
 
     def _m(self, vin):
-        """Compatibility view over the Store, which now owns prime/tesla_id/display_name."""
+        """Compatibility view over the Store (tesla_id / display_name)."""
         v = self.store.vehicles.get(vin) or {}
-        return {"prime": v.get("prime"), "tesla_id": v.get("tesla_id"),
-                "display_name": v.get("display_name"), "charge_baseline": None}
+        return {"tesla_id": v.get("tesla_id"), "display_name": v.get("display_name")}
 
-    def set_prime(self, vin, prime, tesla_id=None, display_name=None):
-        self.store.set_prime(vin, prime, tesla_id=tesla_id, display_name=display_name)
+    def seed(self, vin, vehicle_data, tesla_id=None, display_name=None):
+        self.store.seed(vin, vehicle_data, tesla_id=tesla_id, display_name=display_name)
 
     def vins(self):
         return sorted(self.store.vins())
@@ -43,8 +42,8 @@ class Registry:
         return self.store.display_name(vin)
 
     def ready(self, vin):
-        if self.store.get_prime(vin):
-            return True
+        # Ready once the unified snapshot has battery + location (the Fleet seed fills these at startup;
+        # telemetry keeps them current). No separate prime blob anymore.
         f = self.store.snapshot(vin)
         has_batt = fields.num(f.get("Soc")) is not None or fields.num(f.get("BatteryLevel")) is not None
         return has_batt and fields.parse_location(f.get("Location"))[0] is not None
@@ -66,14 +65,11 @@ class Registry:
         return None
 
     def vehicle_data(self, vin):
-        # Single source of truth: the Store's merged superset (live telemetry overlaid on the
-        # Fleet-API prime, prime filling whatever hasn't streamed) feeds the shim, the dashboard, and
-        # the TeslaMate stream alike — so all three see one consistent picture. prime is still passed
-        # for vehicle_config backfill; the ephemeral-safe gear/speed handling lives in the merge.
-        return shim_data.vehicle_data(self.store.merged_snapshot(vin), ts=int(time.time() * 1000),
+        # Single source of truth: the Store's unified snapshot (telemetry overlaid on the Fleet seed)
+        # feeds the shim, the dashboard, and the TeslaMate stream alike.
+        return shim_data.vehicle_data(self.store.snapshot(vin), ts=int(time.time() * 1000),
                                       identity=self.identity(vin),
-                                      charge_baseline=self.store.charge_baseline(vin),
-                                      prime=self.store.get_prime(vin))
+                                      charge_baseline=self.store.charge_baseline(vin))
 
 
 def build_app(store, registry):

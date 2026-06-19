@@ -53,7 +53,7 @@ async def test_stream_sink_backfills_odometer_from_prime_at_drive_start():
     null odometer and records a null start_km → null trip distance. The merged snapshot backfills
     last-known values from the Fleet-API prime so the opening frame already carries them."""
     store = state.Store()
-    store.set_prime(VIN, {"vehicle_state": {"odometer": 35670.1},
+    store.seed(VIN, {"vehicle_state": {"odometer": 35670.1},
                           "charge_state": {"battery_range": 161.9},
                           "drive_state": {"latitude": 47.77, "longitude": -122.15}},
                     display_name="X")

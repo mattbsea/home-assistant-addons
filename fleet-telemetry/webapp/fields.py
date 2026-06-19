@@ -90,9 +90,12 @@ def fan_speed(v):
 
 
 def window_state(v):
-    """Window enum ('WindowStateClosed'/'WindowStateVenting'/'WindowStateOpen') -> 0/1/2."""
+    """Window enum ('WindowStateClosed'/'WindowStateVenting'/'WindowStateOpen') -> 0/1/2. The live
+    stream sends the enum string; the Fleet-API seed already gives the int — pass that through."""
     if v is None:
         return None
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return int(v)
     s = str(v)
     if "Closed" in s:
         return 0
@@ -126,10 +129,10 @@ def gear_letter(v):
     return s
 
 
-def prime_to_fields(p):
-    """Map a Tesla vehicle_data response (the shim's 'prime') back to telemetry field names so the
-    dashboard's existing cards can render it. Used only to fill gaps the live stream hasn't (or
-    won't) provide."""
+def fleet_api_to_fields(p):
+    """Map a Tesla Fleet-API ``vehicle_data`` response to flat telemetry field names, so the response
+    can seed the single per-VIN field map at startup (and refresh the two non-streamed charge fields
+    at charge start). Telemetry overwrites these as it streams (last-writer-wins)."""
     ds = p.get("drive_state") or {}; cs = p.get("charge_state") or {}
     cl = p.get("climate_state") or {}; vs = p.get("vehicle_state") or {}; vc = p.get("vehicle_config") or {}
     gs = p.get("gui_settings") or {}
@@ -159,6 +162,8 @@ def prime_to_fields(p):
     if isinstance(cs.get("charge_port_door_open"), bool):
         put("ChargePortDoorOpen", cs["charge_port_door_open"])
     put("ChargePortLatch", cs.get("charge_port_latch"))
+    put("ChargerPilotCurrent", cs.get("charger_pilot_current"))   # Fleet-API only (not streamed)
+    put("FastChargerBrand", cs.get("fast_charger_brand"))         # Fleet-API only (not streamed)
     if isinstance(cs.get("battery_heater_on"), bool):
         put("BatteryHeaterOn", cs["battery_heater_on"])
     if isinstance(cs.get("not_enough_power_to_heat"), bool):
@@ -175,6 +180,11 @@ def prime_to_fields(p):
         put("RearDefrostEnabled", cl["is_rear_defroster_on"])
     if isinstance(cl.get("battery_heater"), bool):
         put("BatteryHeaterOn", cl["battery_heater"])
+    # climate.battery_heater_no_power and charge.not_enough_power_to_heat are the same signal in the
+    # Fleet API; the live stream sends only NotEnoughPowerToHeat. Use charge's value first (set above),
+    # else fall back to the climate one so the seed populates it.
+    if "NotEnoughPowerToHeat" not in out and isinstance(cl.get("battery_heater_no_power"), bool):
+        put("NotEnoughPowerToHeat", cl["battery_heater_no_power"])
     fs = cl.get("fan_status")
     if fs is not None:
         try:
@@ -222,6 +232,7 @@ def prime_to_fields(p):
     put("Trim", vc.get("trim_badging"))
     put("ExteriorColor", vc.get("exterior_color"))
     put("Wheels", vc.get("wheel_type"))
+    put("VehicleConfig", p.get("vehicle_config"))   # whole config blob, served verbatim by the shim
     put("SettingTemperatureUnit", gs.get("gui_temperature_units"))
     put("SettingDistanceUnit", gs.get("gui_distance_units"))
     return out

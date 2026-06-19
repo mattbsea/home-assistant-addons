@@ -27,11 +27,15 @@ def assemble(f, *, ts, identity, charge_baseline=None):
     driving = shift in ("D", "R", "N")
     pv, pc = F.num(f.get("PackVoltage")), F.num(f.get("PackCurrent"))
     power = int(round(-pv * pc / 1000.0)) if (driving and pv is not None and pc is not None) else (None if driving else 0)
+    dest_lat, dest_lon = F.parse_location(f.get("DestinationLocation"))
     drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": F.num(f.get("GpsHeading")),
                    "speed": F.num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift,
                    "active_route_destination": f.get("DestinationName") or f.get("Destination") or None,
+                   "active_route_latitude": dest_lat, "active_route_longitude": dest_lon,
                    "active_route_miles_to_arrival": F.num(f.get("MilesToArrival")),
-                   "active_route_minutes_to_arrival": F.num(f.get("MinutesToArrival"))}
+                   "active_route_minutes_to_arrival": F.num(f.get("MinutesToArrival")),
+                   "active_route_energy_at_arrival": F.round_int(f.get("ExpectedEnergyPercentAtTripArrival")),
+                   "active_route_traffic_minutes_delay": F.num(f.get("RouteTrafficMinutesDelay"))}
 
     ac_p, dc_p = F.num(f.get("ACChargingPower")), F.num(f.get("DCChargingPower"))
     charger_power = int(round((ac_p or 0) + (dc_p or 0))) if (ac_p is not None or dc_p is not None) else None
@@ -51,6 +55,8 @@ def assemble(f, *, ts, identity, charge_baseline=None):
         "charge_limit_soc": F.round_int(f.get("ChargeLimitSoc")),
         "charge_current_request": F.round_int(f.get("ChargeCurrentRequest")),
         "charge_current_request_max": F.round_int(f.get("ChargeCurrentRequestMax")),
+        "charger_pilot_current": F.round_int(f.get("ChargerPilotCurrent")),   # Fleet-API only (seeded)
+        "fast_charger_brand": F.strip_enum(f.get("FastChargerBrand")),        # Fleet-API only (seeded)
         "charge_port_door_open": f.get("ChargePortDoorOpen") if isinstance(f.get("ChargePortDoorOpen"), bool) else None,
         "battery_heater_on": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None,
         "not_enough_power_to_heat": f.get("NotEnoughPowerToHeat") if isinstance(f.get("NotEnoughPowerToHeat"), bool) else None,
@@ -67,6 +73,7 @@ def assemble(f, *, ts, identity, charge_baseline=None):
         "is_front_defroster_on": F.defrost_on(f.get("DefrostMode")),
         "is_rear_defroster_on": f.get("RearDefrostEnabled") if isinstance(f.get("RearDefrostEnabled"), bool) else None,
         "battery_heater": f.get("BatteryHeaterOn") if isinstance(f.get("BatteryHeaterOn"), bool) else None,
+        "battery_heater_no_power": f.get("NotEnoughPowerToHeat") if isinstance(f.get("NotEnoughPowerToHeat"), bool) else None,
         "cabin_overheat_protection": F.strip_state(f.get("CabinOverheatProtectionMode"))}
 
     sentry = F.strip_state(f.get("SentryMode"))
@@ -88,30 +95,15 @@ def assemble(f, *, ts, identity, charge_baseline=None):
                               "dr": 1 if doors.get("DriverRear") else 0, "pr": 1 if doors.get("PassengerRear") else 0,
                               "ft": 1 if doors.get("TrunkFront") else 0, "rt": 1 if doors.get("TrunkRear") else 0})
 
+    vehicle_config = f.get("VehicleConfig") if isinstance(f.get("VehicleConfig"), dict) else {}
     return {**identity, "state": "online", "drive_state": drive_state, "charge_state": charge_state,
-            "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": {}}
+            "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": vehicle_config}
 
 
-# Ephemeral drive-state fields are LIVE-or-nothing: never backfill them from the prime snapshot,
-# which can be up to a re-prime interval (30 min) stale. Backfilling shift_state/speed from a prime
-# captured mid-drive made the shim keep reporting "driving at 38" after the car parked (the live
-# telemetry correctly had shift_state=None/speed=None, but prime overwrote it). power is already 0
-# when parked via assemble, so it needs no exclusion.
-_PRIME_BACKFILL_SKIP = {"drive_state": ("shift_state", "speed")}
-
-
-def vehicle_data(f, *, ts, identity, charge_baseline=None, prime=None):
+def vehicle_data(f, *, ts, identity, charge_baseline=None):
+    """Assemble the full vehicle_data from the unified snapshot `f` (telemetry overlaid on the Fleet
+    seed). No prime-merge here anymore — the Store is the single source of truth."""
     tele = assemble(f, ts=ts, identity=identity, charge_baseline=charge_baseline)
-    if prime:
-        for sec in ("drive_state", "charge_state", "climate_state", "vehicle_state"):
-            skip = _PRIME_BACKFILL_SKIP.get(sec, ())
-            for k, v in (prime.get(sec) or {}).items():
-                if k in skip:
-                    continue
-                if tele[sec].get(k) is None and v not in ("<invalid>", "invalid"):
-                    tele[sec][k] = v
-        if not tele.get("vehicle_config"):
-            tele["vehicle_config"] = prime.get("vehicle_config") or {}
     if tele["charge_state"].get("charging_state") is None:
         tele["charge_state"]["charging_state"] = "Disconnected"
     if tele["drive_state"].get("power") is None:
