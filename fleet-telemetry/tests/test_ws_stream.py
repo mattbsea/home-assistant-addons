@@ -93,6 +93,26 @@ def test_park_blanks_stale_speed():
     assert p[9] == "" and p[1] == ""                       # shift_state blank AND speed blank, not 37
 
 
+def test_power_computed_from_pack_voltage_current_when_driving():
+    """Regression: there is no streamed 'Power' field, so the power column was always 0. It must be
+    computed as -PackVoltage*PackCurrent/1000 (kW) while driving, like the REST shim. Discharge
+    (PackCurrent<0) -> positive drive power; regen (PackCurrent>0) -> negative."""
+    base = {"Latitude": 47.77, "Longitude": -122.15}
+    drive = ws_stream.build_data_update(VIN, {VIN: dict(base, Gear="D", PackVoltage=360.0, PackCurrent=-38.6)},
+                                        "2026-06-18T01:21:45Z")
+    assert drive["value"].split(",")[8] == "14"     # -360 * -38.6 / 1000 = 13.9 -> 14 kW
+    regen = ws_stream.build_data_update(VIN, {VIN: dict(base, Gear="D", PackVoltage=360.0, PackCurrent=15.5)},
+                                        "2026-06-18T01:21:45Z")
+    assert regen["value"].split(",")[8] == "-6"     # -360 * 15.5 / 1000 = -5.6 -> -6 kW (regen)
+
+
+def test_power_zero_when_parked_even_with_pack_data():
+    """Parked (Gear None/<invalid>) -> power 0, never the idle PackVoltage*PackCurrent draw."""
+    lv = {"Latitude": 47.77, "Longitude": -122.15, "Gear": None, "PackVoltage": 360.0, "PackCurrent": -1.0}
+    msg = ws_stream.build_data_update(VIN, {VIN: lv}, "2026-06-18T01:21:45Z")
+    assert msg["value"].split(",")[8] == "0"
+
+
 def test_build_update_suppressed_until_gear_seen():
     """Before Gear is ever seen, suppress (can't tell driving from parked yet)."""
     lv = {"Latitude": 47.77, "Longitude": -122.15, "Soc": 50}   # no Gear key

@@ -74,14 +74,15 @@ def build_data_update(vin, last_values, created_at, elevation=None):
     # that frame (shift_state="") so TeslaMate sees the drive END; suppressing it strands the drive.
     if lv.get("Latitude") is None or lv.get("Longitude") is None or "Gear" not in lv:
         return None
+    # Drive power (kW). There is NO streamed "Power" field — it's not in the requested roster — so the
+    # old `lv.get("Power")` always read None and every driving frame emitted power=0, killing
+    # positions.power and drives.power_max/power_min/regen on the streaming path. Compute it the same
+    # way the REST shim does: -PackVoltage*PackCurrent/1000, gated on driving (0 when parked) so
+    # charging/idle frames don't inject phantom motor power. PackVoltage/PackCurrent are streamed.
     power = 0
-    p = fields.num(lv.get("Power"))
-    if p is not None:
-        power = int(p)
-    for src in ("DCChargingPower", "ACChargingPower"):
-        cp = fields.num(lv.get(src))
-        if cp is not None and cp > 0:
-            power = int(cp)
+    pv, pc = fields.num(lv.get("PackVoltage")), fields.num(lv.get("PackCurrent"))
+    if lv.get("Gear") in ("D", "R", "N") and pv is not None and pc is not None:
+        power = int(round(-pv * pc / 1000.0))
     # VehicleSpeed is an on-change field: it stops streaming when the car parks, so lv retains the
     # last *driving* value indefinitely. Emitting it on a parked frame strands a phantom speed in
     # TeslaMate (summary.ex publishes mph_to_kmh(speed) whenever speed is non-nil, with NO shift gate

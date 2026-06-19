@@ -56,6 +56,17 @@ def test_prime_to_fields_mapping():
     assert out["ExpectedEnergyPercentAtTripArrival"] == 49
 
 
+@pytest.mark.parametrize("raw,expected", [
+    ("CableTypeSAE", "SAE"),                          # live telemetry value strip_state missed
+    ("FastChargerTypeSupercharger", "Supercharger"),
+    ("DetailedChargeStateCharging", "Charging"),      # falls through to strip_state
+    ("Disconnected", "Disconnected"),
+    ("<invalid>", None), ("", None), (None, None),
+])
+def test_strip_enum(raw, expected):
+    assert fields.strip_enum(raw) == expected
+
+
 def test_gui_settings_reverse_mapped():
     out = fields.prime_to_fields({"gui_settings": {"gui_temperature_units": "F", "gui_distance_units": "mi/hr"}})
     assert out["SettingTemperatureUnit"] == "F"

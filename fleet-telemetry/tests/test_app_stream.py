@@ -81,6 +81,32 @@ async def test_stream_sink_backfills_odometer_from_prime_at_drive_start():
     run_task.cancel()
 
 
+async def test_stream_sink_computes_drive_power_from_pack():
+    """End-to-end: a driving frame's power column is computed from PackVoltage/PackCurrent (kW),
+    not the absent 'Power' field (which left stream power dead at 0)."""
+    store = state.Store()
+    sink = stream.StreamSink(store)
+    run_task = asyncio.create_task(sink.run())
+    await asyncio.sleep(0.05)
+    async with websockets.serve(sink.handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        async with websockets.connect(f"ws://127.0.0.1:{port}/streaming/") as client:
+            await client.send(json.dumps({"msg_type": "data:subscribe_oauth", "tag": VIN}))
+            await asyncio.wait_for(client.recv(), 2)   # control:hello
+            for data in ({"Location": {"latitude": 47.77, "longitude": -122.15}},
+                         {"PackVoltage": 360.0, "PackCurrent": -38.6},
+                         {"CreatedAt": "2026-06-18T01:21:45Z", "Gear": "ShiftStateD"}):
+                store.ingest({"msg": "record_payload", "vin": VIN, "data": data})
+            msg = None
+            for _ in range(6):
+                m = json.loads(await asyncio.wait_for(client.recv(), 2))
+                if m.get("msg_type") == "data:update":
+                    msg = m
+                    break
+            assert msg and msg["value"].split(",")[8] == "14"   # power column, computed kW
+    run_task.cancel()
+
+
 async def test_stream_sink_broadcasts_from_bus():
     store = state.Store()
     sink = stream.StreamSink(store)

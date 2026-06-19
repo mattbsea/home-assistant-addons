@@ -51,6 +51,22 @@ def strip_state(v):
     return v
 
 
+# Tesla "Type" enums use a verbose prefix that ends in "Type", not "State", so strip_state misses
+# them (live telemetry sends ChargingCableType="CableTypeSAE" -> TeslaMate stored "CableTypeSAE").
+_ENUM_TYPE_PREFIXES = ("CableType", "FastChargerType")
+
+
+def strip_enum(v):
+    """Normalize a Tesla enum string for TeslaMate: strip the verbose 'Type' prefix
+    ('CableTypeSAE' -> 'SAE'), else fall back to strip_state ('...State' enums). Non-strings and the
+    invalid/empty sentinels pass through strip_state's rules (-> None)."""
+    if isinstance(v, str):
+        for p in _ENUM_TYPE_PREFIXES:
+            if v.startswith(p) and len(v) > len(p):
+                return v[len(p):]
+    return strip_state(v)
+
+
 def round_int(v):
     n = num(v)
     return int(round(n)) if n is not None else None

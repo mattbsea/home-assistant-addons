@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.16
+
+### Fixed (TeslaMate)
+- **Streaming drive power was always 0 (regen/power lost).** The TeslaMate streaming `data:update`
+  built its `power` column from a non-existent `Power` field — never in the requested telemetry roster
+  — so every driving frame emitted `power=0`, leaving stream-fed `positions.power` and
+  `drives.power_max`/`power_min` (and all regen) dead. It now computes power as
+  `-PackVoltage*PackCurrent/1000` (kW), gated on driving, exactly like the REST shim. Confirmed
+  against a captured drive (real power swung ≈ +12 kW drive / −6 kW regen, all previously logged as 0).
+- **Charge cable / fast-charger type carried Tesla's verbose enum prefix.** Live telemetry sends
+  `ChargingCableType="CableTypeSAE"`, whose prefix ends in `Type` (not `State`), so `strip_state`
+  left it untouched and TeslaMate stored `"CableTypeSAE"` instead of `"SAE"`. New `fields.strip_enum`
+  strips the `CableType`/`FastChargerType` prefixes (falling back to `strip_state` for `...State`
+  enums) and the shim now uses it for `conn_charge_cable`/`fast_charger_type`.
+
+### Docs
+- Added `docs/teslamate-data-dictionary.md` (complete TeslaMate v4.0.1 field/API/unit reference) and
+  `docs/teslamate-api-conformance.md` (this add-on's REST+streaming APIs vs that dictionary, with
+  the captured-drive ground truth).
+
 ## 1.0.15
 
 ### Added (diagnostics)
