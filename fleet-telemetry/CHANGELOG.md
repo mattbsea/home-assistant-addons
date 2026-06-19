@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.14
+
+### Fixed (TeslaMate)
+- **Drives recorded a null/invalid trip distance (and a wildly wrong consumption / "energy
+  recovered").** TeslaMate anchors a drive's `start_km` to the **first** position it logs for that
+  drive. The TeslaMate streaming sink built every frame from a **live-only** snapshot, but `Odometer`
+  (and `RatedRange`/`EstBatteryRange`) are slow 60 s telemetry fields that haven't streamed yet at the
+  instant a drive begins — so the opening frames carried a **blank odometer**. TeslaMate stored that
+  first position with `odometer = null`, which nulled `start_km`, which made `distance =
+  end_km − start_km` null. A null/zero distance is also what blows up the per-distance energy figures
+  (Wh/km, "recovered"). Observed on every Fleet-Telemetry-era drive; the first real odometer only
+  appeared ~10 s in, too late for the start anchor.
+  - **Fix:** the streaming sink now reads the Store's **merged superset** (live telemetry overlaid on
+    the Fleet-API prime) instead of the live-only snapshot, so a drive's very first frame already
+    carries the last-known `Odometer`/`RatedRange` from the prime. Live values still override the
+    instant they stream. Ephemeral gear/speed remain live-only (never seeded from the prime), so the
+    parked-car "phantom drive" guard is preserved.
+
+### Changed
+- **One source of truth for vehicle state.** The dashboard, the TeslaMate REST shim, and the TeslaMate
+  streaming websocket now all read the same merged per-VIN superset from the Store (live telemetry as
+  the authoritative layer for anything it streams, the periodic Fleet-API prime filling whatever
+  hasn't streamed yet). Previously only the dashboard used the merged view while the stream sink read
+  live-only and the shim ran its own separate prime-merge — the inconsistency was the root of the
+  null-distance bug above.
+
 ## 1.0.13
 
 ### Added (dashboard)

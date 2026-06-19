@@ -65,7 +65,11 @@ class StreamSink:
     async def _broadcast(self, vin, created_at):
         if not self.subs.get(vin):
             return
-        lv = lv_from_snapshot(self.store.snapshot(vin))
+        # Merged (not live-only) snapshot: a drive's first frames land before the slow 60 s Odometer/
+        # RatedRange fields have streamed, so a live-only view emits a blank odometer and TeslaMate
+        # records a null start_km → null trip distance. The prime backfills last-known values so the
+        # opening frame already carries them; live always overrides once it streams.
+        lv = lv_from_snapshot(self.store.merged_snapshot(vin))
         elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
         update = ws_stream.build_data_update(vin, {vin: lv}, created_at, elevation=elev)
         if not update:

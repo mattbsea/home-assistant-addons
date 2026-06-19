@@ -66,9 +66,11 @@ class Registry:
         return None
 
     def vehicle_data(self, vin):
-        # All state now lives in the Store: live telemetry snapshot, the Fleet-API prime, and the
-        # live charge baseline. The ephemeral-safe merge happens in shim_data.vehicle_data.
-        return shim_data.vehicle_data(self.store.snapshot(vin), ts=int(time.time() * 1000),
+        # Single source of truth: the Store's merged superset (live telemetry overlaid on the
+        # Fleet-API prime, prime filling whatever hasn't streamed) feeds the shim, the dashboard, and
+        # the TeslaMate stream alike — so all three see one consistent picture. prime is still passed
+        # for vehicle_config backfill; the ephemeral-safe gear/speed handling lives in the merge.
+        return shim_data.vehicle_data(self.store.merged_snapshot(vin), ts=int(time.time() * 1000),
                                       identity=self.identity(vin),
                                       charge_baseline=self.store.charge_baseline(vin),
                                       prime=self.store.get_prime(vin))

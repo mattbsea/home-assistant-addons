@@ -142,6 +142,14 @@ class Store:
             v = self.vehicles.get(vin)
             return {k: f["value"] for k, f in v["fields"].items()} if v else {}
 
+    def merged_snapshot(self, vin):
+        """Flat {field: value} of the merged superset (prime base, live overlay; ephemeral gear/speed
+        stay live-only). The streaming sink uses this instead of the live-only ``snapshot`` so a
+        drive's very first frame already carries the last-known Odometer/RatedRange from the prime.
+        Otherwise those slow 60 s fields are blank at second 0, TeslaMate anchors the drive's start
+        position to a null odometer, and the whole trip records a null start_km → null distance."""
+        return {k: entry["value"] for k, entry in self.merged_fields(vin).items()}
+
     def merged_fields(self, vin):
         """The telemetry-named *superset* for a VIN: Fleet-API prime as the base layer, overlaid by
         live telemetry (which always wins). Ephemeral gear/speed are never taken from the prime. This

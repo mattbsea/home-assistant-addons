@@ -47,6 +47,40 @@ async def test_stream_sink_injects_resolver_elevation():
     run_task.cancel()
 
 
+async def test_stream_sink_backfills_odometer_from_prime_at_drive_start():
+    """Regression: at drive start the slow 60 s Odometer/RatedRange haven't streamed yet, so a
+    live-only view emits a blank odometer — TeslaMate then anchors the drive's start position to a
+    null odometer and records a null start_km → null trip distance. The merged snapshot backfills
+    last-known values from the Fleet-API prime so the opening frame already carries them."""
+    store = state.Store()
+    store.set_prime(VIN, {"vehicle_state": {"odometer": 35670.1},
+                          "charge_state": {"battery_range": 161.9},
+                          "drive_state": {"latitude": 47.77, "longitude": -122.15}},
+                    display_name="X")
+    sink = stream.StreamSink(store)
+    run_task = asyncio.create_task(sink.run())
+    await asyncio.sleep(0.05)
+    async with websockets.serve(sink.handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        async with websockets.connect(f"ws://127.0.0.1:{port}/streaming/") as client:
+            await client.send(json.dumps({"msg_type": "data:subscribe_oauth", "tag": VIN}))
+            await asyncio.wait_for(client.recv(), 2)   # control:hello
+            # First live frames of the drive: position + gear, but NO Odometer/RatedRange yet.
+            for data in ({"Location": {"latitude": 47.77, "longitude": -122.15}},
+                         {"CreatedAt": "2026-06-18T01:21:45Z", "Gear": "ShiftStateD"}):
+                store.ingest({"msg": "record_payload", "vin": VIN, "data": data})
+            msg = None
+            for _ in range(6):
+                m = json.loads(await asyncio.wait_for(client.recv(), 2))
+                if m.get("msg_type") == "data:update":
+                    msg = m
+                    break
+            p = msg["value"].split(",")
+            assert p[2] == "35670.1"    # odometer column, backfilled from prime (was blank → null km)
+            assert p[10] == "161.9"     # range column, likewise from prime
+    run_task.cancel()
+
+
 async def test_stream_sink_broadcasts_from_bus():
     store = state.Store()
     sink = stream.StreamSink(store)
