@@ -26,9 +26,9 @@ order all match TeslaMate's expectations. One functional defect and a few minor 
 |---|---|---|---|---|
 | **High (isolated)** | F1 — `power` is hard-zeroed on the streaming path | Streaming | Stream-fed `positions.power` = 0; `drives.power_max/power_min` and **regen** lost during drives | **fixed v1.0.16** |
 | Low | F5 — `ChargingCableType`/`FastChargerType` prefix not stripped (`CableTypeSAE`) | REST | TeslaMate stored `"CableTypeSAE"` not `"SAE"` | **fixed v1.0.16** |
-| Low | F2a — `charges.charger_pilot_current` never supplied | REST | column always NULL | won't fix (no telemetry source) |
-| Low | F2b — `charges.fast_charger_brand` never supplied | REST | column always NULL | won't fix (no telemetry source) |
-| Low | F2c — `battery_heater_no_power` never supplied | REST | column always NULL | deferred (could map `NotEnoughPowerToHeat`) |
+| Low | F2a — `charges.charger_pilot_current` never supplied | REST | column always NULL | fixable via **Fleet-API prime** (not in the telemetry proto; IS in `vehicle_data`) — unmapped in `prime_to_fields` |
+| Low | F2b — `charges.fast_charger_brand` never supplied | REST | column always NULL | fixable via **Fleet-API prime** (not in the telemetry proto; IS in `vehicle_data`) — unmapped in `prime_to_fields` |
+| Low | F2c — `battery_heater_no_power` never supplied | REST | column always NULL | fixable **live** — `NotEnoughPowerToHeat` is in the telemetry proto + roster, just not mapped to `climate_state` |
 | Low (latent) | F3 — gear normalized with `strip_state`, not `gear_letter` | REST+stream | only fails on `DriveGear*`/word forms — **not observed** (drive emitted only `ShiftState*`/`<invalid>`) | deferred (naive swap unsafe) |
 | Info | F4 — REST `vehicle_data` carries no `heading` key | REST | `positions.heading` filled only via streaming `est_heading` (by design) | by design |
 
@@ -149,11 +149,21 @@ fires when charging power > 0. So every driving stream frame emits `power=0` (a 
 - **Why REST is fine but stream isn't:** the REST shim computes `-PackVoltage*PackCurrent/1000`
   (shim_data.py:28-29); the stream path never does. The fix is in-band (same inputs already stream).
 
-### F2 — Four diagnostic columns never supplied (Low)
-`charges.charger_pilot_current`, `charges.fast_charger_brand`, and `battery_heater_no_power`
-(positions+charges) have no telemetry source in the roster, so those TeslaMate columns stay NULL.
-`NotEnoughPowerToHeat` is streamed and could feed `battery_heater_no_power`. None affect drive/charge
-logging integrity.
+### F2 — Three diagnostic columns never supplied (Low) — all fixable
+These TeslaMate columns currently stay NULL. Verified against Tesla's authoritative sources — the
+Fleet Telemetry `vehicle_data.proto` `Field` enum (`teslamotors/fleet-telemetry`) and the Fleet API
+`vehicle_data` schema (via TeslaMate's parser, `tesla_api/vehicle/state.ex`):
+- **`battery_heater_no_power`** (positions+charges): the source **is streamed** — `NotEnoughPowerToHeat`
+  (proto field 56, already in our roster) — and is also in Fleet API `climate_state`. It's just not
+  mapped into the shim's `climate_state`. **Fixable live.**
+- **`charger_pilot_current`** (charges): **not** in the telemetry proto (only `ChargeAmps`,
+  `ChargeCurrentRequest`, `ChargeCurrentRequestMax`), but **is** in Fleet API `vehicle_data`
+  (`charge.charger_pilot_current`). Obtainable from the 30-min prime via `prime_to_fields` (coarse,
+  not live), not the stream.
+- **`fast_charger_brand`** (charges): **not** in the telemetry proto (no "brand" field), but **is** in
+  Fleet API `vehicle_data` (`charge.fast_charger_brand`). Static per session, so prime-sourced is fine.
+
+None affect drive/charge logging integrity; all three are recoverable (one live, two via the prime).
 
 ### F3 — Gear normalization uses the weaker decoder (Low, latent)
 `assemble`/`accumulate` use `strip_state` (handles `ShiftState*`), not `gear_letter` (also handles
@@ -195,8 +205,9 @@ validate the findings against real telemetry:
    `ws_stream.build_data_update`.
 2. ~~**F5:** strip the `CableType`/`FastChargerType` enum prefixes.~~ **Done (v1.0.16)** —
    `fields.strip_enum`.
-3. **F2c (deferred):** optionally map `NotEnoughPowerToHeat → battery_heater_no_power`.
-   `charger_pilot_current`/`fast_charger_brand` have no telemetry source (won't fix).
+3. **F2 (deferred, all recoverable):** map `NotEnoughPowerToHeat → climate_state.battery_heater_no_power`
+   (live); and add `charger_pilot_current` + `fast_charger_brand` to `prime_to_fields` so the Fleet-API
+   prime fills them (not streamable, but present in `vehicle_data`).
 4. **F3 (deferred):** harden gear normalization (a safe `gear_letter` wrapper) — not triggered by
    observed telemetry.
 5. Confirm the `VehicleSpeed` unit on a highway drive (the only remaining open item).
