@@ -36,6 +36,7 @@ TeslaMate's own FSM and found sound, with one **low-severity robustness item** a
 |---|---|---|---|
 | **Low (robustness)** | G1 — Store writes the `<invalid>` Gear sentinel (clobbers last gear); redundant because park is always signalled by an explicit `ShiftStateP` first | Store→stream/REST | **fixed v1.0.24** (persist last gear; `<invalid>` skipped for all fields) |
 | **Low** | SL1 — stream monitor latched the first non-online `/products` state and never re-polled → stale `offline` stuck for hours while the car was asleep | REST state | **fixed v1.0.24** (`/products` re-confirm on `FT_SLEEP_RECHECK_SECS` cadence; no-wake) |
+| **Low** | SP1 — REST `drive_state.speed` was `null` when parked; TeslaMate skips a nil `speed` on its retained MQTT topic (`speed` ∉ `@publish_if_nil`) → `sensor.tesla_speed` stuck at the last driving value | REST→MQTT | **fixed v1.0.25** (report `speed=0` when parked so TeslaMate publishes 0 and clears) |
 | Info | G2 — every transition to `P` (incl. brief P during parking maneuvers) fires `vehicle_disconnected` | Streaming | by design (v1.0.22); TeslaMate-tolerant — see §3 |
 | Low | S1 — streaming frame timestamp is now Store **receive-time** (`event["at"]`, whole-second), not telemetry `CreatedAt` | Streaming | verify intended |
 | Low | U1 — `vehicle_state.software_update` hard-coded empty; streamed/seeded `SoftwareUpdate*` ignored | REST | `updates` table never populates (cosmetic) |

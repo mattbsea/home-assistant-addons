@@ -84,10 +84,10 @@ def build_data_update(vin, last_values, created_at, elevation=None):
     if lv.get("Gear") in ("D", "R", "N") and pv is not None and pc is not None:
         power = int(round(-pv * pc / 1000.0))
     # VehicleSpeed is an on-change field: it stops streaming when the car parks, so lv retains the
-    # last *driving* value indefinitely. Emitting it on a parked frame strands a phantom speed in
-    # TeslaMate (summary.ex publishes mph_to_kmh(speed) whenever speed is non-nil, with NO shift gate
-    # — only ""/nil clears it). Gate on driving, exactly like the REST shim's assemble(), so a parked
-    # frame carries speed="" -> TeslaMate's nil fallback clears sensor.tesla_speed.
+    # last *driving* value indefinitely. Gate on driving (like the REST shim's assemble()) so a parked
+    # stream frame doesn't carry a stale speed. NOTE: this does NOT clear sensor.tesla_speed — TeslaMate
+    # skips a nil 'speed' on its retained MQTT topic (speed is not in @publish_if_nil), so the retained
+    # last value persists. Clearing is done by the REST shim reporting speed=0 on park (shim_data.py).
     speed = _int_or_blank(lv.get("VehicleSpeed")) if lv.get("Gear") in ("D", "R", "N") else ""
     value = ",".join(str(x) for x in [
         _epoch_ms(created_at),

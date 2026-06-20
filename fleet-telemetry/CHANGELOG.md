@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.25
+
+### Fixed — `sensor.tesla_speed` stuck at the last speed after parking
+- **Root cause:** TeslaMate publishes the MQTT `speed` topic with **retain** and, unlike a handful of
+  whitelisted fields, **skips it when the value is nil** (`speed` ∉ `@publish_if_nil` in
+  `vehicle_subscriber.ex`). The REST shim reported `drive_state.speed = null` when parked, so
+  `summary.speed` was nil → TeslaMate never published an update → the retained last-driving speed stuck
+  on the HA sensor (observed: 5 km/h held for hours). (A prior code comment had this backwards —
+  assuming a nil/`""` speed *clears* the sensor; it does not.)
+- **Fix:** the REST shim now reports `drive_state.speed = 0` (not null) when parked, so TeslaMate
+  publishes `0` and the sensor clears. Drives are still gated by `shift_state` (not speed), so a parked
+  `0` cannot start a phantom drive. (`app/sinks/shim_data.py`)
+
 ## 1.0.24
 
 ### Fixed — gear `<invalid>` no longer clobbers the last gear; sleep state now re-confirmed

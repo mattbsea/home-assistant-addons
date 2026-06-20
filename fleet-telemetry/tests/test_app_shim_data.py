@@ -105,15 +105,27 @@ def test_live_charge_rate_wins_over_stale_seed():
     assert vd["vehicle_state"]["vehicle_name"] == "DoodleMobile"
 
 
+def test_parked_speed_is_zero_not_null_to_clear_mqtt_sensor():
+    """TeslaMate's MQTT publisher skips a nil 'speed' (speed is not in @publish_if_nil) on a *retained*
+    topic, so a null parked speed leaves sensor.tesla_speed stuck at the last driving value. The REST
+    shim must report 0 when parked (not None) so TeslaMate publishes 0 and the sensor clears. The stale
+    streamed VehicleSpeed must NOT leak through — parked is always 0."""
+    base = {"Soc": 50, "Location": {"latitude": 47.4, "longitude": -122.2}}
+    parked = shim_data.vehicle_data({**base, "Gear": "ShiftStateP", "VehicleSpeed": 5}, ts=1, identity=IDENT)
+    assert parked["drive_state"]["speed"] == 0          # parked -> 0 clears the retained MQTT sensor
+    driving = shim_data.vehicle_data({**base, "Gear": "ShiftStateD", "VehicleSpeed": 37}, ts=1, identity=IDENT)
+    assert driving["drive_state"]["speed"] == 37         # driving -> real speed
+
+
 def test_seed_never_supplies_ephemeral_gear_speed():
-    """On park, live telemetry has shift_state/speed=None. The Fleet seed (LIVE_ONLY-skipped) must
-    never supply gear/speed, or the shim keeps reporting 'driving at 38' after parking. Non-ephemeral
-    seed fields (heading) still show through until telemetry overrides."""
+    """On park, live telemetry has shift_state=None and speed reported as 0 (see above). The Fleet seed
+    (LIVE_ONLY-skipped) must never supply gear/speed, or the shim keeps reporting 'driving at 38' after
+    parking. Non-ephemeral seed fields (heading) still show through until telemetry overrides."""
     store = state.Store()
     store.seed(VIN, {"drive_state": {"shift_state": "D", "speed": 38, "heading": 200}})
     store.ingest(_rec(Soc=54, Location={"latitude": 47.4, "longitude": -122.2},
                       Gear="<invalid>", VehicleSpeed="<invalid>"))
     vd = shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT)
     assert vd["drive_state"]["shift_state"] is None    # parked, not stale "D"
-    assert vd["drive_state"]["speed"] is None           # not stale 38
+    assert vd["drive_state"]["speed"] == 0              # parked -> 0, not stale 38, not null
     assert vd["drive_state"]["heading"] == 200          # non-ephemeral seed field shows through

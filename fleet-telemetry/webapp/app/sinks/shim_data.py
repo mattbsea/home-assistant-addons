@@ -29,7 +29,10 @@ def assemble(f, *, ts, identity, charge_baseline=None):
     power = int(round(-pv * pc / 1000.0)) if (driving and pv is not None and pc is not None) else (None if driving else 0)
     dest_lat, dest_lon = F.parse_location(f.get("DestinationLocation"))
     drive_state = {"timestamp": ts, "latitude": lat, "longitude": lon, "heading": F.num(f.get("GpsHeading")),
-                   "speed": F.num(f.get("VehicleSpeed")) if driving else None, "power": power, "shift_state": shift,
+                   # Parked -> 0, NOT None: TeslaMate's MQTT publisher skips a nil speed on a retained
+                   # topic (speed is not in @publish_if_nil), so a null would leave sensor.tesla_speed
+                   # stuck at the last driving value. 0 clears it; shift_state (not speed) gates drives.
+                   "speed": F.num(f.get("VehicleSpeed")) if driving else 0, "power": power, "shift_state": shift,
                    "active_route_destination": f.get("DestinationName") or f.get("Destination") or None,
                    "active_route_latitude": dest_lat, "active_route_longitude": dest_lon,
                    "active_route_miles_to_arrival": F.num(f.get("MilesToArrival")),
