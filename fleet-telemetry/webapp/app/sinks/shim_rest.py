@@ -15,8 +15,6 @@ from starlette.routing import Route
 
 from app.sinks import shim_data
 
-ONLINE_WINDOW = 660  # seconds; matches the v0 shim
-
 
 def synth_id(vin, salt):
     """Deterministic, stable id from a VIN, kept < 2^53 so JSON float parsers can't round it."""
@@ -49,10 +47,9 @@ class Registry:
         return has_batt and fields.parse_location(f.get("Location"))[0] is not None
 
     def state_str(self, vin):
-        v = self.store.vehicles.get(vin)
-        last = v["last_epoch"] if v else 0.0
-        fresh = last and (time.time() - last) < ONLINE_WINDOW
-        return "online" if (fresh and self.ready(vin)) else "asleep"
+        # The authoritative state TeslaMate reads (online/asleep/offline) — driven by the Store's
+        # connectivity + /products-confirmed sleep detection (with a staleness backstop).
+        return self.store.vehicle_state(vin)
 
     def identity(self, vin):
         return {"id": synth_id(vin, "id:"), "vehicle_id": synth_id(vin, "vid:"), "vin": vin,

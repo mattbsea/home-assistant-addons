@@ -271,7 +271,7 @@ function buildCards(v){
       if(ins!=null&&ins>0)s="installing "+ins+"%"; else if(dl!=null&&dl>0&&dl<100)s="downloading "+dl+"%";
       return row("Update",uv.trim()+" · "+s);})()
    +row("Network",typeof raw('NetworkInterface')==="string"?raw('NetworkInterface'):null)
-   +row("Status",v.online?"online":"offline")
+   +row("Status",v.state||"—")
    +row("Last record",ago(v.last_seen_epoch))
    +row("Client",v.client_version||null)
    +row("Signals",Object.keys(f).length));
@@ -290,9 +290,13 @@ async function tick(){
  render(st);
 }
 function render(st){
+ // Sleep takes priority over raw telemetry freshness: a DISCONNECTED connectivity frame bumps the
+ // last-record time, so "fresh" can be true even as the car sleeps — show the confirmed state instead.
+ const vs=st.vehicles||[];
+ const asleep=vs.length>0&&vs.every(v=>v.state&&v.state!=="online");
  const fresh=st.last_record_epoch&&(st.now-st.last_record_epoch<600);
- $("#statusDot").style.background=fresh?"var(--good)":"var(--bad)";
- $("#statusTxt").textContent=fresh?"streaming":"no recent data";
+ $("#statusDot").style.background=asleep?"var(--mut)":(fresh?"var(--good)":"var(--bad)");
+ $("#statusTxt").textContent=asleep?"asleep":(fresh?"streaming":"no recent data");
  $("#ratePill").textContent=fmt(st.records_per_min,1)+" rec/min";
  $("#totalPill").textContent=fmt(st.total_records)+" records";
  $("#verPill").textContent="v"+(st.version||"—");

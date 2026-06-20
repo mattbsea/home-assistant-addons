@@ -1,5 +1,6 @@
 """Phase 3 — Fleet-API cold-start priming orchestration (HTTP injected)."""
 import importlib
+import time
 
 import conftest
 
@@ -66,6 +67,66 @@ def test_fetch_charge_fields_skips_invalid_brand():
                               get=lambda u, t: {"response": {"charge_state": {"fast_charger_brand": "<invalid>"}}},
                               log=lambda *_: None)
     assert "FastChargerBrand" not in store.snapshot(VIN)   # AC charging -> no brand, not "<invalid>"
+
+
+def _store_with_data():
+    s = state.Store()
+    s.ingest({"msg": "record_payload", "vin": VIN,
+              "data": {"Soc": 50, "Location": {"latitude": 47.4, "longitude": -122.2}}})
+    return s
+
+
+def test_products_state_returns_vehicle_state():
+    st = prime.products_state(vin=VIN, client_id="c", refresh_token="r", auth_host="a", fleet_host="f",
+                              post_form=lambda u, d: {"access_token": "AT"},
+                              get=lambda u, t: {"response": [{"vin": VIN, "state": "asleep"}]},
+                              log=lambda *_: None)
+    assert st == "asleep"
+
+
+def test_confirm_sleep_sets_state_when_confirmed_offline():
+    s = _store_with_data()
+    st = prime.confirm_sleep(s, VIN, time.time(), client_id="c", refresh_token="r", auth_host="a",
+                             fleet_host="f", settle_secs=0, sleeper=lambda _: None,
+                             post_form=lambda u, d: {"access_token": "AT"},
+                             get=lambda u, t: {"response": [{"vin": VIN, "state": "asleep"}]},
+                             log=lambda *_: None)
+    assert st == "asleep" and s.vehicle_state(VIN) == "asleep"
+
+
+def test_confirm_sleep_aborts_when_reconnected_during_window():
+    s = _store_with_data()
+    disc = s.vehicles[VIN]["last_data_epoch"] - 10   # disconnect "before" the last data => reconnected
+    polled = {"n": 0}
+
+    def get(u, t):
+        polled["n"] += 1
+        return {"response": [{"vin": VIN, "state": "asleep"}]}
+    st = prime.confirm_sleep(s, VIN, disc, client_id="c", refresh_token="r", auth_host="a", fleet_host="f",
+                             settle_secs=0, sleeper=lambda _: None, post_form=lambda u, d: {"access_token": "AT"},
+                             get=get, log=lambda *_: None)
+    assert st is None and s.vehicle_state(VIN) == "online" and polled["n"] == 0   # no /products poll
+
+
+def test_confirm_sleep_no_action_when_online():
+    s = _store_with_data()
+    st = prime.confirm_sleep(s, VIN, time.time(), client_id="c", refresh_token="r", auth_host="a",
+                             fleet_host="f", settle_secs=0, sleeper=lambda _: None,
+                             post_form=lambda u, d: {"access_token": "AT"},
+                             get=lambda u, t: {"response": [{"vin": VIN, "state": "online"}]},
+                             log=lambda *_: None)
+    assert st is None and s.vehicle_state(VIN) == "online"
+
+
+def test_confirm_sleep_handles_products_failure():
+    s = _store_with_data()
+
+    def boom(u, t):
+        raise RuntimeError("net")
+    st = prime.confirm_sleep(s, VIN, time.time(), client_id="c", refresh_token="r", auth_host="a",
+                             fleet_host="f", settle_secs=0, sleeper=lambda _: None,
+                             post_form=lambda u, d: {"access_token": "AT"}, get=boom, log=lambda *_: None)
+    assert st is None and s.vehicle_state(VIN) == "online"   # failure -> staleness backstop only
 
 
 def test_prime_skips_asleep_and_handles_no_creds():

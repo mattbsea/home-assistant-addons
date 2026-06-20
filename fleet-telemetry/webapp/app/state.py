@@ -17,6 +17,7 @@ from collections import deque
 import fields
 
 HISTORY_MAX = 600  # samples kept per sparkline series
+ONLINE_WINDOW = 660  # seconds of telemetry silence before we fall back to "asleep" (staleness backstop)
 
 # Fields the Fleet-API seed must NEVER write: telemetry expresses them by presence/absence, and a
 # (possibly mid-drive) snapshot would strand a live drive state. Telemetry is their sole source.
@@ -32,6 +33,7 @@ class Store:
         self._record_times = deque(maxlen=5000)   # epochs, for the records/min stat
         self._subscribers = []        # list[(loop, asyncio.Queue)]
         self.charge_starts = queue.Queue()        # vins whose charge session just began -> targeted Fleet fetch
+        self.sleep_checks = queue.Queue()         # (vin, disconnect_epoch) on DISCONNECTED -> settle + /products confirm
 
     # --- subscription (event bus) ------------------------------------------------------
     def subscribe(self, loop):
@@ -57,6 +59,7 @@ class Store:
         if v is None:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
                  "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
+                 "connected": True, "sleep_state": None, "last_data_epoch": 0.0, "last_connect_epoch": 0.0,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -73,9 +76,14 @@ class Store:
             return
         now = time.time()
         created = data.get("CreatedAt", "")
-        cver = (rec.get("metadata") or {}).get("device_client_version")
+        meta = rec.get("metadata") or {}
+        cver = meta.get("device_client_version")
+        # Connectivity frames carry the socket up/down signal (txtype=="connectivity", data.Status).
+        status = data.get("Status")
+        is_connectivity = meta.get("txtype") == "connectivity" or status is not None
         changed = {}
         charge_started = False
+        disconnected = False
         with self._lock:
             self.total_records += 1
             self.last_record_epoch = now
@@ -100,8 +108,20 @@ class Store:
                 elif k == "VehicleSpeed" and n is not None:
                     v["history"]["speed"].append((now, n))
             charge_started = self._track_charge_baseline(v)
+            # Connectivity vs liveness. A real telemetry record means the car is streaming = awake.
+            # A CONNECTED frame is also a wake signal; a DISCONNECTED frame starts a sleep check.
+            if is_connectivity:
+                if status == "CONNECTED":
+                    v["connected"], v["sleep_state"], v["last_connect_epoch"] = True, None, now
+                elif status == "DISCONNECTED":
+                    v["connected"] = False
+                    disconnected = True
+            else:
+                v["connected"], v["sleep_state"], v["last_data_epoch"] = True, None, now
         if charge_started:
             self.charge_starts.put(vin)   # signal the charge-field worker (off the tail thread)
+        if disconnected:
+            self.sleep_checks.put((vin, now))   # settle window + /products confirm runs off-thread
         if changed:
             self._publish({"vin": vin, "changed": changed, "at": now})
 
@@ -160,6 +180,42 @@ class Store:
         with self._lock:
             v = self.vehicles.get(vin)
             return (v.get("display_name") if v else None) or vin
+
+    # --- sleep detection ---------------------------------------------------------------
+    def set_sleep_state(self, vin, state):
+        """Record the Fleet-API-confirmed non-online state ('asleep'/'offline') for the VIN."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if v:
+                v["sleep_state"] = state
+
+    def reconnected_since(self, vin, since):
+        """True if the car reconnected or streamed real telemetry after `since` — cancels a sleep check."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v:
+                return False
+            return max(v.get("last_data_epoch", 0.0), v.get("last_connect_epoch", 0.0)) > since
+
+    def vehicle_state(self, vin):
+        """Authoritative state for the shim (TeslaMate) and dashboard: 'online' / 'asleep' / 'offline'.
+        A /products-confirmed sleep_state wins; otherwise online when ready + recent telemetry, else the
+        staleness backstop ('asleep') so we never hang 'online' if the /products confirm never lands."""
+        now = time.time()
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v:
+                return "offline"
+            if v.get("sleep_state"):
+                return v["sleep_state"]
+            f = v["fields"]
+
+            def val(k):
+                return f[k]["value"] if k in f else None
+            has_batt = fields.num(val("Soc")) is not None or fields.num(val("BatteryLevel")) is not None
+            has_loc = fields.parse_location(val("Location"))[0] is not None
+            fresh = v.get("last_data_epoch", 0.0) and (now - v["last_data_epoch"]) < ONLINE_WINDOW
+        return "online" if (fresh and has_batt and has_loc) else "asleep"
 
     # --- reads -------------------------------------------------------------------------
     def snapshot(self, vin):

@@ -5,12 +5,75 @@ Reuses the Phase 0 records fixture; the ingest behavior is pinned to match the v
 """
 import asyncio
 import importlib
+import time
 
 import conftest
 
 state = importlib.import_module("app.state")
 
 VIN = "7SAYGDEE3PF884783"
+
+
+def _data(**d):
+    return {"msg": "record_payload", "vin": VIN, "data": d}
+
+
+def _conn(status):
+    return {"msg": "record_payload", "vin": VIN, "metadata": {"txtype": "connectivity"},
+            "data": {"Status": status, "ConnectionID": "c1", "NetworkInterface": "cellular", "Vin": VIN}}
+
+
+def test_disconnected_enqueues_sleep_check():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    assert store.vehicle_state(VIN) == "online"          # streaming data + ready
+    store.ingest(_conn("DISCONNECTED"))
+    assert store.vehicles[VIN]["connected"] is False
+    vin, epoch = store.sleep_checks.get_nowait()
+    assert vin == VIN and epoch > 0
+    # a DISCONNECTED alone does NOT immediately flip to asleep (settle + /products confirm does)
+    assert store.vehicle_state(VIN) == "online"
+
+
+def test_sleep_state_reported_and_cleared_on_reconnect():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    store.set_sleep_state(VIN, "asleep")
+    assert store.vehicle_state(VIN) == "asleep"          # confirmed sleep wins
+    store.ingest(_conn("CONNECTED"))                      # reconnect clears it
+    assert store.vehicle_state(VIN) == "online"
+
+
+def test_data_record_clears_sleep_state():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    store.set_sleep_state(VIN, "asleep")
+    store.ingest(_data(Soc=51))                           # real telemetry = awake
+    assert store.vehicle_state(VIN) == "online"
+
+
+def test_reconnected_since():
+    store = state.Store()
+    store.ingest(_data(Soc=50))
+    t = store.vehicles[VIN]["last_data_epoch"]
+    assert store.reconnected_since(VIN, t - 1) is True
+    assert store.reconnected_since(VIN, t + 1) is False
+
+
+def test_vehicle_state_staleness_backstop():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    assert store.vehicle_state(VIN) == "online"
+    store.vehicles[VIN]["last_data_epoch"] = time.time() - (state.ONLINE_WINDOW + 60)
+    assert store.vehicle_state(VIN) == "asleep"           # no /products confirm, but stale -> backstop
+
+
+def test_connectivity_frame_does_not_count_as_fresh_data():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    store.vehicles[VIN]["last_data_epoch"] = time.time() - (state.ONLINE_WINDOW + 60)   # data went stale
+    store.ingest(_conn("DISCONNECTED"))                  # a connectivity frame must NOT refresh liveness
+    assert store.vehicle_state(VIN) == "asleep"
 
 
 def test_ingest_matches_v0_field_keeping():

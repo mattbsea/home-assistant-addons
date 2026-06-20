@@ -123,6 +123,7 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
     priv = os.environ.get("FT_PRIVATE_KEY", "/data/keys/private-key.pem")
     logged_post_form = fleetlog.wrap_post_form(fleet_log, prime._post_form)
     logged_get = fleetlog.wrap_get(fleet_log, prime._get)
+    settle_secs = int(os.environ.get("FT_SLEEP_SETTLE_SECS", "60"))
 
     def _creds():
         c = cfgmod.load(config_path).get("tesla", {})
@@ -157,8 +158,23 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
             except Exception as exc:   # a charge-fetch failure must never kill the worker
                 print(f"[app] charge-fetch worker error: {exc!r}", flush=True)
 
+    def sleep_loop():
+        while True:
+            vin, disc = registry.store.sleep_checks.get()   # blocks until a DISCONNECTED frame
+            try:
+                cid, rt, fleet_host = _creds()
+                st = prime.confirm_sleep(registry.store, vin, disc, client_id=cid, refresh_token=rt,
+                                         auth_host=auth, fleet_host=fleet_host, settle_secs=settle_secs,
+                                         post_form=logged_post_form, get=logged_get, on_token=_save_refresh_token,
+                                         log=lambda m: print(m, flush=True))
+                if st:
+                    print(f"[app] {vin} confirmed '{st}' via /products — reporting sleep to TeslaMate", flush=True)
+            except Exception as exc:   # a sleep-check failure must never kill the worker
+                print(f"[app] sleep-check worker error: {exc!r}", flush=True)
+
     threading.Thread(target=seed_loop, daemon=True).start()
     threading.Thread(target=charge_loop, daemon=True).start()
+    threading.Thread(target=sleep_loop, daemon=True).start()
 
 
 async def _serve(app, port):

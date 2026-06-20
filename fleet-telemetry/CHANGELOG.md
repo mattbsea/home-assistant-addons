@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.19
+
+### Added (sleep detection)
+- **The add-on now detects sleep promptly and feeds TeslaMate the correct state.** The car announces
+  its telemetry socket going down via a connectivity frame (`txtype:"connectivity"`,
+  `data.Status:"DISCONNECTED"`); previously that frame was treated like any record and kept the add-on
+  "online/streaming" for up to 11 minutes, so TeslaMate's sleep view diverged. Now:
+  - On `DISCONNECTED`, after a **settle-down window** (`FT_SLEEP_SETTLE_SECS`, default 60 s — rides out
+    transient cellular drops), the add-on makes one lightweight `/products` call (no `vehicle_data`, so
+    it **never wakes the car**) to confirm the real state.
+  - If confirmed `asleep`/`offline`, the shim reports that state to TeslaMate immediately (the vehicle
+    `state` its sleep state-machine reads), instead of waiting out the staleness window. A reconnect or
+    any telemetry during the settle window cancels the check. The 11-minute staleness remains as a
+    backstop so the state never hangs "online".
+- **Dashboard shows sleep status** — the header pill and per-vehicle Status row now render the
+  authoritative `online`/`asleep`/`offline` state (sleep takes priority over raw telemetry freshness).
+
 ## 1.0.18
 
 ### Fixed (dashboard)

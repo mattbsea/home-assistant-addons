@@ -28,6 +28,21 @@ def test_products_and_identity():
     assert ident["id"] == shim_rest.synth_id(VIN, "id:")
 
 
+def test_state_asleep_propagates():
+    """The sleep indicator TeslaMate reads (vehicle list/single `state`, and vehicle_data `state`) flips
+    to asleep once the Store confirms it — not stay 'online'."""
+    store = state.Store()
+    for r in conftest.load_records():
+        store.ingest(r)
+    reg = shim_rest.Registry(store)
+    client = TestClient(shim_rest.build_app(store, reg))
+    eid = shim_rest.synth_id(VIN, "id:")
+    assert client.get(f"/api/1/vehicles/{eid}").json()["response"]["state"] == "online"
+    store.set_sleep_state(VIN, "asleep")
+    assert client.get(f"/api/1/vehicles/{eid}").json()["response"]["state"] == "asleep"
+    assert client.get(f"/api/1/vehicles/{eid}/vehicle_data").json()["response"]["state"] == "asleep"
+
+
 def test_vehicle_data_over_http():
     c, _ = _client()
     eid = shim_rest.synth_id(VIN, "id:")

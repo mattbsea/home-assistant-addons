@@ -96,8 +96,10 @@ def assemble(f, *, ts, identity, charge_baseline=None):
                               "ft": 1 if doors.get("TrunkFront") else 0, "rt": 1 if doors.get("TrunkRear") else 0})
 
     vehicle_config = f.get("VehicleConfig") if isinstance(f.get("VehicleConfig"), dict) else {}
-    return {**identity, "state": "online", "drive_state": drive_state, "charge_state": charge_state,
-            "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": vehicle_config}
+    out = {**identity, "drive_state": drive_state, "charge_state": charge_state,
+           "climate_state": climate_state, "vehicle_state": vehicle_state, "vehicle_config": vehicle_config}
+    out.setdefault("state", "online")   # identity carries the authoritative state; default for bare callers
+    return out
 
 
 def vehicle_data(f, *, ts, identity, charge_baseline=None):

@@ -40,6 +40,7 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
                 f["Elevation"] = {"value": elev_m, "created_at": "", "received_at": now, "source": "derived"}
         vehicles.append({
             "vin": vin, "display_name": m["display_name"], "fields": f,
+            "state": store.vehicle_state(vin),   # online / asleep / offline (authoritative)
             "location": {"lat": lat, "lon": lon},
             "soc_history": m["soc"], "speed_history": m["speed"],
             "client_version": m["client_version"], "last_seen_epoch": m["last_seen_epoch"],

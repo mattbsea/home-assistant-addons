@@ -6,6 +6,7 @@ already-online vehicle fetch a full vehicle_data snapshot and hand it to the Reg
 never wake a sleeping car. HTTP is injectable so the orchestration is unit-testable.
 """
 import json
+import time
 import urllib.parse
 import urllib.request
 
@@ -30,6 +31,52 @@ def _get(url, token):
 def extract_prime(vehicle_data_response):
     """Pull just the prime sections from a vehicle_data response."""
     return {k: vehicle_data_response.get(k) for k in _PRIME_SECTIONS}
+
+
+def products_state(*, vin, client_id, refresh_token, auth_host, fleet_host,
+                   post_form=_post_form, get=_get, on_token=None, log=print):
+    """Return the Fleet-API state ('online'/'asleep'/'offline'/...) for the VIN via /products ONLY —
+    no vehicle_data call, so it never wakes the car. None if creds missing / unreachable / unknown."""
+    if not (client_id and refresh_token):
+        return None
+    try:
+        tok = post_form(auth_host + "/oauth2/v3/token",
+                        {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token})
+    except Exception as e:
+        log(f"[sleep] token refresh failed: {e}")
+        return None
+    new_rt = tok.get("refresh_token")
+    if new_rt and new_rt != refresh_token and on_token:
+        on_token(new_rt)
+    at = tok.get("access_token")
+    if not at:
+        return None
+    try:
+        products = get(fleet_host + "/api/1/products", at).get("response", []) or []
+    except Exception as e:
+        log(f"[sleep] /products failed: {e}")
+        return None
+    for p in products:
+        if p.get("vin") == vin:
+            return p.get("state")
+    return None
+
+
+def confirm_sleep(store, vin, disconnect_epoch, *, client_id, refresh_token, auth_host, fleet_host,
+                  settle_secs=60, sleeper=time.sleep, post_form=_post_form, get=_get, on_token=None, log=print):
+    """After a DISCONNECTED frame: wait the settle window, then — if the car hasn't reconnected/streamed
+    in the meantime — confirm via /products and record the non-online state on the Store. Returns the
+    state recorded, or None (reconnected, online, or unreachable). Used by the sleep worker; `sleeper`
+    is injectable so tests don't actually wait."""
+    sleeper(settle_secs)
+    if store.reconnected_since(vin, disconnect_epoch):
+        return None   # transient drop — reconnected within the settle window
+    st = products_state(vin=vin, client_id=client_id, refresh_token=refresh_token, auth_host=auth_host,
+                        fleet_host=fleet_host, post_form=post_form, get=get, on_token=on_token, log=log)
+    if st is not None and st != "online":
+        store.set_sleep_state(vin, st)
+        return st
+    return None
 
 
 def fetch_charge_fields(store, *, vin, tesla_id, client_id, refresh_token, auth_host, fleet_host,
