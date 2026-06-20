@@ -46,6 +46,19 @@ def test_wizard_state_save_and_read(tmp_path):
     assert c.get("/api/wizard/state").json()["step"] == 3
 
 
+def test_telemetry_catalog_and_override_roundtrip(tmp_path):
+    c = _client(tmp_path)
+    cat = c.get("/api/wizard/telemetry").json()
+    assert "Soc" in cat["default_roster"] and cat["groups"]["Soc"] == "Battery & Charging"
+    assert "Gear" in cat["essential"] and len(cat["all_fields"]) > 100
+    assert cat["override"] == {} and cat["profile"] == "teslamate"
+    # save an override -> persisted to shim-state (unwatched), reflected on next GET
+    ov = {"Soc": {"enabled": True, "interval_seconds": 15}, "Gear": {"enabled": False}}
+    assert c.post("/api/wizard/telemetry", json={"override": ov, "profile": "custom"}).json()["ok"]
+    again = c.get("/api/wizard/telemetry").json()
+    assert again["override"] == ov and again["profile"] == "custom"
+
+
 def test_keypair(tmp_path):
     c = _client(tmp_path)
     r = c.post("/api/wizard/keypair", json={}).json()

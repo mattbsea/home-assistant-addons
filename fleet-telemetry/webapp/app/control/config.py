@@ -61,16 +61,16 @@ def load(path):
     return cfg
 
 
-def save(path, patch):
-    current = {}
+def _read_raw(path):
     try:
         with open(path) as fh:
-            current = json.load(fh) or {}
+            cur = json.load(fh) or {}
     except (OSError, ValueError):
-        current = {}
-    if not isinstance(current, dict):
-        current = {}
-    deep_merge(current, patch)
+        cur = {}
+    return cur if isinstance(cur, dict) else {}
+
+
+def _atomic_write(path, current):
     dirpath = os.path.dirname(path) or "."
     os.makedirs(dirpath, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=dirpath, suffix=".tmp")
@@ -86,6 +86,12 @@ def save(path, patch):
             pass
         raise
     return load(path)
+
+
+def save(path, patch):
+    current = _read_raw(path)
+    deep_merge(current, patch)
+    return _atomic_write(path, current)
 
 
 def redacted(path):

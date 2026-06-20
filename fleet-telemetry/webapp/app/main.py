@@ -122,8 +122,15 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
     wizard_state = os.environ.get("FT_WIZARD_STATE", "/data/wizard-state.json")
     cert_file = os.environ.get("FT_CERT_FILE", "/data/certs/server.crt")
     priv = os.environ.get("FT_PRIVATE_KEY", "/data/keys/private-key.pem")
-    logged_post_form = fleetlog.wrap_post_form(fleet_log, prime._post_form)
-    logged_get = fleetlog.wrap_get(fleet_log, prime._get)
+    # Count every Fleet-API call at the request choke point. The counter wrapper is INNERMOST — under
+    # the fleet-log wrapper — so it keeps working when the diagnostic logs are eventually removed.
+    def _count_call(fn):
+        def w(url, *a, **k):
+            registry.store.note_fleet_call(url)
+            return fn(url, *a, **k)
+        return w
+    logged_post_form = fleetlog.wrap_post_form(fleet_log, _count_call(prime._post_form))
+    logged_get = fleetlog.wrap_get(fleet_log, _count_call(prime._get))
     settle_secs = int(os.environ.get("FT_SLEEP_SETTLE_SECS", "60"))
     bridge_secs = int(os.environ.get("FT_BRIDGE_POLL_SECS", "300"))
 

@@ -103,6 +103,39 @@ def test_telemetry_fields_hash_stable_and_sensitive():
         fields.TELEMETRY_FIELDS = saved
 
 
+def test_effective_roster_overlays_override():
+    # untouched default fields stay; an interval override applies; an essential disabled is dropped
+    eff = fields.effective_roster({"VehicleSpeed": {"enabled": True, "interval_seconds": 3},
+                                   "Gear": {"enabled": False}})
+    assert eff["VehicleSpeed"] == {"interval_seconds": 3}
+    assert "Gear" not in eff
+    assert "Soc" in eff                                   # untouched default kept
+    # adding a non-default (show-all) field when enabled
+    eff2 = fields.effective_roster({"SeatHeaterLeft": {"enabled": True, "interval_seconds": 30}})
+    assert eff2["SeatHeaterLeft"] == {"interval_seconds": 30}
+
+
+def test_effective_roster_empty_is_default():
+    assert fields.effective_roster({}) == fields.effective_roster(None) == dict(fields.TELEMETRY_FIELDS)
+
+
+def test_hash_tracks_effective_roster():
+    base = fields.telemetry_fields_hash(fields.effective_roster({}))
+    changed = fields.telemetry_fields_hash(fields.effective_roster({"Soc": {"enabled": False}}))
+    assert base != changed                               # disabling a field changes the fingerprint
+
+
+def test_catalog_integrity():
+    # every curated field has a group; every essential is curated; curated ⊆ the full proto enum
+    allset = set(fields.ALL_FIELDS)
+    for name in fields.TELEMETRY_FIELDS:
+        assert name in fields.FIELD_GROUPS, f"{name} has no group"
+        assert name in allset, f"{name} missing from ALL_FIELDS"
+    for name in fields.ESSENTIAL_FIELDS:
+        assert name in fields.TELEMETRY_FIELDS, f"essential {name} not in default roster"
+    assert fields.PROFILES["teslamate"] == fields.TELEMETRY_FIELDS
+
+
 def test_meta_sets():
     # base set (dashboard/shim ingest keep connectivity keys via base); shim drops the extra three.
     assert fields.META_BASE == {"CreatedAt", "IsResend", "Vin"}

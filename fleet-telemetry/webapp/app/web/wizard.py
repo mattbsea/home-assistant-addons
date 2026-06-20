@@ -159,6 +159,35 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
             return JSONResponse({"ok": True})
         return JSONResponse(r)
 
+    async def get_telemetry(_req):
+        """Catalog (groups/essential/all-fields/defaults/profiles) + the current override + profile,
+        for the telemetry-config editor. The override lives in shim-state (unwatched)."""
+        import fields
+        st = tokens.read_state(shim_state_path)
+        srv = cfg().get("server", {})
+        return JSONResponse({
+            "default_roster": fields.DEFAULT_ROSTER,
+            "groups": fields.FIELD_GROUPS,
+            "essential": sorted(fields.ESSENTIAL_FIELDS),
+            "all_fields": list(fields.ALL_FIELDS),
+            "profiles": fields.PROFILES,
+            "override": st.get("telemetry_roster", {}),
+            "profile": st.get("telemetry_profile", "teslamate"),
+            "rate_limit": {"message_limit": srv.get("rate_limit_message_limit", 1000),
+                           "interval": srv.get("rate_limit_message_interval", 30)},
+        })
+
+    async def post_telemetry(req):
+        """Persist the telemetry-roster override to shim-state (unwatched, so editing it does NOT bounce
+        the binary). The next 'Send to vehicle' / auto-resend pushes the effective roster to the car."""
+        body = await _json_body(req) or {}
+        override = body.get("override")
+        if not isinstance(override, dict):
+            return JSONResponse({"error": "override must be a JSON object"}, status_code=400)
+        tokens.write_state(shim_state_path, telemetry_roster=override,
+                           telemetry_profile=str(body.get("profile") or "custom"))
+        return JSONResponse({"ok": True})
+
     async def check(req):
         body = await _json_body(req) or {}
         kind = body.get("check")
@@ -182,17 +211,18 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
             except (TypeError, ValueError):
                 port = 4443
             refresh_token = tokens.load(shim_state_path) or c.get("shim_refresh_token", "")
+            import fields
+            roster = fields.effective_roster(tokens.read_state(shim_state_path).get("telemetry_roster"))
             r = sendconfig.send(vins=registry.vins() if registry else [], client_id=c.get("client_id", ""),
                                 refresh_token=refresh_token, domain=domain, region=region,
-                                port=port, cert_file=cert_file, private_key_file=private_key_path)
+                                port=port, cert_file=cert_file, private_key_file=private_key_path, roster=roster)
             if r.get("new_refresh_token"):
                 # Rotated token -> shim-state (NOT the watched config; would bounce the binary). Persist
                 # on success OR failure: the token rotates during the refresh regardless of the POST.
                 tokens.save(shim_state_path, r["new_refresh_token"])
             if r.get("ok"):
                 # Record the roster fingerprint so the post-prime auto-resend doesn't re-fire needlessly.
-                import fields
-                tokens.write_state(shim_state_path, telemetry_fields_hash=fields.telemetry_fields_hash())
+                tokens.write_state(shim_state_path, telemetry_fields_hash=fields.telemetry_fields_hash(roster))
             return JSONResponse(r)
         return JSONResponse({"error": "unknown check type"}, status_code=400)
 
@@ -206,6 +236,8 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         Route("/api/wizard/hostports", host_ports),
         Route("/api/wizard/save", wiz_save, methods=["POST"]),
         Route("/api/wizard/config", post_config, methods=["POST"]),
+        Route("/api/wizard/telemetry", get_telemetry, methods=["GET"]),
+        Route("/api/wizard/telemetry", post_telemetry, methods=["POST"]),
         Route("/api/wizard/keypair", keypair, methods=["POST"]),
         Route("/api/wizard/npm-proxy-host", npm_proxy_host, methods=["POST"]),
         Route("/api/wizard/npm-stream", npm_stream, methods=["POST"]),

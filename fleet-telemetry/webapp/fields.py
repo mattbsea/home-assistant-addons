@@ -317,9 +317,134 @@ TELEMETRY_FIELDS = {
 }
 
 
-def telemetry_fields_hash():
-    """Stable fingerprint of the requested-field roster. Used to auto-resend fleet_telemetry_config
-    when (and only when) the roster changes — e.g. across an add-on upgrade that adds fields."""
+DEFAULT_ROSTER = TELEMETRY_FIELDS   # the curated set IS the default ("TeslaMate Complete") profile
+
+# Field -> UI group, for the editor. Every curated field is grouped; anything else falls under "Other".
+FIELD_GROUPS = {
+    **{k: "Drive & Location" for k in ("VehicleSpeed", "Location", "GpsHeading", "Gear", "Odometer")},
+    **{k: "Battery & Charging" for k in (
+        "Soc", "BatteryLevel", "EnergyRemaining", "RatedRange", "EstBatteryRange", "IdealBatteryRange",
+        "PackVoltage", "PackCurrent", "DetailedChargeState", "ACChargingPower", "DCChargingPower",
+        "ACChargingEnergyIn", "DCChargingEnergyIn", "ChargeAmps", "ChargerVoltage", "ChargeRateMilePerHour",
+        "ChargerPhases", "ChargeLimitSoc", "TimeToFullCharge", "ChargingCableType", "FastChargerPresent",
+        "FastChargerType", "ChargeCurrentRequest", "ChargeCurrentRequestMax", "ChargePortDoorOpen",
+        "ChargePortLatch", "BatteryHeaterOn", "NotEnoughPowerToHeat")},
+    **{k: "Climate" for k in (
+        "InsideTemp", "OutsideTemp", "HvacACEnabled", "HvacPower", "HvacFanStatus",
+        "HvacLeftTemperatureRequest", "HvacRightTemperatureRequest", "ClimateKeeperMode",
+        "CabinOverheatProtectionMode", "PreconditioningEnabled", "DefrostMode", "RearDefrostEnabled")},
+    **{k: "Body & Security" for k in (
+        "Locked", "SentryMode", "DoorState", "FdWindow", "FpWindow", "RdWindow", "RpWindow", "VehicleName")},
+    **{k: "Tires" for k in (
+        "TpmsPressureFl", "TpmsPressureFr", "TpmsPressureRl", "TpmsPressureRr",
+        "TpmsHardWarnings", "TpmsSoftWarnings")},
+    **{k: "Software" for k in (
+        "Version", "SoftwareUpdateVersion", "SoftwareUpdateInstallationPercentComplete",
+        "SoftwareUpdateDownloadPercentComplete")},
+    **{k: "Navigation" for k in (
+        "DestinationName", "DestinationLocation", "MilesToArrival", "MinutesToArrival",
+        "RouteLastUpdated", "RouteTrafficMinutesDelay", "ExpectedEnergyPercentAtTripArrival")},
+    **{k: "Geofence" for k in ("LocatedAtHome", "LocatedAtWork", "LocatedAtFavorite")},
+}
+
+# Fields TeslaMate needs for correct drives/charges/power — disabling these silently breaks it.
+ESSENTIAL_FIELDS = frozenset((
+    "Location", "Soc", "BatteryLevel", "Gear", "DetailedChargeState", "Odometer", "VehicleSpeed",
+    "PackVoltage", "PackCurrent"))
+
+# Every Tesla telemetry Field (proto enum), for the editor's "show all" power-user view. The curated
+# roster is a subset; the rest only reach raw Logger/MQTT/Pub-Sub (not the dashboard/TeslaMate shim).
+ALL_FIELDS = (
+    "DriveRail", "ChargeState", "BmsFullchargecomplete", "VehicleSpeed", "Odometer", "PackVoltage",
+    "PackCurrent", "Soc", "DCDCEnable", "Gear", "IsolationResistance", "PedalPosition", "BrakePedal",
+    "DiStateR", "DiHeatsinkTR", "DiAxleSpeedR", "DiTorquemotor", "DiStatorTempR", "DiVBatR",
+    "DiMotorCurrentR", "Location", "GpsState", "GpsHeading", "NumBrickVoltageMax", "BrickVoltageMax",
+    "NumBrickVoltageMin", "BrickVoltageMin", "NumModuleTempMax", "ModuleTempMax", "NumModuleTempMin",
+    "ModuleTempMin", "RatedRange", "Hvil", "DCChargingEnergyIn", "DCChargingPower", "ACChargingEnergyIn",
+    "ACChargingPower", "ChargeLimitSoc", "FastChargerPresent", "EstBatteryRange", "IdealBatteryRange",
+    "BatteryLevel", "TimeToFullCharge", "ScheduledChargingStartTime", "ScheduledChargingPending",
+    "ScheduledDepartureTime", "PreconditioningEnabled", "ScheduledChargingMode", "ChargeAmps",
+    "ChargeEnableRequest", "ChargerPhases", "ChargePortColdWeatherMode", "ChargeCurrentRequest",
+    "ChargeCurrentRequestMax", "BatteryHeaterOn", "NotEnoughPowerToHeat", "SuperchargerSessionTripPlanner",
+    "DoorState", "Locked", "FdWindow", "FpWindow", "RdWindow", "RpWindow", "VehicleName", "SentryMode",
+    "SpeedLimitMode", "CurrentLimitMph", "Version", "TpmsPressureFl", "TpmsPressureFr", "TpmsPressureRl",
+    "TpmsPressureRr", "TpmsLastSeenPressureTimeFl", "TpmsLastSeenPressureTimeFr",
+    "TpmsLastSeenPressureTimeRl", "TpmsLastSeenPressureTimeRr", "InsideTemp", "OutsideTemp",
+    "SeatHeaterLeft", "SeatHeaterRight", "SeatHeaterRearLeft", "SeatHeaterRearRight",
+    "SeatHeaterRearCenter", "AutoSeatClimateLeft", "AutoSeatClimateRight", "DriverSeatBelt",
+    "PassengerSeatBelt", "DriverSeatOccupied", "LateralAcceleration", "LongitudinalAcceleration",
+    "CruiseSetSpeed", "LifetimeEnergyUsed", "LifetimeEnergyUsedDrive", "BrakePedalPos", "RouteLastUpdated",
+    "RouteLine", "MilesToArrival", "MinutesToArrival", "OriginLocation", "DestinationLocation", "CarType",
+    "Trim", "ExteriorColor", "RoofColor", "ChargePort", "ChargePortLatch", "GuestModeEnabled",
+    "PinToDriveEnabled", "PairedPhoneKeyAndKeyFobQty", "CruiseFollowDistance", "AutomaticBlindSpotCamera",
+    "BlindSpotCollisionWarningChime", "SpeedLimitWarning", "ForwardCollisionWarning",
+    "LaneDepartureAvoidance", "EmergencyLaneDepartureAvoidance", "AutomaticEmergencyBrakingOff",
+    "LifetimeEnergyGainedRegen", "EnergyRemaining", "ServiceMode", "BMSState",
+    "GuestModeMobileAccessState", "DestinationName", "DetailedChargeState", "CabinOverheatProtectionMode",
+    "CabinOverheatProtectionTemperatureLimit", "CenterDisplay", "ChargePortDoorOpen", "ChargerVoltage",
+    "ChargingCableType", "ClimateKeeperMode", "DefrostForPreconditioning", "DefrostMode",
+    "EfficiencyPackage", "EstimatedHoursToChargeTermination", "EuropeVehicle",
+    "ExpectedEnergyPercentAtTripArrival", "FastChargerType", "HomelinkDeviceCount", "HomelinkNearby",
+    "HvacACEnabled", "HvacAutoMode", "HvacFanSpeed", "HvacFanStatus", "HvacLeftTemperatureRequest",
+    "HvacPower", "HvacRightTemperatureRequest", "HvacSteeringWheelHeatAuto", "HvacSteeringWheelHeatLevel",
+    "OffroadLightbarPresent", "PowershareHoursLeft", "PowershareInstantaneousPowerKW", "PowershareStatus",
+    "PowershareStopReason", "PowershareType", "RearDisplayHvacEnabled", "RearSeatHeaters",
+    "RemoteStartEnabled", "RightHandDrive", "RouteTrafficMinutesDelay",
+    "SoftwareUpdateDownloadPercentComplete", "SoftwareUpdateExpectedDurationMinutes",
+    "SoftwareUpdateInstallationPercentComplete", "SoftwareUpdateScheduledStartTime",
+    "SoftwareUpdateVersion", "TonneauOpenPercent", "TonneauPosition", "TonneauTentMode",
+    "TpmsHardWarnings", "TpmsSoftWarnings", "ValetModeEnabled", "WheelType", "WiperHeatEnabled",
+    "LocatedAtHome", "LocatedAtWork", "LocatedAtFavorite", "SettingDistanceUnit", "SettingTemperatureUnit",
+    "Setting24HourTime", "SettingTirePressureUnit", "SettingChargeUnit", "ClimateSeatCoolingFrontLeft",
+    "ClimateSeatCoolingFrontRight", "LightsHazardsActive", "LightsTurnSignal", "LightsHighBeams",
+    "MediaPlaybackStatus", "MediaPlaybackSource", "MediaAudioVolume", "MediaNowPlayingDuration",
+    "MediaNowPlayingElapsed", "MediaNowPlayingArtist", "MediaNowPlayingTitle", "MediaNowPlayingAlbum",
+    "MediaNowPlayingStation", "MediaAudioVolumeIncrement", "MediaAudioVolumeMax", "SunroofInstalled",
+    "SeatVentEnabled", "RearDefrostEnabled", "ChargeRateMilePerHour", "MilesSinceReset",
+    "SelfDrivingMilesSinceReset",
+)
+
+
+def _low_bandwidth_roster():
+    """Essentials only, intervals relaxed to >= 30 s — a minimal, low-volume profile."""
+    return {k: {"interval_seconds": max(30, DEFAULT_ROSTER.get(k, {}).get("interval_seconds", 30))}
+            for k in ESSENTIAL_FIELDS}
+
+
+# Presets the editor offers. "custom" = a user override is in effect (no fixed dict).
+PROFILES = {
+    "teslamate": DEFAULT_ROSTER,
+    "low_bandwidth": _low_bandwidth_roster(),
+}
+
+
+def effective_roster(override=None):
+    """The roster actually sent to the car: DEFAULT_ROSTER overlaid by the user override. `override` is
+    {Name: {enabled: bool, interval_seconds: int}}. Returns {Name: {interval_seconds}} of ENABLED fields.
+    Fields absent from the override keep their default (enabled). Disabled fields are dropped; fields the
+    override adds (e.g. from 'show all') are included when enabled."""
+    override = override or {}
+    out = {}
+    for name in set(TELEMETRY_FIELDS) | set(override):
+        o = override.get(name)
+        if o is None:                       # untouched default field -> keep as default
+            out[name] = dict(TELEMETRY_FIELDS[name])
+            continue
+        if not o.get("enabled", True):      # explicitly disabled
+            continue
+        default_iv = TELEMETRY_FIELDS.get(name, {}).get("interval_seconds", 60)
+        try:
+            iv = int(o.get("interval_seconds", default_iv))
+        except (TypeError, ValueError):
+            iv = default_iv
+        out[name] = {"interval_seconds": max(1, iv)}
+    return out
+
+
+def telemetry_fields_hash(roster=None):
+    """Stable fingerprint of a requested-field roster (defaults to DEFAULT_ROSTER). Used to auto-resend
+    fleet_telemetry_config when (and only when) the roster changes — across an upgrade or a user edit."""
     import hashlib
     import json as _json
-    return hashlib.sha256(_json.dumps(TELEMETRY_FIELDS, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(_json.dumps(TELEMETRY_FIELDS if roster is None else roster,
+                                      sort_keys=True).encode()).hexdigest()

@@ -41,8 +41,9 @@ def _refresh_access_token(client_id, refresh_token, auth_host):
 
 
 def send(*, vins, client_id, refresh_token, domain, region, port=4443, cert_file, private_key_file,
-         proxy_bin="/usr/local/bin/tesla-http-proxy", auth_host="https://auth.tesla.com"):
+         proxy_bin="/usr/local/bin/tesla-http-proxy", auth_host="https://auth.tesla.com", roster=None):
     """Sign and POST fleet_telemetry_config for `vins`. Returns {ok, response} or {ok: False, error}.
+    `roster` (name -> {interval_seconds}) defaults to fields.DEFAULT_ROSTER; pass the effective roster.
     `on_token` rotation is the caller's concern (it owns persistence)."""
     if not client_id:
         return {"ok": False, "error": "Tesla client_id is not set"}
@@ -70,7 +71,7 @@ def send(*, vins, client_id, refresh_token, domain, region, port=4443, cert_file
             ca_chain = extract_ca_chain(fh.read())
     except OSError:
         pass
-    payload = json.dumps(build_request(domain, port, ca_chain, vins)).encode()
+    payload = json.dumps(build_request(domain, port, ca_chain, vins, roster=roster)).encode()
 
     tmpdir = __import__("tempfile").mkdtemp(prefix="ft-proxy-")
     proxy_key = os.path.join(tmpdir, "proxy.key")

@@ -8,6 +8,11 @@ The shim-state file is unwatched, so the token rotates freely without disrupting
 """
 import json
 import os
+import threading
+
+# Serialise the read-modify-write: token rotation (seed/bridge threads) and the roster-override save
+# (web thread) both merge into this one file, so an unlocked interleave could drop a rotated token.
+_LOCK = threading.Lock()
 
 
 def read_state(state_path):
@@ -21,14 +26,15 @@ def read_state(state_path):
 
 def write_state(state_path, **updates):
     """Merge keys into shim-state atomically. Never write to the watched wizard-config.json."""
-    data = read_state(state_path)
-    data.update(updates)
-    try:
-        with open(state_path + ".tmp", "w") as fh:
-            json.dump(data, fh)
-        os.replace(state_path + ".tmp", state_path)
-    except OSError:
-        pass
+    with _LOCK:
+        data = read_state(state_path)
+        data.update(updates)
+        try:
+            with open(state_path + ".tmp", "w") as fh:
+                json.dump(data, fh)
+            os.replace(state_path + ".tmp", state_path)
+        except OSError:
+            pass
 
 
 def load(state_path):

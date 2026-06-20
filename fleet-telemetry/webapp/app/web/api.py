@@ -49,7 +49,9 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
     return {"now": now, "uptime_seconds": (now - start_time) if start_time else 0,
             "total_records": total, "records_per_min": store.rate_per_min(),
             "last_record_epoch": last, "namespace": namespace,
-            "version": version, "cert": cert or {}, "vehicles": vehicles}
+            "version": version, "cert": cert or {}, "vehicles": vehicles,
+            # Fleet-API calls made since add-on start (in-memory; resets on restart).
+            "fleet_api": {**store.fleet_calls(), "since": start_time}}
 
 
 async def sse_stream(store, payload_fn, *, idle_timeout=20.0, coalesce=0.2):

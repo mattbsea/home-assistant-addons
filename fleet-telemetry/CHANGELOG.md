@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.21
+
+### Added — telemetry-config editor + Fleet-API call counter
+- **The "Configure Your Vehicle" wizard step is now an intelligent editor.** Pick a **profile**
+  (*TeslaMate Complete* / *Low bandwidth* / *Custom*), then optionally fine-tune in an advanced,
+  grouped accordion: per-field **on/off + interval (s)**, **⭐TeslaMate** badges on fields TeslaMate
+  needs, bulk "set interval" per group, search, and a "show all Tesla fields" toggle (the full proto
+  enum). A live summary shows enabled-field count, estimated max msgs/min, and a **rate-limit headroom
+  gauge** (streaming is free, so the constraint is volume, not cost).
+- The roster is no longer hardcoded: `fields.TELEMETRY_FIELDS` is the default; the user's override is
+  computed into an **effective roster** that drives `fleet_telemetry_config` (`sendconfig`/`autosend`)
+  and the auto-resend fingerprint. The override persists in **shim-state** (the unwatched file) — editing
+  it never bounces the telemetry binary.
+- **Dashboard now shows a Fleet-API call counter** (`Fleet API: N · M data`) — calls made since the
+  add-on started, in-memory, broken down by token/products/vehicle_data. No dependency on the
+  diagnostic logs (which remain removable).
+
 ## 1.0.20
 
 ### Added (Fleet-API bridge — track charging while the telemetry stream is down)

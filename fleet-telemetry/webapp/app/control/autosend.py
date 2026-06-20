@@ -29,8 +29,11 @@ def maybe_resend(*, vins, config_path, shim_state_path, wizard_state_path, cert_
             return None
         if not vins:
             return None  # nothing primed/seen yet; retry next cycle
-        cur = fields.telemetry_fields_hash()
         state = tokens.read_state(shim_state_path)
+        # The roster override lives in shim-state (unwatched) — never wizard-config, which would bounce
+        # the binary and drop the telemetry stream on every edit.
+        roster = fields.effective_roster(state.get("telemetry_roster"))
+        cur = fields.telemetry_fields_hash(roster)
         if state.get("telemetry_fields_hash") == cur:
             return None  # roster unchanged
         try:
@@ -41,7 +44,8 @@ def maybe_resend(*, vins, config_path, shim_state_path, wizard_state_path, cert_
         log(f"[autosend] telemetry roster changed — re-sending fleet_telemetry_config to {len(vins)} vehicle(s)")
         r = sendconfig.send(vins=vins, client_id=c.get("client_id", ""), refresh_token=rt,
                             domain=domain, region=c.get("region", "na"), port=port,
-                            cert_file=cert_file, private_key_file=private_key_path, auth_host=auth_host)
+                            cert_file=cert_file, private_key_file=private_key_path, auth_host=auth_host,
+                            roster=roster)
         # Persist any rotated token regardless of outcome (it was rotated during the token refresh).
         if r.get("new_refresh_token"):
             tokens.save(shim_state_path, r["new_refresh_token"])

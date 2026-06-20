@@ -34,6 +34,28 @@ class Store:
         self._subscribers = []        # list[(loop, asyncio.Queue)]
         self.charge_starts = queue.Queue()        # vins whose charge session just began -> targeted Fleet fetch
         self.sleep_checks = queue.Queue()         # (vin, disconnect_epoch) on DISCONNECTED -> settle + /products confirm
+        self._fleet_calls = {"total": 0, "token": 0, "products": 0, "vehicle_data": 0}  # since add-on start
+
+    # --- Fleet-API call counter (in-memory, since add-on start; no log/file dependency) ----
+    def note_fleet_call(self, url):
+        """Count one Fleet-API HTTP call, classified by URL. Called at the request choke point."""
+        u = url or ""
+        if "/products" in u:
+            kind = "products"
+        elif "/vehicle_data" in u:
+            kind = "vehicle_data"
+        elif "/oauth2" in u or "/token" in u:
+            kind = "token"
+        else:
+            kind = None
+        with self._lock:
+            self._fleet_calls["total"] += 1
+            if kind:
+                self._fleet_calls[kind] += 1
+
+    def fleet_calls(self):
+        with self._lock:
+            return dict(self._fleet_calls)
 
     # --- subscription (event bus) ------------------------------------------------------
     def subscribe(self, loop):

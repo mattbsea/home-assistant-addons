@@ -133,6 +133,16 @@ def test_streaming_excludes_fleet_seed():
     assert store.streaming(VIN, 90) is True         # real telemetry = streaming
 
 
+def test_fleet_call_counter():
+    store = state.Store()
+    store.note_fleet_call("https://auth.tesla.com/oauth2/v3/token")
+    store.note_fleet_call("https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/products")
+    store.note_fleet_call("https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/vehicles/9/vehicle_data?endpoints=x")
+    store.note_fleet_call("https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/something_else")
+    c = store.fleet_calls()
+    assert c["total"] == 4 and c["token"] == 1 and c["products"] == 1 and c["vehicle_data"] == 1
+
+
 def test_history_series_accumulate():
     store = state.Store()
     for obj in conftest.load_records():
