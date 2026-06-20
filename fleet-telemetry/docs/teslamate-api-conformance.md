@@ -1,235 +1,202 @@
-# Fleet Telemetry → TeslaMate API Conformance Review
+# Fleet Telemetry → TeslaMate API Conformance Audit
 
 Does the Fleet Telemetry add-on supply TeslaMate everything it persists, in the unit/format/shape
-TeslaMate expects? This checks the add-on's two TeslaMate-facing surfaces against
-[`teslamate-data-dictionary.md`](./teslamate-data-dictionary.md) (TeslaMate v4.0.1).
+TeslaMate expects — **and does its emulation of Tesla's REST + streaming APIs drive TeslaMate's
+state machine correctly?** This checks the add-on's two TeslaMate-facing surfaces against
+[`teslamate-data-dictionary.md`](./teslamate-data-dictionary.md) and against the **TeslaMate v4.0.1
+source** (cloned and read for this audit).
 
-- **Add-on version reviewed:** v1.0.15 (current `main`).
-- **Surfaces in scope:** (1) REST shim (`app/sinks/shim_data.py`, `app/sinks/shim_rest.py`,
-  `fields.prime_to_fields`); (2) Streaming WS (`ws_stream.py` driven by `app/sinks/stream.py`).
-  MQTT is TeslaMate's *own* egress, so it's out of scope.
-- **Evidence basis:** add-on code (`file:line`), the dictionary, the TeslaMate v4.0.1 clone, and live
-  data from `/data/telemetry-log.jsonl` + `/data/fleet-log.jsonl` + the `teslamate` Postgres.
+- **Add-on version reviewed:** v1.0.23 (current `main`).
+- **Architecture note (changed since the v1.0.16 review):** the add-on is now ONE unified async app
+  built on a per-VIN **Store** (`app/state.py`) that is the single source of truth. Two writers feed
+  it — the live telemetry stream (continuous) and a one-time Fleet-API **seed** (+ a charge-start
+  refresh of the two non-streamed charge fields). All three sinks read the same snapshot:
+  - **REST shim** — `app/sinks/shim_rest.py` + `app/sinks/shim_data.py` (assembles `vehicle_data`).
+  - **Streaming WS** — `app/sinks/stream.py` (the `StreamSink` that consumes the Store bus) driving
+    the pure builders in `ws_stream.py`. Note the prior review's `ws_stream`-tails-the-file path is
+    now the *fallback*; the live path is `StreamSink`.
+  - **v1.0.22 park-disconnect:** the stream sink now emits `data:update` **only while driving**, and
+    on the drive→park edge sends a final frame + `data:error vehicle_disconnected`, then goes quiet.
+- **Evidence basis:** add-on code (`file:line`); the dictionary; the **TeslaMate v4.0.1 clone**
+  (`lib/tesla_api/*`, `lib/teslamate/vehicles/vehicle.ex`); the live `teslamate` Postgres; and
+  `/data/telemetry-log.jsonl` from the running add-on.
 - **Guiding principle:** TeslaMate expects **Tesla-native imperial input** (speed=mph,
   ranges/odometer=miles, temps=°C, power/charger_power=kW, pressure=bar, energy=kWh) and does its own
   SI conversion. The add-on must emit native units, never pre-converted SI.
 
 ## Executive summary
 
-**Overall: conformant.** Units, formats, enum strings, JSON/CSV shapes, and the streaming column
-order all match TeslaMate's expectations. One functional defect (fixed); **no missing coverage** —
-every column TeslaMate persists is supplied (verified against the live `teslamate` DB).
+**Overall: conformant, and the v1.0.22 stream rewrite is consistent with how TeslaMate actually
+closes drives.** Units, formats, enum strings, JSON/CSV shapes and the 13-column stream order all
+match (re-verified). No missing coverage. The recent stream-sink rewrite was audited against
+TeslaMate's own FSM and found sound, with one **low-severity robustness item** around the `Gear`
+`<invalid>` sentinel — which the user flagged and which this audit confirms is safe to remove.
 
-> **Update (v1.0.16):** F1 (streaming power) and F5 (cable/charger-type enum) are **fixed**, confirmed
-> against a captured drive (see [§Ground truth](#ground-truth-2026-06-19-drive)).
->
-> **Correction (DB-verified):** the original F2 finding ("3 columns never supplied / always NULL") was
-> **wrong** — it inferred from `assemble()` and the telemetry roster, missing the generic prime-backfill
-> in `shim_data.vehicle_data` that copies Fleet-API `charge_state`/`climate_state` keys straight
-> through. Live DB shows `charger_pilot_current` and `fast_charger_brand` are already supplied.
+| Sev | Finding | Surface | Status |
+|---|---|---|---|
+| **Low (robustness)** | G1 — Store writes the `<invalid>` Gear sentinel (clobbers last gear); redundant because park is always signalled by an explicit `ShiftStateP` first | Store→stream/REST | **fixed v1.0.24** (persist last gear; `<invalid>` skipped for all fields) |
+| **Low** | SL1 — stream monitor latched the first non-online `/products` state and never re-polled → stale `offline` stuck for hours while the car was asleep | REST state | **fixed v1.0.24** (`/products` re-confirm on `FT_SLEEP_RECHECK_SECS` cadence; no-wake) |
+| Info | G2 — every transition to `P` (incl. brief P during parking maneuvers) fires `vehicle_disconnected` | Streaming | by design (v1.0.22); TeslaMate-tolerant — see §3 |
+| Low | S1 — streaming frame timestamp is now Store **receive-time** (`event["at"]`, whole-second), not telemetry `CreatedAt` | Streaming | verify intended |
+| Low | U1 — `vehicle_state.software_update` hard-coded empty; streamed/seeded `SoftwareUpdate*` ignored | REST | `updates` table never populates (cosmetic) |
+| Info | W1 — no `/wake_up` route (404 if TeslaMate ever wakes) | REST | by design ("never wake the car") |
+| Info (latent) | L1 — gear normalised with `strip_state`, not `gear_letter` | REST+stream | carried over; not triggered by observed telemetry |
+| Info | L2 — `is_user_present` hard-coded `False` | REST | harmless |
 
-| Severity | Finding | Surface | Impact | Status |
-|---|---|---|---|---|
-| **High (isolated)** | F1 — `power` is hard-zeroed on the streaming path | Streaming | Stream-fed `positions.power` = 0; `drives.power_max/power_min` and **regen** lost during drives | **fixed v1.0.16** |
-| Low | F5 — `ChargingCableType`/`FastChargerType` prefix not stripped (`CableTypeSAE`) | REST | TeslaMate stored `"CableTypeSAE"` not `"SAE"` | **fixed v1.0.16** |
-| Info | F2a — `charges.charger_pilot_current` | REST | **already supplied** — DB 71,606/71,606 non-null (=32 A) via prime-backfill | not a gap |
-| Info | F2b — `charges.fast_charger_brand` | REST | **already supplied** when present — DB 71,101 non-null; null only when Fleet API returns `"<invalid>"` (AC charging), correctly skipped | not a gap |
-| Low | F2c — `positions/charges.battery_heater_no_power` | REST | mapping exists (prime-backfill) but **prime-only, not live**; DB 0 non-null because Fleet API returns `null` (battery never power-constrained) | optional: add a live `NotEnoughPowerToHeat → climate_state` mapping |
-| Low (latent) | F3 — gear normalized with `strip_state`, not `gear_letter` | REST+stream | only fails on `DriveGear*`/word forms — **not observed** (drive emitted only `ShiftState*`/`<invalid>`) | deferred (naive swap unsafe) |
-| Info | F4 — REST `vehicle_data` carries no `heading` key | REST | `positions.heading` filled only via streaming `est_heading` (by design) | by design |
+**Re-verified still-correct (was fixed/validated in v1.0.16; confirmed unchanged + DB-checked here):**
 
-**Confirmed correct (high-value):** units are native imperial end-to-end (live: telemetry
-`RatedRange`≈126.4 mi vs Fleet API `battery_range`=126.83 mi → **miles**, no double-conversion);
-REST `power` sign + kW math verified (`-PackVoltage*PackCurrent/1000`, +drive/−regen); streaming CSV
-column order is an exact 13/13 match; charge-energy session-baseline math correct; ephemeral
-gear/speed prime-skip guards intact.
+- **Streaming `power` (kW, ±) — HOLDS post-refactor.** `ws_stream.build_data_update` computes
+  `-PackVoltage*PackCurrent/1000` (ws_stream.py:82-85). Live DB: drive **1164** (2026-06-20) =
+  **538/545** positions non-zero power, range **−37 → +74 kW** (regen captured); drive **1163** =
+  **1216/1222** (99.5%). (Contrast pre-fix drive 1160 = 36/1132.)
+- **Enum prefix stripping** (`CableTypeSAE`→`SAE`, `…State*`→bare) — `fields.strip_enum` intact
+  (fields.py:59-67), used at shim_data.py:52,54,59.
+- **13/13 streaming CSV column order** — ws_stream.py:92-106 vs dict §3. Exact match.
+- **Native imperial units end-to-end** — no SI double-conversion (REST `assemble` + stream builder
+  pass `VehicleSpeed`/`Odometer`/ranges through `F.num`, no `Convert.*`).
+- **The two non-streamed charge fields — DB re-checked.** Mechanism changed (was per-call
+  prime-backfill; now seed + charge-start `update_charge_fields`, read directly at shim_data.py:58-59).
+  Live DB `charges`: total **71,815**; `charger_pilot_current` **71,815 (100%)**;
+  `fast_charger_brand` **71,101 (98.9%)** — non-null when the Fleet API supplies a real DC brand.
 
 ---
 
-## 1. REST `vehicle_data` conformance
+## 1. REST `vehicle_data` conformance (`shim_data.assemble`)
 
-Every TeslaMate-persisted field reachable via the REST poll (the `positions`/`charges` columns). All
-emitted in native imperial; TeslaMate converts. Source: `shim_data.assemble` / `vehicle_data`.
+Every TeslaMate-persisted REST field, in native imperial. Unchanged in shape from the v1.0.16 review;
+the column→source map below was re-checked against current `shim_data.py`.
 
 ### drive_state → positions
-| TeslaMate col | expected unit | supplied (telemetry src) | verdict | evidence |
+| TeslaMate col | unit | source | verdict | evidence |
 |---|---|---|---|---|
-| latitude / longitude | ° | `Location` → `parse_location` | OK | shim_data.py:24; fields.py:25-36 |
-| speed | mph | `VehicleSpeed` (driving-gated) | OK | shim_data.py:31 |
-| power | kW (±) | `-PackVoltage*PackCurrent/1000` | OK (sign verified) | shim_data.py:28-29,117 |
-| shift_state | P/R/N/D\|null | `Gear` → `strip_state` | OK (latent: see L4) | shim_data.py:25-26 |
-| odometer (vehicle_state) | miles | `Odometer` | OK | shim_data.py:74 |
+| latitude/longitude | ° | `Location`→`parse_location` | OK | shim_data.py:24 |
+| speed | mph | `VehicleSpeed` (driving-gated) | OK | shim_data.py:32 |
+| power | kW (±) | `-PackVoltage*PackCurrent/1000` (driving), else 0 | OK | shim_data.py:28-29 |
+| shift_state | P/R/N/D\|null | `Gear`→`strip_state`; only D/R/N kept, else null | OK (latent L1) | shim_data.py:25-26 |
+| odometer | miles | `Odometer` | OK | shim_data.py:81 |
 
-### charge_state → positions + charges
-| TeslaMate col | expected unit | supplied (telemetry src) | verdict | evidence |
-|---|---|---|---|---|
-| battery_level / usable_battery_level | % | `Soc` / `BatteryLevel` | OK | shim_data.py:42-43 |
-| ideal/est/rated_battery_range_km | miles | `IdealBatteryRange`/`EstBatteryRange`/`RatedRange`(→`battery_range`) | OK | shim_data.py:44-45 |
-| charge_energy_added | kWh | `DC/ACChargingEnergyIn` − session baseline | OK | shim_data.py:10-15,38; state.py:97-111 |
-| charger_power | kW | `ACChargingPower`+`DCChargingPower` | OK | shim_data.py:36-37 |
-| charger_voltage / charger_actual_current / charger_phases | V / A / count | `ChargerVoltage` / `ChargeAmps` / `ChargerPhases` | OK | shim_data.py:46-47 |
-| charger_pilot_current | A | Fleet-API prime (`charge.charger_pilot_current`) → prime-backfill | **OK — DB 71,606/71,606 non-null** | shim_data.py:103-114; vehicle.ex:1631 |
-| conn_charge_cable / fast_charger_type | string | `ChargingCableType` / `FastChargerType` → `strip_enum` | OK | shim_data.py:48,50 |
-| fast_charger_present | bool | `FastChargerPresent` | OK | shim_data.py:49 |
-| fast_charger_brand | string | Fleet-API prime (`charge.fast_charger_brand`) → prime-backfill | **OK when present — DB 71,101 non-null** (skipped when `"<invalid>"`) | shim_data.py:103-114; vehicle.ex:1636 |
-| not_enough_power_to_heat | bool | `NotEnoughPowerToHeat` | OK (rarely emitted) | shim_data.py:56 |
-| battery_heater_on | bool | `BatteryHeaterOn` | OK | shim_data.py:55 |
-| charging_state (FSM) | "Charging"/"Starting"/"Complete"/"Disconnected" | `DetailedChargeState`/`ChargeState` → `strip_state`; None→"Disconnected" | OK | shim_data.py:41,115 |
+### charge_state → charges/positions
+All present and native (battery levels, ranges, `charge_energy_added` via session baseline,
+`charger_power` = AC+DC kW, voltage/current/phases, cable/charger enums, pilot current + brand from
+seed, charging-state FSM with `None→"Disconnected"`). See shim_data.py:43-64,109-110. No regressions.
 
-### climate_state → positions (+charges)
-| TeslaMate col | expected | supplied | verdict | evidence |
-|---|---|---|---|---|
-| outside_temp / inside_temp | °C | `OutsideTemp` / `InsideTemp` | OK | shim_data.py:61 |
-| driver_temp_setting / passenger_temp_setting | °C | `HvacLeft/RightTemperatureRequest` | OK | shim_data.py:64-65 |
-| fan_status | 0–7 | `HvacFanStatus` → `fan_speed` | OK | shim_data.py:64; fields.py:63-73 |
-| is_climate_on | bool | `HvacACEnabled`/`HvacPower` | OK | shim_data.py:62 |
-| is_front/rear_defroster_on | bool | `DefrostMode` / `RearDefrostEnabled` | OK | shim_data.py:67-68 |
-| battery_heater | bool | `BatteryHeaterOn` | OK | shim_data.py:69 |
-| battery_heater_no_power | bool | Fleet-API prime (`climate.battery_heater_no_power`) → prime-backfill | supplied-when-present (DB 0 non-null: Fleet API returns `null`; **prime-only, not live**) | shim_data.py:103-114; vehicle.ex:1591,1625 |
-
-### vehicle_state → positions
-| TeslaMate col | expected | supplied | verdict | evidence |
-|---|---|---|---|---|
-| tpms_pressure_fl/fr/rl/rr | bar | `TpmsPressure*` | OK | shim_data.py:78-79 |
-| (elevation) | m | — by design TeslaMate uses its own SRTM for REST cars | n/a | dict §6/§7 |
-
-**Cold-start fill:** before the live stream warms up, `fields.prime_to_fields` populates slow fields
-from the Fleet-API snapshot, guarded by `_PRIME_BACKFILL_SKIP={drive_state:(shift_state,speed)}`
-(shim_data.py:100) and `PRIME_EPHEMERAL_FIELDS=(Gear,VehicleSpeed)` (state.py:21) so stale prime data
-never makes TeslaMate report phantom driving. Units stay native through this path.
+### climate_state / vehicle_state → positions
+Temps °C, fan 0–7, defroster/AC bools, TPMS bar, doors/windows. Present. **Exception U1:**
+`software_update` is hard-coded to `{status:"", download_perc:0, install_perc:0, version:""}`
+(shim_data.py:91) even though `fields.fleet_api_to_fields` seeds `SoftwareUpdateVersion`/percent
+(fields.py:213-215). So TeslaMate's `updates` table never fills. Cosmetic, but a real dead path.
 
 ---
 
-## 2. Streaming `data:update` conformance
+## 2. Streaming `data:update` conformance (`ws_stream.build_data_update`)
 
-CSV emit order (`ws_stream.py:91-105`) vs TeslaMate's `[:time | @columns]` (`stream.ex:18-19`,
-zipped at `:126` — exact length is load-bearing). **13/13 exact match.**
+CSV column order vs TeslaMate's `[:time | @columns]` (dict §3, parsed by `Stream.Data.into!` in
+`tesla_api/stream/data.ex`). **13/13 exact match**; power computed (kW), range/est_range/heading still
+populated but decoded-then-dropped by TeslaMate (harmless). One change worth flagging:
 
-| Pos | Column | expected (unit) | TeslaMate uses? | supplied (src) | verdict | evidence |
-|---|---|---|---|---|---|---|
-| 0 | time | unix ms | yes → positions.date | `_epoch_ms(CreatedAt)` | OK | ws_stream.py:92 |
-| 1 | speed | mph | yes → speed (mph→km/h) | `VehicleSpeed` (driving-gated; ""=parked) | OK | ws_stream.py:90,93 |
-| 2 | odometer | miles | yes → odometer | `Odometer` | OK | ws_stream.py:94 |
-| 3 | soc | % | yes → battery_level | `Soc` | OK | ws_stream.py:95 |
-| 4 | elevation | m | yes → elevation | local DEM (`elevation.Resolver`) | OK | ws_stream.py:96; stream.py:73 |
-| 5 | est_heading | ° | yes → drive_state.heading (merge) | `GpsHeading` | OK | ws_stream.py:97 |
-| 6 | est_lat | ° | yes → latitude | `Latitude` | OK | ws_stream.py:98 |
-| 7 | est_lng | ° | yes → longitude | `Longitude` | OK | ws_stream.py:99 |
-| 8 | **power** | kW (±) | yes → positions.power | `lv.get("Power")` (**never set**) + DC/AC if >0 | **FAIL → emits 0** | ws_stream.py:77-84,100 |
-| 9 | shift_state | P/R/N/D\|"" | yes → drive FSM | `Gear` → `strip_state` | OK | ws_stream.py:101 |
-| 10 | range | miles | **no (dropped)** | `RatedRange` | inert | ws_stream.py:102 |
-| 11 | est_range | miles | **no (dropped)** | `EstBatteryRange` | inert | ws_stream.py:103 |
-| 12 | heading | ° | **no (dropped)** | `GpsHeading` | inert | ws_stream.py:104 |
-
-Columns 10–12 are decoded-then-discarded by TeslaMate (`stream/data.ex` parses them but nothing
-reads `stream_data.range`/`.est_range`, and `merge` uses `est_heading` not raw `heading`), so the
-add-on populating them is harmless. Battery range persists only via the REST path.
+- **S1 — timestamp source changed.** The live `StreamSink` builds the frame with `event["at"]`
+  (stream.py:106,121), which is the Store's wall-clock **receive time** (`now=time.time()`,
+  state.py:149); `_epoch_ms` then truncates to whole seconds (ws_stream.py:26-33). The prior review
+  (and the standalone `ws_stream.Stream.feed`) used the telemetry **`CreatedAt`**. Net: `positions.date`
+  on stream-fed rows is receive-time, second-resolution — likely fine (sub-second drive sampling is
+  unaffected), but it's a divergence from the documented behavior; confirm it's intended.
 
 ---
 
-## 3. Cross-path coverage
+## 3. Drive lifecycle — does the v1.0.22 stream rewrite drive TeslaMate correctly?
 
-With `use_streaming_api=true` (this deployment's setting), TeslaMate inserts the high-frequency
-driving `positions` from the **stream**; the REST poll covers parked/charging polls and the broader
-column set. Consequences:
+This is the substantive new section: the v1.0.22 sink stopped streaming while parked and started
+sending `vehicle_disconnected` on the park edge. I read TeslaMate v4.0.1 to confirm the contract.
 
-| Field | REST | Streaming | Net for drive positions |
-|---|---|---|---|
-| location, speed, odometer, soc, elevation, shift_state | ✔ correct | ✔ correct | OK |
-| **power** | ✔ computed (kW, ±) | ✘ **0** | **mostly 0** (stream dominates during drives) |
-| temps, ranges, usable SoC, tpms, charge fields | ✔ | ✘ not on stream | filled by interleaved REST polls only |
+### 3.1 TeslaMate never closes a drive from a stream frame
+
+In the `{:driving, …}` state, the stream handler **only** acts on `D/N/R` (insert a position);
+**any other shift_state (`"P"`/nil) falls through to `schedule_fetch(0)`** — an *immediate REST poll*,
+not a drive close (`vehicles/vehicle.ex:653-672`). Drive closing happens exclusively in the **REST**
+`{:driving, :available}` path: a `vehicle_data` poll whose `drive_state.shift_state ∈ [nil, "P"]`
+calls `close_drive` (`vehicle.ex:1303-1320`). So **the stream is position-fill only; REST is the
+source of truth for ending a drive.**
+
+The poll cadence while driving is the key (`vehicle.ex:1287`):
+`interval = if streaming?(data), do: default_interval() (15 s), else: driving_interval() (2.5 s)`,
+and `streaming?` is simply "stream process alive" (`vehicle.ex:1916`). **This is exactly why v1.0.22
+matters:** while the stream looks connected TeslaMate polls REST slowly (15 s); the park frame's
+`schedule_fetch(0)` forces one immediate poll, and the `vehicle_disconnected` + going-quiet keeps the
+close prompt from being lost. The mechanism is sound and matches the changelog rationale.
+
+### 3.2 `vehicle_disconnected` is benign to drive integrity
+
+`tesla_api/stream.ex:134-160`: a single `vehicle_disconnected` does **not** notify the vehicle FSM at
+all — it only schedules a **resubscribe** (backoff `1.3^d`, max 8 s, *when last shift_state was
+P/D/N/R*; else 15–30 s). Only after **10** consecutive disconnects does it emit `:too_many_disconnects`.
+So firing it on the park edge cannot, by itself, split or close a drive.
+
+### 3.3 Does TeslaMate handle `"invalid"` as a gear? — **No, and it never sees it**
+
+- `Stream.Data.into!` maps `shift_state` via `to_s`: **`"" → nil`**, and **any other string passes
+  through verbatim — there is no `"invalid"` case** (`tesla_api/stream/data.ex:24-25`). The FSM only
+  pattern-matches `~w(D N R)` (drive) and `[nil, "P"]` (close). An `"invalid"` string would match
+  *neither* drive nor close — it would be an inert non-driving sample (would NOT even close a drive).
+- **But the add-on never sends `"invalid"`.** Both surfaces run `Gear` through `strip_state`, which
+  maps `<invalid>`/`invalid`/`""` → `None` (fields.py:39-51). REST emits JSON `null`; the stream CSV
+  emits `""` → TeslaMate `nil`. So TeslaMate is correctly shielded; the `"invalid"` question is moot
+  in practice.
+
+### 3.4 G1/G2 — the `<invalid>` Gear sentinel, and the user's proposed fix
+
+**What the Store does today:** `state.py:124` skips the `<invalid>` sentinel for normal fields (keep
+last good value) **except** for `LIVE_ONLY = (Gear, VehicleSpeed)`, where it *writes* `<invalid>` —
+clobbering the gear to the sentinel, on the theory that "`<invalid>` is the parked signal."
+
+**Live evidence says that theory is unnecessary.** From `/data/telemetry-log.jsonl` (49 `Gear`
+samples): `ShiftStateP` ×17, `ShiftStateD` ×9, `ShiftStateR` ×8, `<invalid>` ×15 — and **every single
+`<invalid>` is immediately preceded by an explicit `ShiftStateP`** (e.g. `…P(18:15:18) → <invalid>(:23)
+→ R(:28)`). `<invalid>` *never* appears between driving gears; it only ever follows a park. So
+`<invalid>` carries **no information that the preceding `ShiftStateP` didn't already**.
+
+**Is it actively harmful today? No — but it's confusing and load-bearing on an assumption.** Because
+the preceding `ShiftStateP` already flips `was_driving→False` in `StreamSink._broadcast` (stream.py:96-113),
+the subsequent `<invalid>` event lands as a quiet no-op (`not driving and not was_driving → return`).
+It is not double-disconnecting. The genuine deviation (**G2**) is broader and *by design*: **every**
+transition to `P` — including the brief P of a parking-lot maneuver — fires `vehicle_disconnected`.
+Per §3.1-3.2 that is tolerated (REST-driven close; short 8 s resubscribe; D resumes the drive). Live
+DB confirms no pathological splitting: the maneuvering session is a single drive (1161), and drives
+1160/1161/1163/1164 are cleanly separated.
+
+**The user's proposal — "persist the last non-invalid gear, never set invalid" — is correct and
+recommended (G1).** Concretely: drop the `and k not in LIVE_ONLY` exception at `state.py:124` so
+`<invalid>` is skipped like every other field; `Gear` then retains its last *real* value, which after
+a park is `"P"`. Keep `LIVE_ONLY` for the **seed**-skip (`state.py:176`, `_write_fleet`) — that part
+is still needed so the Fleet seed never injects a stale gear.
+
+- **Outcome is identical for drive-close:** REST reports `shift_state=null` for both `"P"`
+  (not-in-D/R/N → None) and the old `<invalid>`→None, so `close_drive` still fires; the stream park
+  edge still fires on the real `ShiftStateP`.
+- **Benefit:** removes a redundant write/event, removes a special case, and removes the only path
+  that could ever set gear to a sentinel mid-stream.
+- **One caveat to state explicitly:** this relies on Tesla always sending an explicit `ShiftStateP`
+  on park (49/49 observed). If a park were ever signalled by `<invalid>` *alone* (no preceding P),
+  "persist last gear" would hold `"D"` and the drive would hang — but TeslaMate's **15-min
+  `@drive_timeout_min`** (`vehicle.ex:44`) and the add-on's REST staleness backstop both close that
+  pathological case. Net risk: strictly lower than today's behavior. Recommend pairing the change
+  with a one-drive live validation.
 
 ---
 
-## 4. Findings
+## 4. Recommendations
 
-### F1 — Streaming `power` is always 0 during drives (High, isolated)
-`build_data_update` reads `lv.get("Power")` (ws_stream.py:78), but **`Power` is not in
-`fields.TELEMETRY_FIELDS`** — the car never streams a field by that name. The DC/AC override only
-fires when charging power > 0. So every driving stream frame emits `power=0` (a literal 0, not blank).
-- **Live evidence:** `Power` occurrences in the telemetry log = **0**; `PackVoltage`/`PackCurrent` =
-  **237 each**. The inputs to compute power are present and streaming.
-- **Impact:** stream-fed `positions.power` = 0 → `drives.power_max`/`power_min` ≈ 0 and **regen
-  (negative power) is never captured** for the high-frequency drive samples. Only the sparser
-  interleaved REST positions carry real power.
-- **Why REST is fine but stream isn't:** the REST shim computes `-PackVoltage*PackCurrent/1000`
-  (shim_data.py:28-29); the stream path never does. The fix is in-band (same inputs already stream).
-
-### F2 — Three "diagnostic" columns — CORRECTED: two already supplied, one prime-only (Low)
-> The original finding ("never supplied / always NULL") was **wrong**. It inferred from
-> `shim_data.assemble()` and the telemetry roster, missing the **generic prime-backfill** in
-> `shim_data.vehicle_data` (`shim_data.py:103-114`): after `assemble()`, it iterates every key in the
-> Fleet-API prime's `charge_state`/`climate_state`/etc. and copies it into the output wherever the
-> assembled value is None (skipping `"<invalid>"`). So Fleet-API-only fields reach TeslaMate even
-> though `assemble()` never names them. Verified against the **live `teslamate` DB**, the captured
-> fleet-log Fleet-API responses, and the Fleet Telemetry `vehicle_data.proto`:
-
-- **`charger_pilot_current`** (charges): **already supplied.** DB: **71,606 / 71,606 non-null**
-  (current value 32 A, matching `charger_actual_current`). Not in the telemetry proto (only
-  `ChargeAmps`/`ChargeCurrentRequest`/`ChargeCurrentRequestMax`), but the Fleet API returns it
-  (fleet-log: 32/48 A) and the prime-backfill passes it through. **Not a gap.**
-- **`fast_charger_brand`** (charges): **already supplied when present.** DB: **71,101 non-null.** Null
-  only when the Fleet API returns `"<invalid>"` (AC charging — fleet-log confirms), which the
-  prime-backfill correctly skips; a real DC brand (e.g. "Tesla") flows through. **Not a gap.**
-- **`battery_heater_no_power`** (positions+charges): mapping exists via the prime-backfill, but the
-  Fleet API returns `null` (this battery has never been power-constrained — DB: 0 non-null), so there
-  is nothing to record yet. It is **prime-only, not live**: the streamed `NotEnoughPowerToHeat`
-  (proto field 56, in roster) feeds `charge_state.not_enough_power_to_heat` but not the climate
-  `battery_heater_no_power`. *Optional* improvement: also map `NotEnoughPowerToHeat → climate_state`
-  so the (rare) condition is caught live during drives, not only at 30-min prime cadence.
-
-Net: **no missing coverage** — every column TeslaMate persists is supplied. The only open item is the
-optional live mapping for `battery_heater_no_power`.
-
-### F3 — Gear normalization uses the weaker decoder (Low, latent)
-`assemble`/`accumulate` use `strip_state` (handles `ShiftState*`), not `gear_letter` (also handles
-`DriveGear*`/`"Drive"`/`"Park"`). Current telemetry emits `ShiftState*` (fixture-confirmed), so it
-works today; switching to `gear_letter` would harden against format drift. If it ever failed,
-`shift_state→None` would suppress **both** speed and power on that frame.
-
-### F4 — REST has no `heading` (Info, by design)
-TeslaMate's REST `create_position` has no `heading` key; `positions.heading` is filled only from the
-streaming `est_heading`. The shim's `GpsHeading` in REST drive_state reaches only MQTT, not `positions`.
-
----
-
-<a id="ground-truth-2026-06-19-drive"></a>
-## 5. Ground truth — 2026-06-19 captured drive
-
-A short drive (a D→R→P parking maneuver, ~0.1 mi) was captured in the persistent logs and used to
-validate the findings against real telemetry:
-
-- **F1 confirmed (then fixed).** No `Power` field ever arrived (count = 0); `PackVoltage` 359.8–363.9 V
-  and `PackCurrent` −33.9→+15.5 A streamed throughout. Real battery power swung ≈ **+12 kW (drive)**
-  to **−6 kW (regen)** — all of which the stream emitted as **0** before the fix.
-- **Gear-on-park RESOLVED — the stream DOES emit park explicitly.** Observed `Gear` values:
-  `ShiftStateP` ×7, `ShiftStateR` ×4, `ShiftStateD` ×3, `<invalid>` ×4, in a clear D→R→P sequence.
-  So the stream sends the shift state on change (including `ShiftStateP`); it does **not** signal
-  "parked" only by going silent. Both `ShiftStateP`→"P" and `<invalid>`→None read as parked by
-  TeslaMate, so park handling is correct. (This also informs the separate single-source-of-truth
-  refactor discussion: last-writer-wins on gear is viable because park is actively reported.)
-- **F5 found (then fixed).** `ChargingCableType` = `"CableTypeSAE"` and a charge session followed
-  (`DetailedChargeStateCharging`/`Starting` → strip_state → "Charging"/"Starting" ✓). `strip_state`
-  cleaned the `...State` enums but left `CableTypeSAE` unchanged; `strip_enum` now yields `"SAE"`.
-- **`VehicleSpeed` unit RESOLVED = mph** (later highway drive, id 1160: 50.21 km, max 122 km/h). The
-  recorded `positions.speed` integrated over time = **47.6 km** vs the odometer's **50.21 km** (~5%
-  under, as expected for left-Riemann integration of time-sampled integer speeds). A km/h
-  double-conversion would have integrated to **~81 km (1.609×)**. So the shim passes `VehicleSpeed`
-  correctly as mph; no double-conversion.
-- **F1 power fix VALIDATED end-to-end** (later drives, across the v1.0.16 restart at 18:46 UTC):
-  pre-fix drives had power on only **36/1132** and **5/126** positions (the sparse REST-polled ones);
-  the first post-fix drive had **28/28** positions with non-zero power. ~3% → 100% coverage.
-
-## 6. Recommendations
-
-1. ~~**F1:** compute streaming `power` from `PackVoltage*PackCurrent`.~~ **Done (v1.0.16)** —
-   `ws_stream.build_data_update`.
-2. ~~**F5:** strip the `CableType`/`FastChargerType` enum prefixes.~~ **Done (v1.0.16)** —
-   `fields.strip_enum`.
-3. **F2:** nothing required — `charger_pilot_current` and `fast_charger_brand` already flow (DB-verified
-   via the prime-backfill). *Optional only:* a live `NotEnoughPowerToHeat → climate_state.battery_heater_no_power`
-   mapping so that rare state is caught during drives (not just at prime cadence); deferred (per-user, docs-only).
-4. **F3 (deferred):** harden gear normalization (a safe `gear_letter` wrapper) — not triggered by
-   observed telemetry.
-5. ~~Confirm the `VehicleSpeed` unit on a highway drive.~~ **Done** — drive 1160 integration (47.6 km
-   vs 50.21 km odometer) confirms mph. No open items remain.
+1. ~~**G1:** stop writing the `<invalid>` Gear sentinel.~~ **Done (v1.0.24)** — `state.py:124` now skips
+   `<invalid>` for all fields (persists last real gear); `LIVE_ONLY` kept at `state.py:176` for the
+   seed-skip. Validate against one real drive.
+2. ~~**SL1:** re-confirm a latched asleep/offline state.~~ **Done (v1.0.24)** — the monitor tick
+   (extracted to `app/control/monitor.py`) re-polls `/products` once a confirm goes stale
+   (`FT_SLEEP_RECHECK_SECS`, default 900 s), so offline↔asleep↔online transitions are picked up.
+2. **S1:** confirm the stream timestamp should be Store receive-time vs telemetry `CreatedAt`; if
+   `CreatedAt` is preferred, thread it through the Store event (`{"at": …}`) or read it in the sink.
+3. **U1 (optional):** map the seeded/streamed `SoftwareUpdate*` into `vehicle_state.software_update`
+   so TeslaMate's `updates` table populates.
+4. **L1 (deferred):** harden gear normalisation with a `gear_letter` wrapper — not triggered by
+   observed telemetry (only `ShiftState*`/`<invalid>` seen).
+5. **No action:** G2 (`vehicle_disconnected` on every P) is by design and TeslaMate-tolerant; W1
+   (no wake route) is the deliberate never-wake policy; the two charge fields and streaming power are
+   DB-verified correct.

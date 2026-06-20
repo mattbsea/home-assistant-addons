@@ -41,14 +41,23 @@ async def test_stream_emulates_tesla_park_disconnect():
     assert drive_updates and drive_updates[-1]["value"].split(",")[9] == "D"   # shift_state column
     ws.sent.clear()
 
-    # Park transition -> final data:update (shift "") AND a vehicle_disconnected error.
-    _ingest(store, CreatedAt="2026-06-18T01:30:00Z", Gear="<invalid>")
+    # Park transition (Tesla sends an explicit ShiftStateP) -> final data:update (shift "P") AND a
+    # vehicle_disconnected error.
+    _ingest(store, CreatedAt="2026-06-18T01:30:00Z", Gear="ShiftStateP")
     await sink._broadcast(VIN, "2026-06-18T01:30:00Z")
     types = [m["msg_type"] for m in ws.sent]
     assert "data:update" in types and "data:error" in types
     err = next(m for m in ws.sent if m["msg_type"] == "data:error")
     assert err["error_type"] == "vehicle_disconnected" and err["tag"] == VIN
+    assert next(m for m in ws.sent if m["msg_type"] == "data:update")["value"].split(",")[9] == "P"
     ws.sent.clear()
+
+    # A trailing Gear='<invalid>' is "no reading", NOT a second park signal: it must not clobber the
+    # last real gear (still "P") and the sink stays QUIET (already parked).
+    _ingest(store, CreatedAt="2026-06-18T01:30:10Z", Gear="<invalid>")
+    await sink._broadcast(VIN, "2026-06-18T01:30:10Z")
+    assert ws.sent == []
+    assert store.snapshot(VIN)["Gear"] == "ShiftStateP"
 
     # Already parked (e.g. a charging frame) -> QUIET, like Tesla (no data:update).
     _ingest(store, PackVoltage=370)

@@ -118,10 +118,12 @@ class Store:
             for k, val in data.items():
                 if k in fields.META_BASE:
                     continue
-                # An "<invalid>" sentinel means "no reading": it must not clobber a known-good value
-                # (seed or prior telemetry) — EXCEPT for LIVE_ONLY fields, where "<invalid>" is the
-                # meaningful signal that the live state ended (Gear -> parked) and must clear it.
-                if val in ("<invalid>", "invalid") and k not in LIVE_ONLY:
+                # An "<invalid>" sentinel means "no reading": it must NEVER clobber a known-good value
+                # (seed or prior telemetry) — including Gear/VehicleSpeed. Park is signalled by an
+                # explicit ShiftStateP (always sent before any '<invalid>'), so retaining the last real
+                # gear is both correct and avoids a redundant clear; speed is driving-gated downstream
+                # so a retained parked value is never emitted.
+                if val in ("<invalid>", "invalid"):
                     continue
                 v["fields"][k] = {"value": val, "created_at": created, "received_at": now, "source": "telemetry"}
                 changed[k] = val
@@ -211,11 +213,24 @@ class Store:
 
     # --- sleep detection ---------------------------------------------------------------
     def set_sleep_state(self, vin, state):
-        """Record the Fleet-API-confirmed non-online state ('asleep'/'offline') for the VIN."""
+        """Record the Fleet-API-confirmed non-online state ('asleep'/'offline') for the VIN, stamping
+        when it was confirmed so the monitor can re-confirm it later (see sleep_recheck_due)."""
         with self._lock:
             v = self.vehicles.get(vin)
             if v:
                 v["sleep_state"] = state
+                v["sleep_state_epoch"] = time.time()
+
+    def sleep_recheck_due(self, vin, recheck_secs):
+        """True if a confirmed asleep/offline state is older than `recheck_secs` and should be
+        re-confirmed via /products. A sleeping car never streams to clear the state, and Tesla can move
+        it offline<->asleep<->online while silent — so the monitor must re-poll (a no-wake /products
+        call) instead of latching the first reading forever."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v or not v.get("sleep_state"):
+                return False
+            return (time.time() - v.get("sleep_state_epoch", 0.0)) >= recheck_secs
 
     def sleep_state(self, vin):
         """The confirmed non-online state, or None. The monitor uses it to stop polling a sleeping car."""

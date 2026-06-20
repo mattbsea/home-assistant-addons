@@ -177,6 +177,38 @@ def test_malformed_record_does_not_raise():
     assert store.snapshot(VIN) == {}
 
 
+def test_invalid_gear_does_not_clobber_last_park_gear():
+    """Tesla streams Gear='<invalid>' right after an explicit ShiftStateP on park. '<invalid>' means
+    'no reading' and must NOT overwrite the last real gear — otherwise it adds a redundant clear (the
+    preceding P already signals park). The snapshot keeps the last real gear; the sinks strip it."""
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateP", Location={"latitude": 47.4, "longitude": -122.2}))
+    store.ingest(_data(Gear="<invalid>"))
+    assert store.snapshot(VIN)["Gear"] == "ShiftStateP"
+
+
+def test_invalid_speed_does_not_clobber_last_value():
+    """VehicleSpeed '<invalid>' likewise keeps the last value (it's driving-gated downstream, so a
+    retained parked value is never emitted)."""
+    store = state.Store()
+    store.ingest(_data(VehicleSpeed=37))
+    store.ingest(_data(VehicleSpeed="<invalid>"))
+    assert store.snapshot(VIN)["VehicleSpeed"] == 37
+
+
+def test_sleep_recheck_due_after_interval():
+    """A confirmed asleep/offline state must be RE-confirmed periodically: the car won't stream to
+    clear it, and Tesla's /products can change offline<->asleep<->online while it's silent. Due only
+    after `recheck_secs` since the state was set, and only when a state is set."""
+    store = state.Store()
+    store.ingest(_data(Soc=50))
+    assert store.sleep_recheck_due(VIN, 600) is False        # no confirmed sleep state -> nothing to recheck
+    store.set_sleep_state(VIN, "offline")
+    assert store.sleep_recheck_due(VIN, 600) is False        # just confirmed -> not due yet
+    store.vehicles[VIN]["sleep_state_epoch"] = time.time() - 601
+    assert store.sleep_recheck_due(VIN, 600) is True         # stale confirm -> due for a /products re-check
+
+
 def test_charge_baseline_captured_and_reset():
     store = state.Store()
     # Charging: baseline captured from DC energy-in at session start, then held steady.

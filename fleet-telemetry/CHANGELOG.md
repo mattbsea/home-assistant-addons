@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.24
+
+### Fixed — gear `<invalid>` no longer clobbers the last gear; sleep state now re-confirmed
+- **Gear `<invalid>` sentinel (SSOT):** the Store used to *write* Tesla's `Gear="<invalid>"` sentinel
+  (clearing the last gear) on the theory it signalled park. Confirmed against the TeslaMate v4.0.1
+  source and a live capture (49 gear samples) that this is unnecessary and slightly fragile: park is
+  always signalled by an explicit `ShiftStateP` *before* any `<invalid>`, and TeslaMate closes drives
+  from the REST poll (a stream `P`/nil frame only triggers an immediate re-poll), never from
+  `<invalid>` (which TeslaMate has no case for — it only acts on `D/N/R` and `[nil,"P"]`). `<invalid>`
+  is now treated as "no reading" for **all** fields (including `Gear`/`VehicleSpeed`), so the snapshot
+  keeps the last *real* gear (`"P"` after a park). Drive-close behaviour is unchanged; one redundant
+  clear/event is removed. (`app/state.py`)
+- **Sleep state could stick on a stale "offline".** The stream monitor latched the first non-online
+  `/products` result and stopped re-polling until telemetry resumed — but a sleeping car never
+  streams, so a transient `offline` (Tesla's Fleet API often reports `offline` for a car that later
+  settles to `asleep`) stayed stuck for hours. The monitor now **re-confirms** a confirmed
+  asleep/offline state via `/products` (a no-wake call) on a cadence (`FT_SLEEP_RECHECK_SECS`, default
+  900 s), so an `offline↔asleep↔online` change Tesla reports while the car is silent is picked up.
+  The per-VIN monitor tick was extracted to `app/control/monitor.py` and unit-tested. (`app/main.py`)
+
 ## 1.0.23
 
 ### Fixed — "Configure Your Vehicle" wizard could not load the telemetry catalog

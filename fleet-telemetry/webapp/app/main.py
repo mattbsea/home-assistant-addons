@@ -21,7 +21,7 @@ import elevation as elevation_mod
 import records
 from app import reclog
 from app import state
-from app.control import prime
+from app.control import monitor, prime
 from app.sinks import shim_rest, stream
 from app.web import wizard
 
@@ -174,33 +174,24 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
         # nudge (with a settle window), otherwise ticks every bridge interval.
         quiet = max(90, settle_secs)
         max_bridge = max(1, int(12 * 3600 / max(bridge_secs, 1)))   # soft cap: ~12 h continuous bridging
+        # While asleep/offline the car won't stream to clear the state, and Tesla can change
+        # offline<->asleep<->online while silent — so re-confirm via /products (a no-wake call) on this
+        # cadence instead of latching the first reading until telemetry happens to resume.
+        sleep_recheck = max(bridge_secs, int(os.environ.get("FT_SLEEP_RECHECK_SECS", "900")))
         bridged = {}   # vin -> consecutive bridge-poll count (reset when streaming resumes or asleep)
+        _log = lambda m: print(m, flush=True)
 
         def check(vin, settle):
-            if registry.store.streaming(vin, quiet):
-                bridged.pop(vin, None)
-                return                                   # stream healthy -> no Fleet call
-            if registry.store.sleep_state(vin) is not None:
-                return                                   # already confirmed asleep -> wait for telemetry to wake it
-            if bridged.get(vin, 0) >= max_bridge:
-                return                                   # soft cap -> pause until the stream returns
-            if settle:
-                time.sleep(settle_secs)                  # ride out a transient drop
-                if registry.store.streaming(vin, quiet):
-                    bridged.pop(vin, None)
-                    return
-            cid, rt, fleet_host = _creds()
-            st = prime.poll_vehicle(registry, vin=vin, client_id=cid, refresh_token=rt, auth_host=auth,
-                                    fleet_host=fleet_host, post_form=logged_post_form, get=logged_get,
-                                    on_token=_save_refresh_token, log=lambda m: print(m, flush=True))
-            if st == "online":
-                bridged[vin] = bridged.get(vin, 0) + 1
-                if bridged[vin] == 1:
-                    print(f"[app] bridging {vin} via Fleet API (telemetry stream down)", flush=True)
-            elif st is not None:
-                registry.store.set_sleep_state(vin, st)
-                bridged.pop(vin, None)
-                print(f"[app] {vin} '{st}' (stream down) — reporting to TeslaMate", flush=True)
+            def poll():
+                cid, rt, fleet_host = _creds()   # read creds only when we actually call the Fleet API
+                return prime.poll_vehicle(registry, vin=vin, client_id=cid, refresh_token=rt,
+                                          auth_host=auth, fleet_host=fleet_host,
+                                          post_form=logged_post_form, get=logged_get,
+                                          on_token=_save_refresh_token, log=_log)
+            monitor.bridge_or_confirm_sleep(
+                registry.store, vin, settle=settle, streaming_quiet=quiet, settle_secs=settle_secs,
+                bridged=bridged, max_bridge=max_bridge, sleep_recheck_secs=sleep_recheck,
+                poll=poll, sleep=time.sleep, log=_log)
 
         while True:
             try:
