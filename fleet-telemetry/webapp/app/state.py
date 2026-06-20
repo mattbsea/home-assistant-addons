@@ -60,6 +60,7 @@ class Store:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
                  "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
                  "connected": True, "sleep_state": None, "last_data_epoch": 0.0, "last_connect_epoch": 0.0,
+                 "last_fleet_epoch": 0.0,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -155,11 +156,16 @@ class Store:
             v["fields"][k] = {"value": val, "created_at": "", "received_at": now, "source": "fleet"}
 
     def seed(self, vin, vehicle_data, tesla_id=None, display_name=None):
-        """Prime the field map once from a Fleet-API vehicle_data response (mapped to telemetry names)."""
+        """Prime the field map from a Fleet-API vehicle_data response (mapped to telemetry names). Used
+        for the one-time startup seed AND the bridge poll while the stream is down — `last_fleet_epoch`
+        keeps the vehicle 'online' between bridge polls, and a successful seed clears any sleep_state."""
+        now = time.time()
         with self._lock:
             v = self._vehicle(vin)
             self._write_fleet(v, fields.fleet_api_to_fields(vehicle_data))
-            v["seed_epoch"] = time.time()
+            v["seed_epoch"] = now
+            v["last_fleet_epoch"] = now
+            v["sleep_state"] = None
             if tesla_id is not None:
                 v["tesla_id"] = tesla_id
             if display_name:
@@ -189,6 +195,12 @@ class Store:
             if v:
                 v["sleep_state"] = state
 
+    def sleep_state(self, vin):
+        """The confirmed non-online state, or None. The monitor uses it to stop polling a sleeping car."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return v.get("sleep_state") if v else None
+
     def reconnected_since(self, vin, since):
         """True if the car reconnected or streamed real telemetry after `since` — cancels a sleep check."""
         with self._lock:
@@ -196,6 +208,17 @@ class Store:
             if not v:
                 return False
             return max(v.get("last_data_epoch", 0.0), v.get("last_connect_epoch", 0.0)) > since
+
+    def streaming(self, vin, threshold):
+        """True if the telemetry stream is delivering — real telemetry or a connect within `threshold`s.
+        Deliberately excludes Fleet seeds (last_fleet_epoch) so the bridge keeps polling while the stream
+        is down even though its own seeds refresh the data."""
+        now = time.time()
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v:
+                return False
+            return (now - max(v.get("last_data_epoch", 0.0), v.get("last_connect_epoch", 0.0))) < threshold
 
     def vehicle_state(self, vin):
         """Authoritative state for the shim (TeslaMate) and dashboard: 'online' / 'asleep' / 'offline'.
@@ -214,7 +237,10 @@ class Store:
                 return f[k]["value"] if k in f else None
             has_batt = fields.num(val("Soc")) is not None or fields.num(val("BatteryLevel")) is not None
             has_loc = fields.parse_location(val("Location"))[0] is not None
-            fresh = v.get("last_data_epoch", 0.0) and (now - v["last_data_epoch"]) < ONLINE_WINDOW
+            # A recent bridge seed (last_fleet_epoch) keeps the car "online" between bridge polls, so a
+            # stream-down-but-charging car isn't tripped into the staleness backstop.
+            last = max(v.get("last_data_epoch", 0.0), v.get("last_fleet_epoch", 0.0))
+            fresh = last and (now - last) < ONLINE_WINDOW
         return "online" if (fresh and has_batt and has_loc) else "asleep"
 
     # --- reads -------------------------------------------------------------------------

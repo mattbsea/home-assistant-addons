@@ -6,7 +6,6 @@ already-online vehicle fetch a full vehicle_data snapshot and hand it to the Reg
 never wake a sleeping car. HTTP is injectable so the orchestration is unit-testable.
 """
 import json
-import time
 import urllib.parse
 import urllib.request
 
@@ -33,17 +32,19 @@ def extract_prime(vehicle_data_response):
     return {k: vehicle_data_response.get(k) for k in _PRIME_SECTIONS}
 
 
-def products_state(*, vin, client_id, refresh_token, auth_host, fleet_host,
-                   post_form=_post_form, get=_get, on_token=None, log=print):
-    """Return the Fleet-API state ('online'/'asleep'/'offline'/...) for the VIN via /products ONLY —
-    no vehicle_data call, so it never wakes the car. None if creds missing / unreachable / unknown."""
+def poll_vehicle(registry, *, vin, client_id, refresh_token, auth_host, fleet_host,
+                 post_form=_post_form, get=_get, on_token=None, log=print):
+    """Token + /products; if `vin` is online, fetch vehicle_data and seed it into the Store (the
+    'bridge' that keeps charge/state tracked while the telemetry stream is down). Returns the Fleet
+    state ('online'/'asleep'/'offline'/...) or None on failure. Never wakes the car (no wake_up call;
+    vehicle_data doesn't wake)."""
     if not (client_id and refresh_token):
         return None
     try:
         tok = post_form(auth_host + "/oauth2/v3/token",
                         {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token})
     except Exception as e:
-        log(f"[sleep] token refresh failed: {e}")
+        log(f"[bridge] token refresh failed: {e}")
         return None
     new_rt = tok.get("refresh_token")
     if new_rt and new_rt != refresh_token and on_token:
@@ -54,29 +55,22 @@ def products_state(*, vin, client_id, refresh_token, auth_host, fleet_host,
     try:
         products = get(fleet_host + "/api/1/products", at).get("response", []) or []
     except Exception as e:
-        log(f"[sleep] /products failed: {e}")
+        log(f"[bridge] /products failed: {e}")
         return None
-    for p in products:
-        if p.get("vin") == vin:
-            return p.get("state")
-    return None
-
-
-def confirm_sleep(store, vin, disconnect_epoch, *, client_id, refresh_token, auth_host, fleet_host,
-                  settle_secs=60, sleeper=time.sleep, post_form=_post_form, get=_get, on_token=None, log=print):
-    """After a DISCONNECTED frame: wait the settle window, then — if the car hasn't reconnected/streamed
-    in the meantime — confirm via /products and record the non-online state on the Store. Returns the
-    state recorded, or None (reconnected, online, or unreachable). Used by the sleep worker; `sleeper`
-    is injectable so tests don't actually wait."""
-    sleeper(settle_secs)
-    if store.reconnected_since(vin, disconnect_epoch):
-        return None   # transient drop — reconnected within the settle window
-    st = products_state(vin=vin, client_id=client_id, refresh_token=refresh_token, auth_host=auth_host,
-                        fleet_host=fleet_host, post_form=post_form, get=get, on_token=on_token, log=log)
-    if st is not None and st != "online":
-        store.set_sleep_state(vin, st)
-        return st
-    return None
+    p = next((x for x in products if x.get("vin") == vin), None)
+    if not p:
+        return None
+    if p.get("state") != "online":
+        return p.get("state")
+    tid = p.get("id")
+    try:
+        url = fleet_host + f"/api/1/vehicles/{tid}/vehicle_data?endpoints=" + urllib.parse.quote(_VEHICLE_DATA_ENDPOINTS)
+        vd = get(url, at).get("response", {})
+    except Exception as e:
+        log(f"[bridge] vehicle_data({vin}) failed: {e}")
+        return "online"   # online but couldn't fetch this round; caller keeps bridging
+    registry.seed(vin, extract_prime(vd), tesla_id=tid, display_name=p.get("display_name"))
+    return "online"
 
 
 def fetch_charge_fields(store, *, vin, tesla_id, client_id, refresh_token, auth_host, fleet_host,

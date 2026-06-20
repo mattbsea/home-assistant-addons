@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.20
+
+### Added (Fleet-API bridge — track charging while the telemetry stream is down)
+- **Charging/state is now tracked even when the telemetry stream isn't delivering** (e.g. a
+  cellular→WiFi handoff that doesn't reconnect, a network blip, or an add-on restart while parked/
+  charging). Previously, with telemetry the sole source after the one-time seed, a charge that began
+  while the stream was down went unrecorded until the stream came back. A real home charge was lost
+  this way.
+- A single **stream-health monitor** now polls the Fleet API **only when telemetry isn't flowing**:
+  - While the stream is healthy → zero Fleet calls (telemetry remains the source of truth).
+  - While the stream is quiet → token + `/products`; if the car is `online` it fetches `vehicle_data`
+    and seeds it into the store (the "bridge", capturing charge state/energy/SoC), repeating every
+    `FT_BRIDGE_POLL_SECS` (default **300 s**); if `asleep`/`offline` it reports that to TeslaMate.
+  - `/products` and `vehicle_data` never wake the car. Polling stops when the stream reconnects or the
+    car sleeps; a soft cap bounds a pathologically long stream-down stretch.
+- This also covers add-on **start while parked/charging with no stream** — which the v1.0.19
+  DISCONNECTED-only sleep worker missed. The v1.0.19 sleep detection is folded into the same monitor.
+- A bridge seed keeps the vehicle `online` (via `last_fleet_epoch`) between polls so it isn't tripped
+  into the staleness backstop while charging at home.
+
 ## 1.0.19
 
 ### Added (sleep detection)

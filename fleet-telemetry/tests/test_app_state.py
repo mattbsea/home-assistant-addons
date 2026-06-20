@@ -105,6 +105,34 @@ def test_charge_start_signal_fires_once_on_transition():
     assert store.charge_starts.empty()                      # still charging -> no new signal
 
 
+def test_seed_keeps_online_via_fleet_epoch_when_stream_stale():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    store.vehicles[VIN]["last_data_epoch"] = time.time() - (state.ONLINE_WINDOW + 60)
+    assert store.vehicle_state(VIN) == "asleep"   # stream stale, no fleet seed -> backstop
+    store.seed(VIN, {"charge_state": {"battery_level": 60},
+                     "drive_state": {"latitude": 47.4, "longitude": -122.2}})
+    assert store.vehicle_state(VIN) == "online"   # a bridge seed keeps it online
+
+
+def test_seed_clears_sleep_state():
+    store = state.Store()
+    store.ingest(_data(Soc=50, Location={"latitude": 47.4, "longitude": -122.2}))
+    store.set_sleep_state(VIN, "asleep")
+    store.seed(VIN, {"charge_state": {"battery_level": 60},
+                     "drive_state": {"latitude": 47.4, "longitude": -122.2}})
+    assert store.vehicle_state(VIN) == "online"   # a successful seed means the car is reachable
+
+
+def test_streaming_excludes_fleet_seed():
+    store = state.Store()
+    store.seed(VIN, {"charge_state": {"battery_level": 60},
+                     "drive_state": {"latitude": 47.4, "longitude": -122.2}})
+    assert store.streaming(VIN, 90) is False       # a seed is NOT the live stream -> keep bridging
+    store.ingest(_data(Soc=61))
+    assert store.streaming(VIN, 90) is True         # real telemetry = streaming
+
+
 def test_history_series_accumulate():
     store = state.Store()
     for obj in conftest.load_records():

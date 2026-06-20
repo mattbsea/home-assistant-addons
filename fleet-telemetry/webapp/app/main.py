@@ -7,6 +7,7 @@ ws_stream.py + bridge.py processes.
 import asyncio
 import json
 import os
+import queue
 import threading
 import time
 
@@ -124,6 +125,7 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
     logged_post_form = fleetlog.wrap_post_form(fleet_log, prime._post_form)
     logged_get = fleetlog.wrap_get(fleet_log, prime._get)
     settle_secs = int(os.environ.get("FT_SLEEP_SETTLE_SECS", "60"))
+    bridge_secs = int(os.environ.get("FT_BRIDGE_POLL_SECS", "300"))
 
     def _creds():
         c = cfgmod.load(config_path).get("tesla", {})
@@ -158,23 +160,55 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
             except Exception as exc:   # a charge-fetch failure must never kill the worker
                 print(f"[app] charge-fetch worker error: {exc!r}", flush=True)
 
-    def sleep_loop():
+    def stream_monitor():
+        # Poll the Fleet API ONLY when the telemetry stream isn't delivering — bridging charge/state
+        # while the stream is down (home WiFi handoff, network blip, restart-while-charging) and
+        # confirming sleep. Zero Fleet calls while the stream is healthy. Fires early on a DISCONNECTED
+        # nudge (with a settle window), otherwise ticks every bridge interval.
+        quiet = max(90, settle_secs)
+        max_bridge = max(1, int(12 * 3600 / max(bridge_secs, 1)))   # soft cap: ~12 h continuous bridging
+        bridged = {}   # vin -> consecutive bridge-poll count (reset when streaming resumes or asleep)
+
+        def check(vin, settle):
+            if registry.store.streaming(vin, quiet):
+                bridged.pop(vin, None)
+                return                                   # stream healthy -> no Fleet call
+            if registry.store.sleep_state(vin) is not None:
+                return                                   # already confirmed asleep -> wait for telemetry to wake it
+            if bridged.get(vin, 0) >= max_bridge:
+                return                                   # soft cap -> pause until the stream returns
+            if settle:
+                time.sleep(settle_secs)                  # ride out a transient drop
+                if registry.store.streaming(vin, quiet):
+                    bridged.pop(vin, None)
+                    return
+            cid, rt, fleet_host = _creds()
+            st = prime.poll_vehicle(registry, vin=vin, client_id=cid, refresh_token=rt, auth_host=auth,
+                                    fleet_host=fleet_host, post_form=logged_post_form, get=logged_get,
+                                    on_token=_save_refresh_token, log=lambda m: print(m, flush=True))
+            if st == "online":
+                bridged[vin] = bridged.get(vin, 0) + 1
+                if bridged[vin] == 1:
+                    print(f"[app] bridging {vin} via Fleet API (telemetry stream down)", flush=True)
+            elif st is not None:
+                registry.store.set_sleep_state(vin, st)
+                bridged.pop(vin, None)
+                print(f"[app] {vin} '{st}' (stream down) — reporting to TeslaMate", flush=True)
+
         while True:
-            vin, disc = registry.store.sleep_checks.get()   # blocks until a DISCONNECTED frame
             try:
-                cid, rt, fleet_host = _creds()
-                st = prime.confirm_sleep(registry.store, vin, disc, client_id=cid, refresh_token=rt,
-                                         auth_host=auth, fleet_host=fleet_host, settle_secs=settle_secs,
-                                         post_form=logged_post_form, get=logged_get, on_token=_save_refresh_token,
-                                         log=lambda m: print(m, flush=True))
-                if st:
-                    print(f"[app] {vin} confirmed '{st}' via /products — reporting sleep to TeslaMate", flush=True)
-            except Exception as exc:   # a sleep-check failure must never kill the worker
-                print(f"[app] sleep-check worker error: {exc!r}", flush=True)
+                try:
+                    vin, _disc = registry.store.sleep_checks.get(timeout=bridge_secs)
+                    check(vin, settle=True)                       # DISCONNECTED nudge -> early check
+                except queue.Empty:
+                    for vin in registry.vins():
+                        check(vin, settle=False)                  # periodic tick over all vehicles
+            except Exception as exc:   # the monitor must never die
+                print(f"[app] stream-monitor error: {exc!r}", flush=True)
 
     threading.Thread(target=seed_loop, daemon=True).start()
     threading.Thread(target=charge_loop, daemon=True).start()
-    threading.Thread(target=sleep_loop, daemon=True).start()
+    threading.Thread(target=stream_monitor, daemon=True).start()
 
 
 async def _serve(app, port):
