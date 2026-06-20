@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.22
+
+### Fixed — TeslaMate stream sink now behaves like Tesla's streaming API (drives close, home charge logged)
+- **Root cause:** TeslaMate's stream client/FSM is written against Tesla's exact behavior — Tesla streams
+  `data:update` only while driving, then **goes quiet and sends `data:error vehicle_disconnected`** when
+  the car parks. While a stream is connected TeslaMate polls REST at the *slow* `default_interval`
+  (trusting the stream); the quiet/disconnect is what flips it to the fast `driving_interval` to close
+  the drive. Our sink instead **streamed `data:update` continuously, even parked/charging** (shift_state
+  ""), so TeslaMate never timed out, never got `vehicle_disconnected`, stayed on the slow poll — and a
+  drive could hang open with the subsequent home charge undetected (observed on a park that coincided
+  with the cellular→WiFi handoff).
+- **Fix:** the stream sink now mirrors Tesla — emits `data:update` **only while driving** (shift_state
+  D/N/R); on the drive→park edge sends the final frame then **`data:error vehicle_disconnected`**; stays
+  **quiet while parked**; and answers a fresh subscribe with one current frame so TeslaMate's "real
+  online" check still passes. TeslaMate then leaves streaming mode → fast REST poll → drive closes and
+  the charge is picked up promptly.
+
 ## 1.0.21
 
 ### Added — telemetry-config editor + Fleet-API call counter

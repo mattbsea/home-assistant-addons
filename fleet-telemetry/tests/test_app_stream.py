@@ -11,6 +11,51 @@ stream = importlib.import_module("app.sinks.stream")
 VIN = "7SAYGDEE3PF884783"
 
 
+class _RecWS:
+    """A minimal stand-in websocket that records the messages the sink sends it."""
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, payload):
+        self.sent.append(json.loads(payload))
+
+
+def _ingest(store, **data):
+    store.ingest({"msg": "record_payload", "vin": VIN, "data": data})
+
+
+async def test_stream_emulates_tesla_park_disconnect():
+    """Behave like Tesla's stream: data:update only while driving; on drive->park send the final
+    frame + data:error vehicle_disconnected; stay quiet while parked (TeslaMate uses that to leave
+    streaming mode -> fast REST poll -> close the drive + detect the charge)."""
+    store = state.Store()
+    sink = stream.StreamSink(store)
+    ws = _RecWS()
+    sink.subs[VIN] = {ws}
+    _ingest(store, Location={"latitude": 47.77, "longitude": -122.15}, Soc=50)
+
+    # Driving frame -> a data:update with shift_state "D".
+    _ingest(store, CreatedAt="2026-06-18T01:21:45Z", Gear="ShiftStateD", VehicleSpeed=30)
+    await sink._broadcast(VIN, "2026-06-18T01:21:45Z")
+    drive_updates = [m for m in ws.sent if m["msg_type"] == "data:update"]
+    assert drive_updates and drive_updates[-1]["value"].split(",")[9] == "D"   # shift_state column
+    ws.sent.clear()
+
+    # Park transition -> final data:update (shift "") AND a vehicle_disconnected error.
+    _ingest(store, CreatedAt="2026-06-18T01:30:00Z", Gear="<invalid>")
+    await sink._broadcast(VIN, "2026-06-18T01:30:00Z")
+    types = [m["msg_type"] for m in ws.sent]
+    assert "data:update" in types and "data:error" in types
+    err = next(m for m in ws.sent if m["msg_type"] == "data:error")
+    assert err["error_type"] == "vehicle_disconnected" and err["tag"] == VIN
+    ws.sent.clear()
+
+    # Already parked (e.g. a charging frame) -> QUIET, like Tesla (no data:update).
+    _ingest(store, PackVoltage=370)
+    await sink._broadcast(VIN, "2026-06-18T01:30:30Z")
+    assert ws.sent == []
+
+
 def test_lv_from_snapshot_flattens_location_and_gear():
     lv = stream.lv_from_snapshot({"Location": {"latitude": 47.77, "longitude": -122.15},
                                   "Gear": "ShiftStateD", "Soc": 50})

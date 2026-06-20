@@ -17,6 +17,17 @@ shim_data = importlib.import_module("app.sinks.shim_data")
 VIN = "7SAYGDEE3PF884783"
 PRIME_SECTIONS = ("drive_state", "charge_state", "climate_state", "vehicle_state", "vehicle_config")
 IDENT = {"id": 1, "vehicle_id": 2, "vin": VIN, "display_name": "DoodleMobile", "in_service": False}
+
+
+def test_park_gear_assembles_null_shift_state():
+    """The REST vehicle_data is what actually closes a drive (TeslaMate ends it when a fetch returns
+    shift_state nil/P). Confirm park reads as None: Gear='<invalid>' (park) and 'ShiftStateP' -> None;
+    only D/N/R stay set."""
+    base = {"Soc": 50, "Location": {"latitude": 47.4, "longitude": -122.2}}
+    for gear, expected in (("ShiftStateD", "D"), ("ShiftStateR", "R"),
+                           ("ShiftStateP", None), ("<invalid>", None)):
+        vd = shim_data.vehicle_data({**base, "Gear": gear}, ts=1, identity=IDENT)
+        assert vd["drive_state"]["shift_state"] == expected, f"{gear} -> {expected}"
 _GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "shim_vehicle_data.golden.json")
 
 # Raw Fleet-API keys the OLD backfill copied verbatim into the output but `assemble` never produces.

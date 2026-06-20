@@ -6,6 +6,7 @@ tail the file itself — the single Store ingest feeds every sink.
 """
 import asyncio
 import json
+import time
 
 import websockets
 
@@ -31,6 +32,7 @@ class StreamSink:
         self.store = store
         self.elevation = elevation   # elevation.Resolver or None — fills the stream elevation column
         self.subs = {}          # vin -> set[websocket]
+        self.driving = {}       # vin -> bool: is the car currently driving (gates data:update, like Tesla)
 
     async def handler(self, ws):
         tags = set()
@@ -47,6 +49,16 @@ class StreamSink:
                         self.subs.setdefault(tag, set()).add(ws)
                         tags.add(tag)
                     await ws.send(json.dumps({"msg_type": "control:hello", "connection_timeout": 30000}))
+                    if tag:
+                        # Tesla answers a fresh subscribe with the current frame so the client's
+                        # "real online" check (power is a number) passes even when parked. Re-sync the
+                        # drive gate to the current shift so the next park edge fires vehicle_disconnected.
+                        lv = lv_from_snapshot(self.store.snapshot(tag))
+                        self.driving[tag] = lv.get("Gear") in ("D", "N", "R")
+                        elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
+                        frame = ws_stream.build_data_update(tag, {tag: lv}, time.time(), elevation=elev)
+                        if frame:
+                            await ws.send(json.dumps(frame))
         except websockets.ConnectionClosed:
             pass
         finally:
@@ -62,6 +74,17 @@ class StreamSink:
         except (asyncio.CancelledError, websockets.ConnectionClosed):
             pass
 
+    async def _send(self, vin, messages):
+        dead = set()
+        for ws in list(self.subs.get(vin, ())):
+            try:
+                for m in messages:
+                    await ws.send(json.dumps(m))
+            except websockets.ConnectionClosed:
+                dead.add(ws)
+        for ws in dead:
+            self.subs[vin].discard(ws)
+
     async def _broadcast(self, vin, created_at):
         if not self.subs.get(vin):
             return
@@ -70,19 +93,24 @@ class StreamSink:
         # the opening frame from carrying a blank odometer (which made TeslaMate record null start_km →
         # null trip distance). Live always overrides once it streams.
         lv = lv_from_snapshot(self.store.snapshot(vin))
+        driving = lv.get("Gear") in ("D", "N", "R")
+        was_driving = self.driving.get(vin, False)
+        # Behave exactly like Tesla's stream: data:update flows ONLY while driving; on the drive->park
+        # edge send the final frame then data:error vehicle_disconnected; stay quiet while parked. That
+        # quiet + disconnect is what makes TeslaMate leave streaming mode (streaming?=false -> fast REST
+        # poll) and promptly close the drive + detect the charge. Continuously streaming parked/charging
+        # frames (the old behavior) kept TeslaMate on its slow poll, so drives hung open.
+        if not driving and not was_driving:
+            return
         elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
         update = ws_stream.build_data_update(vin, {vin: lv}, created_at, elevation=elev)
         if not update:
             return
-        payload = json.dumps(update)
-        dead = set()
-        for ws in list(self.subs.get(vin, ())):
-            try:
-                await ws.send(payload)
-            except websockets.ConnectionClosed:
-                dead.add(ws)
-        for ws in dead:
-            self.subs[vin].discard(ws)
+        self.driving[vin] = driving
+        messages = [update]
+        if not driving and was_driving:   # drive -> park edge: Tesla sends vehicle_disconnected here
+            messages.append({"msg_type": "data:error", "tag": vin, "error_type": "vehicle_disconnected"})
+        await self._send(vin, messages)
 
     async def run(self):
         """Consume the Store bus forever, broadcasting a frame per change event."""
