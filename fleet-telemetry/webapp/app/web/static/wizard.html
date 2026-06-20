@@ -458,7 +458,7 @@ function renderStep13(){
   const ep=esc(gc("tesla.telemetry_domain","")||gc("tesla.pubkey_domain",""));
   const enabled=telEnabledNames().length;
   const est=Math.round(telEstimate());
-  const limPerMin=Math.round((TEL.rate.message_limit||1000)*60/(TEL.rate.interval||30));
+  const rl=TEL.rate_limit||{};const limPerMin=Math.round((rl.message_limit||1000)*60/(rl.interval||30));
   const pct=Math.min(100,Math.round(est/limPerMin*100));
   const hot=pct>=80;
   const prof=TEL.profile||"teslamate";

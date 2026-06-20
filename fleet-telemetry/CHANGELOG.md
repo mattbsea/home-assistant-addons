@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.23
+
+### Fixed — "Configure Your Vehicle" wizard could not load the telemetry catalog
+- **Root cause:** key-name mismatch between API and UI. The `/api/wizard/telemetry` endpoint returns the
+  rate-limit data under `rate_limit`, but `wizard.html` read it as `TEL.rate`, so `TEL.rate` was
+  `undefined` and `TEL.rate.message_limit` threw `TypeError: undefined is not an object`. The thrown
+  error dropped the whole step into the "Could not load telemetry catalog" error path.
+- **Fix:** the wizard now reads `TEL.rate_limit` to match the API, and is null-safe (falls back to the
+  default 1000 msgs / 30 s limit if the key is ever missing) so the catalog renders regardless.
+
 ## 1.0.22
 
 ### Fixed — TeslaMate stream sink now behaves like Tesla's streaming API (drives close, home charge logged)
