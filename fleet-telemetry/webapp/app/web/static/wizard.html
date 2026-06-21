@@ -494,7 +494,7 @@ function renderStep13(){
   <div style="margin:12px 0;padding:10px;background:var(--card2);border-radius:8px;font-size:13px">
     <b>${enabled}</b> fields enabled · est. max <b>~${est}</b> msgs/min
     <div style="margin-top:6px;height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${hot?'var(--bad)':'var(--good)'}"></div></div>
-    <div style="color:var(--mut);margin-top:4px">${pct}% of the rate limit (${limPerMin}/min)${hot?' · consider longer intervals':''} · streaming is free</div>
+    <div style="color:var(--mut);margin-top:4px">${pct}% of the rate limit (${limPerMin}/min)${hot?' · consider longer intervals':''} · streaming is far cheaper than polling</div>
   </div>
   <p style="color:var(--mut);font-size:13px;margin:0 0 10px">Endpoint <code>${ep}:${esc(String(gc("tesla.telemetry_port",4443)))}</code> · region ${esc(gc("tesla.region","na").toUpperCase())}. VINs are read automatically once the shim has primed.</p>
   ${TEL.dirty?'<div style="color:var(--accent);font-size:13px;margin-bottom:8px">● Unsent changes — click Send to vehicle to apply.</div>':''}

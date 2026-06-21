@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.26
+
+### Changed — corrected "streaming is free" wording in the UI
+- The dashboard Fleet-API pill tooltip and the wizard's telemetry-rate hint said "streaming is free".
+  Tesla bills Fleet **Telemetry** streaming too — it's just **far cheaper** than polling `vehicle_data`
+  (and isn't counted by the REST call counter). Reworded both to say so accurately. (copy only)
+
 ## 1.0.25
 
 ### Fixed — `sensor.tesla_speed` stuck at the last speed after parking
