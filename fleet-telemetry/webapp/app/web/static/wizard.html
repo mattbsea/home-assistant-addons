@@ -430,15 +430,26 @@ async function loadTelemetry(){
 function telGroup(n){return (TEL.groups&&TEL.groups[n])||"Other";}
 function telEnabled(n){const o=TEL.override[n];if(o&&"enabled"in o)return !!o.enabled;return n in TEL.default_roster;}
 function telInterval(n){const o=TEL.override[n];if(o&&o.interval_seconds)return o.interval_seconds;const d=TEL.default_roster[n];return d?d.interval_seconds:60;}
+function telDelta(n){const o=TEL.override[n];if(o&&"minimum_delta"in o)return o.minimum_delta;const d=TEL.default_roster[n];return d?d.minimum_delta:undefined;}
+function telResend(n){const o=TEL.override[n];if(o&&"resend_interval_seconds"in o)return o.resend_interval_seconds;const d=TEL.default_roster[n];return d?d.resend_interval_seconds:undefined;}
 function telMarkCustom(){TEL.profile="custom";TEL.dirty=true;}
 function telSaveSoon(){clearTimeout(_telSaveTimer);_telSaveTimer=setTimeout(()=>{api("POST","api/wizard/telemetry",{override:TEL.override,profile:TEL.profile}).catch(()=>{});},400);}
+// The current effective entry (enabled + interval + any on-change keys), so a single-attribute edit
+// doesn't drop the others (minimum_delta / resend_interval_seconds must survive an interval change).
+function telCur(n){const e={enabled:telEnabled(n),interval_seconds:telInterval(n)};const d=telDelta(n);if(d!=null)e.minimum_delta=d;const r=telResend(n);if(r!=null)e.resend_interval_seconds=r;return e;}
 function telToggle(n){
   const off=telEnabled(n);   // currently on -> we're turning it off
   if(off&&(TEL.essential||[]).includes(n)&&!confirm(n+" is required by TeslaMate for correct drives, charges, or power. Disabling it will silently break that data. Disable anyway?"))return;
-  TEL.override[n]={enabled:!telEnabled(n),interval_seconds:telInterval(n)};telMarkCustom();telSaveSoon();render();
+  const e=telCur(n);e.enabled=!off;TEL.override[n]=e;telMarkCustom();telSaveSoon();render();
 }
-function telSetInterval(n,v){const iv=Math.max(1,parseInt(v,10)||telInterval(n));TEL.override[n]={enabled:telEnabled(n),interval_seconds:iv};telMarkCustom();telSaveSoon();render();}
-function telGroupSet(group,v){const iv=Math.max(1,parseInt(v,10)||0);if(!iv)return;telVisibleFields().filter(n=>telGroup(n)===group&&telEnabled(n)).forEach(n=>{TEL.override[n]={enabled:true,interval_seconds:iv};});telMarkCustom();telSaveSoon();render();}
+// Set/clear one numeric per-field key, preserving the rest. Blank clears it (reverts to the default);
+// interval is required so a blank interval is ignored.
+function telSetNum(n,key,raw,opt){const e=telCur(n);const s=(""+raw).trim();
+  if(s===""){if(key==="interval_seconds")return;delete e[key];}
+  else{let v=(opt&&opt.int)?parseInt(s,10):parseFloat(s);if(isNaN(v))return;if(opt&&opt.min!=null)v=Math.max(opt.min,v);e[key]=v;}
+  TEL.override[n]=e;telMarkCustom();telSaveSoon();render();}
+function telSetInterval(n,v){telSetNum(n,"interval_seconds",v,{int:true,min:1});}
+function telGroupSet(group,v){const iv=Math.max(1,parseInt(v,10)||0);if(!iv)return;telVisibleFields().filter(n=>telGroup(n)===group&&telEnabled(n)).forEach(n=>{const e=telCur(n);e.interval_seconds=iv;TEL.override[n]=e;});telMarkCustom();telSaveSoon();render();}
 function telSetProfile(p){
   if(p==="teslamate")TEL.override={};
   else if(p==="low_bandwidth"){const lb=TEL.profiles.low_bandwidth||{};const ov={};Object.keys(TEL.default_roster).forEach(n=>{ov[n]={enabled:false,interval_seconds:telInterval(n)};});Object.keys(lb).forEach(n=>{ov[n]={enabled:true,interval_seconds:lb[n].interval_seconds};});TEL.override=ov;}
@@ -471,15 +482,18 @@ function renderStep13(){
     const order=TEL_GROUP_ORDER.filter(g=>groups[g]);
     adv=`<div class="card"><div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
       <input type="text" id="telSearchBox" placeholder="Search fields…" oninput="telSearch(this.value)" value="${esc(TEL.query||"")}" style="flex:1">
-      <label class="ck" style="margin:0"><input type="checkbox" ${TEL.showAll?"checked":""} onchange="telToggleShowAll(this.checked)"> Show all Tesla fields</label></div>`;
+      <label class="ck" style="margin:0"><input type="checkbox" ${TEL.showAll?"checked":""} onchange="telToggleShowAll(this.checked)"> Show all Tesla fields</label></div>
+      <div style="color:var(--mut);font-size:12px;margin:-4px 0 8px">Per field: <b>every</b> N s (max rate) · <b>Δ</b> only send when the value changes by ≥ this (on-change — keeps it cheap when parked) · <b>↻</b> resend at least this often. Defaults are pre-filled; clear Δ to stream every interval.</div>`;
     order.forEach(g=>{
       const fs=groups[g].sort();const on=fs.filter(telEnabled).length;
       adv+=`<div style="margin:14px 0 4px;font-weight:600;display:flex;align-items:center;gap:8px">${esc(g)} <span style="color:var(--mut);font-weight:400">(${on}/${fs.length})</span>
         <span style="margin-left:auto;font-weight:400;font-size:12px;color:var(--mut)">set all: <input type="number" min="1" style="width:64px" id="grp_${esc(g).replace(/[^a-z]/gi,'')}"> <button class="btn btn-secondary" style="padding:2px 8px" onclick="telGroupSet('${g.replace(/'/g,"")}',document.getElementById('grp_${esc(g).replace(/[^a-z]/gi,'')}').value)">set</button></span></div>`;
       fs.forEach(n=>{const en=telEnabled(n);const e=ess.has(n);
-        adv+=`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;${en?"":"opacity:.5"}">
-          <label class="ck" style="margin:0;flex:1"><input type="checkbox" ${en?"checked":""} onchange="telToggle('${n}')"> ${esc(n)}${e?' <span style="font-size:11px;color:var(--accent)">⭐TeslaMate</span>':''}${(n in TEL.default_roster)?"":' <span style="font-size:11px;color:var(--mut)">(extra)</span>'}</label>
-          <input type="number" min="1" value="${telInterval(n)}" onchange="telSetInterval('${n}',this.value)" style="width:70px"> <span style="color:var(--mut);font-size:12px">s</span></div>`;
+        adv+=`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;${en?"":"opacity:.5"}">
+          <label class="ck" style="margin:0;flex:1;min-width:0"><input type="checkbox" ${en?"checked":""} onchange="telToggle('${n}')"> ${esc(n)}${e?' <span style="font-size:11px;color:var(--accent)">⭐</span>':''}${(n in TEL.default_roster)?"":' <span style="font-size:11px;color:var(--mut)">(extra)</span>'}</label>
+          <span style="color:var(--mut);font-size:11px">every</span><input type="number" min="1" value="${telInterval(n)}" onchange="telSetInterval('${n}',this.value)" style="width:56px" title="interval_seconds — max sample rate"><span style="color:var(--mut);font-size:11px">s</span>
+          <span style="color:var(--mut);font-size:11px">Δ</span><input type="number" min="0" step="any" value="${telDelta(n)??''}" placeholder="—" onchange="telSetNum('${n}','minimum_delta',this.value,{min:0})" style="width:52px" title="minimum_delta — only send when the value changes by at least this. Blank = send every interval.">
+          <span style="color:var(--mut);font-size:11px">↻</span><input type="number" min="1" value="${telResend(n)??''}" placeholder="—" onchange="telSetNum('${n}','resend_interval_seconds',this.value,{int:true,min:1})" style="width:56px" title="resend_interval_seconds — heartbeat: resend at least this often even if unchanged."><span style="color:var(--mut);font-size:11px">s</span></div>`;
       });
     });
     adv+=`</div>`;

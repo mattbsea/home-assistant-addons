@@ -52,8 +52,14 @@ def test_telemetry_catalog_and_override_roundtrip(tmp_path):
     assert "Soc" in cat["default_roster"] and cat["groups"]["Soc"] == "Battery & Charging"
     assert "Gear" in cat["essential"] and len(cat["all_fields"]) > 100
     assert cat["override"] == {} and cat["profile"] == "teslamate"
-    # save an override -> persisted to shim-state (unwatched), reflected on next GET
-    ov = {"Soc": {"enabled": True, "interval_seconds": 15}, "Gear": {"enabled": False}}
+    # the catalog exposes the on-change defaults so the wizard can pre-fill them per field
+    assert cat["default_roster"]["PackCurrent"]["minimum_delta"] > 0
+    assert cat["default_roster"]["PackCurrent"]["resend_interval_seconds"] > 0
+    # save an override (incl. on-change keys) -> persisted to shim-state, reflected on next GET
+    ov = {"Soc": {"enabled": True, "interval_seconds": 15},
+          "PackCurrent": {"enabled": True, "interval_seconds": 1, "minimum_delta": 0.3,
+                          "resend_interval_seconds": 90},
+          "Gear": {"enabled": False}}
     assert c.post("/api/wizard/telemetry", json={"override": ov, "profile": "custom"}).json()["ok"]
     again = c.get("/api/wizard/telemetry").json()
     assert again["override"] == ov and again["profile"] == "custom"

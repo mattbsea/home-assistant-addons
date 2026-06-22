@@ -88,7 +88,24 @@ def test_roster_additions_and_intervals():
     for name in ("EnergyRemaining", "SoftwareUpdateVersion", "SoftwareUpdateInstallationPercentComplete",
                  "SoftwareUpdateDownloadPercentComplete", "TpmsHardWarnings", "TpmsSoftWarnings"):
         assert name in r, name
-    assert r["Location"]["interval_seconds"] == 10          # tightened for usable drive traces
+    # drive-grade power + position: 1s sampling, on-change gated (minimum_delta) so it's dense while
+    # driving (values swing) and near-silent when parked (values stable), plus a resend heartbeat.
+    for f in ("PackVoltage", "PackCurrent", "Location"):
+        assert r[f]["interval_seconds"] == 1, f
+        assert r[f]["minimum_delta"] > 0 and r[f]["resend_interval_seconds"] > 0, f
+
+
+def test_effective_roster_preserves_onchange_keys():
+    # overriding only the interval keeps the field's default minimum_delta/resend_interval_seconds
+    eff = fields.effective_roster({"PackCurrent": {"enabled": True, "interval_seconds": 2}})
+    assert eff["PackCurrent"]["interval_seconds"] == 2
+    assert eff["PackCurrent"]["minimum_delta"] == fields.TELEMETRY_FIELDS["PackCurrent"]["minimum_delta"]
+    assert eff["PackCurrent"]["resend_interval_seconds"] == \
+        fields.TELEMETRY_FIELDS["PackCurrent"]["resend_interval_seconds"]
+    # explicit on-change overrides win
+    eff2 = fields.effective_roster({"PackCurrent": {"enabled": True, "interval_seconds": 1,
+                                                    "minimum_delta": 0.9, "resend_interval_seconds": 30}})
+    assert eff2["PackCurrent"] == {"interval_seconds": 1, "minimum_delta": 0.9, "resend_interval_seconds": 30}
 
 
 def test_telemetry_fields_hash_stable_and_sensitive():

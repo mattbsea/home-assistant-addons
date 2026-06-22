@@ -242,16 +242,20 @@ def fleet_api_to_fields(p):
 # of the roster used to build the fleet_telemetry_config sent to the car.
 TELEMETRY_FIELDS = {
     "VehicleSpeed":              {"interval_seconds": 10},
-    "Location":                  {"interval_seconds": 10},
+    # Location/PackVoltage/PackCurrent are "drive-grade": interval_seconds=1 ALLOWS 1 Hz, and
+    # minimum_delta gates transmission to actual changes — so they stream densely while driving (values
+    # swing) and go near-silent when parked (stable), with resend_interval_seconds as a heartbeat. This
+    # is what makes TeslaMate's power/regen-over-dt integral accurate without always-on cost.
+    "Location":                  {"interval_seconds": 1, "minimum_delta": 3, "resend_interval_seconds": 60},
     "GpsHeading":                {"interval_seconds": 10},
-    "Soc":                       {"interval_seconds": 30},
-    "BatteryLevel":              {"interval_seconds": 30},
+    "Soc":                       {"interval_seconds": 30, "minimum_delta": 0.1, "resend_interval_seconds": 300},
+    "BatteryLevel":              {"interval_seconds": 30, "minimum_delta": 1, "resend_interval_seconds": 300},
     "Gear":                      {"interval_seconds": 5},
-    "PackVoltage":               {"interval_seconds": 10},
-    "PackCurrent":               {"interval_seconds": 10},
-    "RatedRange":                {"interval_seconds": 60},
-    "EstBatteryRange":           {"interval_seconds": 60},
-    "IdealBatteryRange":         {"interval_seconds": 60},
+    "PackVoltage":               {"interval_seconds": 1, "minimum_delta": 0.5, "resend_interval_seconds": 60},
+    "PackCurrent":               {"interval_seconds": 1, "minimum_delta": 0.2, "resend_interval_seconds": 60},
+    "RatedRange":                {"interval_seconds": 60, "minimum_delta": 0.5, "resend_interval_seconds": 600},
+    "EstBatteryRange":           {"interval_seconds": 60, "minimum_delta": 0.5, "resend_interval_seconds": 600},
+    "IdealBatteryRange":         {"interval_seconds": 60, "minimum_delta": 0.5, "resend_interval_seconds": 600},
     "EnergyRemaining":           {"interval_seconds": 30},
     "DetailedChargeState":       {"interval_seconds": 30},
     "ACChargingPower":           {"interval_seconds": 30},
@@ -273,8 +277,8 @@ TELEMETRY_FIELDS = {
     "ChargePortLatch":           {"interval_seconds": 60},
     "BatteryHeaterOn":           {"interval_seconds": 30},
     "NotEnoughPowerToHeat":      {"interval_seconds": 30},
-    "InsideTemp":                {"interval_seconds": 60},
-    "OutsideTemp":               {"interval_seconds": 60},
+    "InsideTemp":                {"interval_seconds": 60, "minimum_delta": 0.5, "resend_interval_seconds": 600},
+    "OutsideTemp":               {"interval_seconds": 60, "minimum_delta": 0.5, "resend_interval_seconds": 600},
     "HvacACEnabled":             {"interval_seconds": 60},
     "HvacPower":                 {"interval_seconds": 60},
     "HvacFanStatus":             {"interval_seconds": 60},
@@ -301,10 +305,10 @@ TELEMETRY_FIELDS = {
     "FpWindow":                  {"interval_seconds": 60},
     "RdWindow":                  {"interval_seconds": 60},
     "RpWindow":                  {"interval_seconds": 60},
-    "TpmsPressureFl":            {"interval_seconds": 300},
-    "TpmsPressureFr":            {"interval_seconds": 300},
-    "TpmsPressureRl":            {"interval_seconds": 300},
-    "TpmsPressureRr":            {"interval_seconds": 300},
+    "TpmsPressureFl":            {"interval_seconds": 300, "minimum_delta": 0.05, "resend_interval_seconds": 1800},
+    "TpmsPressureFr":            {"interval_seconds": 300, "minimum_delta": 0.05, "resend_interval_seconds": 1800},
+    "TpmsPressureRl":            {"interval_seconds": 300, "minimum_delta": 0.05, "resend_interval_seconds": 1800},
+    "TpmsPressureRr":            {"interval_seconds": 300, "minimum_delta": 0.05, "resend_interval_seconds": 1800},
     "TpmsHardWarnings":          {"interval_seconds": 300},
     "TpmsSoftWarnings":          {"interval_seconds": 300},
     "DestinationName":                       {"interval_seconds": 30},
@@ -437,7 +441,13 @@ def effective_roster(override=None):
             iv = int(o.get("interval_seconds", default_iv))
         except (TypeError, ValueError):
             iv = default_iv
-        out[name] = {"interval_seconds": max(1, iv)}
+        entry = {"interval_seconds": max(1, iv)}
+        # Preserve the on-change keys: an explicit override value wins, else the field's default.
+        for k in ("minimum_delta", "resend_interval_seconds"):
+            v = o.get(k, TELEMETRY_FIELDS.get(name, {}).get(k))
+            if v is not None:
+                entry[k] = v
+        out[name] = entry
     return out
 
 

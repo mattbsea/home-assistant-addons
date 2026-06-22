@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.28
+
+### Added — on-change telemetry (minimum_delta / resend) for accurate regen at low cost
+- Tesla's `fleet_telemetry_config` supports per-field **`minimum_delta`** (only send when the value
+  moves by ≥ this) and **`resend_interval_seconds`** (heartbeat) in addition to `interval_seconds`.
+  Using these gives **dense power while driving** (values swing → 1 Hz) and **near-silence when parked**
+  (values stable) — fixing TeslaMate's power/regen-over-dt accuracy without always-on cost.
+- **Roster defaults:** `PackVoltage`/`PackCurrent`/`Location` are now drive-grade — `interval_seconds: 1`
+  + `minimum_delta` + `resend_interval_seconds: 60`. Conservative deltas/resend added to slow numeric
+  fields (`Soc`, `BatteryLevel`, ranges, `InsideTemp`/`OutsideTemp`, TPMS) to cut idle/parked volume.
+  Modelled cost ≈ +$2.4/mo (vs +$17.6/mo for always-on 1 Hz), keeping the 30-day total under budget.
+- **Wizard "Configure Your Vehicle" step** now exposes **Δ (minimum_delta)** and **↻ (resend)** per
+  field alongside the interval, pre-filled with the defaults and editable (clear Δ to stream every
+  interval). `fields.effective_roster` preserves these keys; changing the roster auto-resends the
+  signed config to the car. (`fields.py`, `app/web/static/wizard.html`)
+
 ## 1.0.27
 
 ### Fixed — streaming positions stamped with truncated whole-second time → wrong "Energy recovered"
