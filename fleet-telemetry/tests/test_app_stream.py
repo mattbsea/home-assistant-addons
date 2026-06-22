@@ -7,6 +7,7 @@ import websockets
 
 state = importlib.import_module("app.state")
 stream = importlib.import_module("app.sinks.stream")
+ws_stream = importlib.import_module("ws_stream")
 
 VIN = "7SAYGDEE3PF884783"
 
@@ -158,6 +159,35 @@ async def test_stream_sink_computes_drive_power_from_pack():
                     msg = m
                     break
             assert msg and msg["value"].split(",")[8] == "14"   # power column, computed kW
+    run_task.cancel()
+
+
+async def test_stream_frame_uses_telemetry_created_at_via_bus():
+    """End-to-end through the Store bus: the data:update time column must be the telemetry CreatedAt
+    (millisecond precision preserved), NOT the whole-second receive time. Whole-second timestamps make
+    TeslaMate's 'Energy recovered' panel (sum power*dt over pairs <1.5s apart) drop most of the drive."""
+    store = state.Store()
+    sink = stream.StreamSink(store)
+    run_task = asyncio.create_task(sink.run())
+    await asyncio.sleep(0.05)
+    async with websockets.serve(sink.handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        async with websockets.connect(f"ws://127.0.0.1:{port}/streaming/") as client:
+            await client.send(json.dumps({"msg_type": "data:subscribe_oauth", "tag": VIN}))
+            await asyncio.wait_for(client.recv(), 2)   # control:hello
+            created = "2026-06-18T01:21:45.250Z"
+            # A real telemetry record always carries CreatedAt; one record with location+gear is enough
+            # to produce a frame, so the frame's time must equal the telemetry CreatedAt (ms preserved).
+            store.ingest({"msg": "record_payload", "vin": VIN, "data": {
+                "CreatedAt": created, "Location": {"latitude": 47.77, "longitude": -122.15},
+                "Gear": "ShiftStateD", "VehicleSpeed": 30}})
+            msg = None
+            for _ in range(6):
+                m = json.loads(await asyncio.wait_for(client.recv(), 2))
+                if m.get("msg_type") == "data:update":
+                    msg = m
+                    break
+            assert msg and int(msg["value"].split(",")[0]) == ws_stream._epoch_ms(created)
     run_task.cancel()
 
 

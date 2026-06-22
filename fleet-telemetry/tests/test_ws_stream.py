@@ -18,6 +18,12 @@ def rec(**data):
     return {"msg": "record_payload", "vin": VIN, "data": data}
 
 
+def test_epoch_ms_preserves_subsecond():
+    # ISO strings already keep ms; float epochs must too (whole-second truncation broke regen integrals)
+    assert ws_stream._epoch_ms("2026-06-18T01:21:45.250Z") % 1000 == 250
+    assert ws_stream._epoch_ms(1781974676.789) == 1781974676789
+
+
 # --- pure: accumulate ----------------------------------------------------------------
 def test_accumulate_location_gear_and_meta():
     last = {}                              # accumulate keys per-VIN

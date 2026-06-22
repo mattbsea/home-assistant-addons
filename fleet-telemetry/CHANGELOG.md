@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.27
+
+### Fixed — streaming positions stamped with truncated whole-second time → wrong "Energy recovered"
+- **Root cause:** the streaming sink stamped each position with the **wall-clock receive time truncated
+  to whole seconds** (`event["at"]` → `_epoch_ms` did `int(x)*1000`) instead of the telemetry
+  `CreatedAt`. TeslaMate's "Energy recovered" panel integrates regen as `Σ power·dt` over consecutive
+  positions **less than 1.5 s apart**; with whole-second timestamps, multiple records in the same
+  second collapse to `dt=0` (zero energy) and borderline gaps get pushed past 1.5 s and dropped — so
+  regen read ~6–10× low (e.g. drive 1174 showed 0.36 kWh vs a true ~2.8–3.2 kWh). Drives from before
+  the SSOT refactor (which used `CreatedAt`) were correct; the refactor introduced the regression.
+- **Fix:** the Store now carries each record's telemetry `CreatedAt` on its change event, and the
+  streaming sink stamps frames with it (sub-second, falling back to receive time only if absent). The
+  on-subscribe re-sync frame uses the latest telemetry `CreatedAt` too, and `_epoch_ms` no longer
+  truncates float epochs to whole seconds. `positions.date` is now the telemetry time, matching the
+  pre-refactor behaviour. Past drives can't be recovered; new drives integrate correctly.
+  (`app/state.py`, `app/sinks/stream.py`, `ws_stream.py`)
+
 ## 1.0.26
 
 ### Changed — corrected "streaming is free" wording in the UI

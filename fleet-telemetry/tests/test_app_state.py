@@ -153,6 +153,20 @@ def test_history_series_accumulate():
     assert all(isinstance(val, float) for _, val in v["history"]["speed"])
 
 
+async def test_event_carries_telemetry_created_at():
+    """The change event must carry the record's telemetry CreatedAt so the streaming sink can stamp
+    positions with the real (sub-second) time, not the whole-second receive time — TeslaMate's regen
+    panel integrates power over dt and drops pairs >=1.5s apart, so timestamp precision is load-bearing."""
+    store = state.Store()
+    loop = asyncio.get_running_loop()
+    q = store.subscribe(loop)
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"CreatedAt": "2026-06-18T01:21:45.250Z", "Soc": 50.0}})
+    event = await asyncio.wait_for(q.get(), 2)
+    assert event["created_at"] == "2026-06-18T01:21:45.250Z"
+    store.unsubscribe(q)
+
+
 async def test_event_bus_publishes_changes():
     store = state.Store()
     loop = asyncio.get_running_loop()

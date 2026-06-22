@@ -25,7 +25,7 @@ import records
 
 def _epoch_ms(created_at):
     if isinstance(created_at, (int, float)):
-        return int(created_at) * 1000
+        return int(created_at * 1000)   # keep ms precision; truncating to whole seconds broke regen-over-dt
     s = str(created_at).replace("Z", "+00:00")
     try:
         return int(datetime.fromisoformat(s).timestamp() * 1000)

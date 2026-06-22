@@ -56,7 +56,8 @@ class StreamSink:
                         lv = lv_from_snapshot(self.store.snapshot(tag))
                         self.driving[tag] = lv.get("Gear") in ("D", "N", "R")
                         elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
-                        frame = ws_stream.build_data_update(tag, {tag: lv}, time.time(), elevation=elev)
+                        frame = ws_stream.build_data_update(tag, {tag: lv},
+                                                            self.store.last_created_at(tag) or time.time(), elevation=elev)
                         if frame:
                             await ws.send(json.dumps(frame))
         except websockets.ConnectionClosed:
@@ -118,6 +119,8 @@ class StreamSink:
         try:
             while True:
                 event = await q.get()
-                await self._broadcast(event["vin"], event.get("at"))
+                # Stamp the frame with the telemetry CreatedAt (sub-second), falling back to receive
+                # time — whole-second timestamps wreck TeslaMate's regen-over-dt integral.
+                await self._broadcast(event["vin"], event.get("created_at") or event.get("at"))
         finally:
             self.store.unsubscribe(q)

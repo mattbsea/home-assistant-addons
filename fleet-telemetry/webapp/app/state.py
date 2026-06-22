@@ -113,6 +113,8 @@ class Store:
             self._record_times.append(now)
             v = self._vehicle(vin)
             v["last_epoch"] = now
+            if created:
+                v["last_created_at"] = created   # latest telemetry timestamp (for the on-subscribe re-sync frame)
             if cver:
                 v["client_version"] = cver
             for k, val in data.items():
@@ -148,7 +150,9 @@ class Store:
         if disconnected:
             self.sleep_checks.put((vin, now))   # settle window + /products confirm runs off-thread
         if changed:
-            self._publish({"vin": vin, "changed": changed, "at": now})
+            # `created_at` is the telemetry CreatedAt (sub-second): the streaming sink stamps positions
+            # with it, not wall-clock receive time, so TeslaMate's power/regen-over-dt panels stay accurate.
+            self._publish({"vin": vin, "changed": changed, "at": now, "created_at": created})
 
     @staticmethod
     def _track_charge_baseline(v):
@@ -210,6 +214,13 @@ class Store:
         with self._lock:
             v = self.vehicles.get(vin)
             return (v.get("display_name") if v else None) or vin
+
+    def last_created_at(self, vin):
+        """The most recent telemetry CreatedAt for the VIN, or None — used to stamp the on-subscribe
+        re-sync frame with telemetry time instead of wall-clock."""
+        with self._lock:
+            v = self.vehicles.get(vin)
+            return v.get("last_created_at") if v else None
 
     # --- sleep detection ---------------------------------------------------------------
     def set_sleep_state(self, vin, state):

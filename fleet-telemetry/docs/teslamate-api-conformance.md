@@ -95,12 +95,15 @@ CSV column order vs TeslaMate's `[:time | @columns]` (dict §3, parsed by `Strea
 `tesla_api/stream/data.ex`). **13/13 exact match**; power computed (kW), range/est_range/heading still
 populated but decoded-then-dropped by TeslaMate (harmless). One change worth flagging:
 
-- **S1 — timestamp source changed.** The live `StreamSink` builds the frame with `event["at"]`
-  (stream.py:106,121), which is the Store's wall-clock **receive time** (`now=time.time()`,
-  state.py:149); `_epoch_ms` then truncates to whole seconds (ws_stream.py:26-33). The prior review
-  (and the standalone `ws_stream.Stream.feed`) used the telemetry **`CreatedAt`**. Net: `positions.date`
-  on stream-fed rows is receive-time, second-resolution — likely fine (sub-second drive sampling is
-  unaffected), but it's a divergence from the documented behavior; confirm it's intended.
+- **S1 — timestamp source (FIXED v1.0.27; was a real defect, not benign).** The live `StreamSink`
+  stamped frames with `event["at"]` — the Store's wall-clock **receive time** — and `_epoch_ms`
+  truncated it to **whole seconds**. This was NOT benign: TeslaMate's "Energy recovered" panel
+  integrates regen as `Σ power·dt` over consecutive positions `< 1.5 s` apart, so whole-second
+  timestamps collapsed same-second records to `dt=0` and pushed borderline gaps past 1.5 s →
+  regen read ~6–10× low (drive 1174: 0.36 kWh vs true ~2.8–3.2 kWh). **Fixed:** the Store now carries
+  each record's telemetry `CreatedAt` on its event; the sink stamps frames with it (sub-second), the
+  on-subscribe frame uses the latest `CreatedAt`, and `_epoch_ms` keeps float ms. `positions.date` is
+  the telemetry time again, matching the pre-SSOT path.
 
 ---
 
