@@ -54,6 +54,27 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
             "fleet_api": {**store.fleet_calls(), "since": start_time}}
 
 
+async def console_stream(store, *, idle_timeout=20.0):
+    """SSE generator for the raw-telemetry Console: push ONE event per incoming record, carrying the
+    raw changed fields exactly as they land (no coalescing, unlike the dashboard feed). Subscribes to
+    the Store event bus and always unsubscribes on close; heartbeat comment when idle keeps the proxy
+    connection open."""
+    loop = asyncio.get_running_loop()
+    q = store.subscribe(loop)
+    try:
+        yield ": connected\n\n"                                  # immediate: opens the stream + confirms subscribe
+        while True:
+            try:
+                ev = await asyncio.wait_for(q.get(), timeout=idle_timeout)
+            except asyncio.TimeoutError:
+                yield "event: hb\ndata: 1\n\n"
+                continue
+            yield "data: " + json.dumps({"vin": ev.get("vin"), "created_at": ev.get("created_at"),
+                                         "at": ev.get("at"), "changed": ev.get("changed", {})}) + "\n\n"
+    finally:
+        store.unsubscribe(q)
+
+
 async def sse_stream(store, payload_fn, *, idle_timeout=20.0, coalesce=0.2):
     """SSE generator for the dashboard push feed: emit an initial snapshot, then one event per Store
     change (bursts coalesced into a single payload), with a heartbeat comment when idle so the ingress

@@ -35,6 +35,8 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         wizard_page = fh.read()
     with open(os.path.join(_STATIC, "dashboard.html")) as fh:
         dash_page = fh.read()
+    with open(os.path.join(_STATIC, "console.html")) as fh:
+        console_page = fh.read()
     start_time = time.time()   # app start, for the dashboard uptime readout
 
     def cfg():
@@ -63,6 +65,15 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         replacing the dashboard's 5s poll (the dashboard falls back to polling if this isn't available).
         Same Store event bus the TeslaMate stream sink uses; see api.sse_stream."""
         return StreamingResponse(api.sse_stream(store, _payload), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # --- raw-telemetry console ---------------------------------------------------------
+    async def console(_req):
+        return HTMLResponse(console_page)
+
+    async def console_feed(_req):
+        """SSE feed of raw records as they arrive (one event per record); see api.console_stream."""
+        return StreamingResponse(api.console_stream(store), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # --- wizard reads ------------------------------------------------------------------
@@ -231,6 +242,8 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
         Route("/setup", setup),
         Route("/api/state", state),
         Route("/api/stream", state_stream),
+        Route("/console", console),
+        Route("/api/console", console_feed),
         Route("/api/wizard/state", wiz_state),
         Route("/api/wizard/config", get_config, methods=["GET"]),
         Route("/api/wizard/hostports", host_ports),

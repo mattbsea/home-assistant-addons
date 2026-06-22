@@ -93,6 +93,10 @@ def test_roster_additions_and_intervals():
     for f in ("PackVoltage", "PackCurrent", "Location"):
         assert r[f]["interval_seconds"] == 1, f
         assert r[f]["minimum_delta"] > 0 and r[f]["resend_interval_seconds"] > 0, f
+    # tuned deltas: coarser than the initial defaults to cut charging chatter (current/voltage swing a
+    # lot while charging, where TeslaMate uses ACChargingPower/DCChargingPower, not PackV*PackC).
+    assert r["PackCurrent"]["minimum_delta"] == 0.5
+    assert r["PackVoltage"]["minimum_delta"] == 1.0
 
 
 def test_effective_roster_preserves_onchange_keys():

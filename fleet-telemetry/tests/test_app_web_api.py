@@ -68,6 +68,27 @@ async def test_sse_stream_initial_snapshot_then_event():
     assert store._subscribers == []                     # cleaned up on close
 
 
+async def test_console_stream_emits_each_raw_record():
+    """The console feed pushes one SSE event per incoming telemetry record, carrying the raw changed
+    fields exactly as they arrive (no coalescing), and unsubscribes on close."""
+    import json as _json
+    store = state.Store()
+    gen = api.console_stream(store, idle_timeout=5)
+    hello = await gen.__anext__()                       # immediate connect marker -> confirms subscribe
+    assert hello.startswith(":")
+    assert len(store._subscribers) == 1
+    store.ingest({"msg": "record_payload", "vin": "V",
+                  "data": {"CreatedAt": "2026-06-22T20:00:00Z", "PackCurrent": 12.3, "PackVoltage": 380.0}})
+    msg = await asyncio.wait_for(gen.__anext__(), 2)
+    assert msg.startswith("data: ")
+    payload = _json.loads(msg[6:])
+    assert payload["vin"] == "V"
+    assert payload["created_at"] == "2026-06-22T20:00:00Z"
+    assert payload["changed"] == {"PackCurrent": 12.3, "PackVoltage": 380.0}
+    await gen.aclose()
+    assert store._subscribers == []                     # cleaned up on close
+
+
 def test_state_payload_uptime_from_start_time():
     store = state.Store()
     p = api.state_payload(store, start_time=time.time() - 125)

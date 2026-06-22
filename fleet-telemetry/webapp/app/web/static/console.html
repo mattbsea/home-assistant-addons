@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Telemetry Console</title>
+<style>
+:root{--bg:#0b0f17;--card:#141b29;--card2:#1b2435;--line:#26314a;--txt:#e7edf7;--mut:#8a98b3;--accent:#3ea6ff;--good:#3ddc97;--warn:#ffb454;--bad:#ff5d5d}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:16px;margin:0;font-weight:650}
+.pill{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--mut)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--mut)}
+button.pill,label.pill{cursor:pointer;user-select:none}
+input[type=text]{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:5px 9px;font-size:12.5px}
+a{color:var(--accent);text-decoration:none}
+#log{flex:1;overflow:auto;margin:0;padding:8px 14px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.row{padding:2px 0;border-bottom:1px solid #1a2233}
+.t{color:var(--mut)}
+.vin{color:var(--warn)}
+.k{color:var(--accent)}
+.v{color:var(--txt)}
+.conn{color:var(--mut);font-style:italic}
+.empty{color:var(--mut);padding:18px 14px}
+</style></head>
+<body>
+<header>
+  <h1>🖥 Raw Telemetry</h1>
+  <a class="pill" href="./">← Dashboard</a>
+  <span class="pill"><span class="dot" id="dot"></span><span id="status">connecting…</span></span>
+  <span class="pill" id="stat">0 records</span>
+  <input type="text" id="filter" placeholder="filter fields (e.g. Pack, Charge)" oninput="render()" style="flex:1;min-width:120px">
+  <button class="pill" id="pauseBtn" onclick="togglePause()">⏸ Pause</button>
+  <label class="pill"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+  <button class="pill" onclick="clearLog()">🗑 Clear</button>
+</header>
+<div id="log"><div class="empty" id="empty">Waiting for telemetry… records appear here the instant the vehicle streams them (every few seconds while awake/driving/charging).</div></div>
+<script>
+const MAX=1500;            // cap rows kept in the DOM/buffer
+let rows=[];               // {t, vin, changed}
+let paused=false, received=0, t0=Date.now();
+const META=new Set(["ConnectionID","NetworkInterface","Status"]);
+const $=s=>document.querySelector(s);
+
+function esc(s){return (""+s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function fmtVal(v){
+  if(v===null) return "null";
+  if(typeof v==="object") return JSON.stringify(v);
+  if(typeof v==="number") return (Math.round(v*1000)/1000);
+  return v;
+}
+function hhmmss(d){return d.toTimeString().slice(0,8);}
+function rowTime(r){
+  if(r.created_at && /T/.test(r.created_at)) return r.created_at.replace(/.*T/,"").replace("Z","");
+  return hhmmss(new Date((r.at?r.at*1000:Date.now())));
+}
+
+function lineHtml(r){
+  const f=$("#filter").value.trim().toLowerCase();
+  let entries=Object.entries(r.changed||{});
+  if(f) entries=entries.filter(([k])=>k.toLowerCase().includes(f));
+  if(!entries.length) return "";
+  const fields=entries.map(([k,v])=>`<span class="k">${esc(k)}</span>=<span class="v">${esc(fmtVal(v))}</span>`).join("  ");
+  const vin=r.vin?`<span class="vin">${esc((""+r.vin).slice(-6))}</span> `:"";
+  return `<div class="row"><span class="t">${esc(rowTime(r))}</span> ${vin}${fields}</div>`;
+}
+
+function render(){
+  const log=$("#log");
+  const html=rows.map(lineHtml).filter(Boolean).join("");
+  log.innerHTML=html||'<div class="empty">No records match the filter.</div>';
+  if($("#autoscroll").checked && !paused) log.scrollTop=log.scrollHeight;
+}
+
+function add(r){
+  if(paused) return;
+  received++;
+  rows.push(r);
+  if(rows.length>MAX) rows=rows.slice(-MAX);
+  $("#stat").textContent=`${received} records · ${(received/Math.max(1,(Date.now()-t0)/1000)).toFixed(2)}/s`;
+  // incremental append (cheap) unless a filter is active (then re-render)
+  if($("#filter").value.trim()){ render(); return; }
+  const html=lineHtml(r);
+  if(!html) return;
+  const emp=$("#empty"); if(emp) emp.remove();
+  const log=$("#log");
+  const atBottom=log.scrollHeight-log.scrollTop-log.clientHeight<40;
+  log.insertAdjacentHTML("beforeend",html);
+  while(log.childElementCount>MAX) log.firstElementChild.remove();
+  if($("#autoscroll").checked && atBottom) log.scrollTop=log.scrollHeight;
+}
+
+function togglePause(){paused=!paused;$("#pauseBtn").textContent=paused?"▶ Resume":"⏸ Pause";if(!paused)render();}
+function clearLog(){rows=[];$("#log").innerHTML='<div class="empty">Cleared.</div>';}
+
+function setStatus(txt,color){$("#status").textContent=txt;$("#dot").style.background=color;}
+
+function connect(){
+  setStatus("connecting…","var(--mut)");
+  const es=new EventSource("./api/console");
+  es.onopen=()=>setStatus("live","var(--good)");
+  es.onmessage=e=>{ try{ add(JSON.parse(e.data)); }catch(_){} };
+  es.onerror=()=>{ setStatus("reconnecting…","var(--warn)"); };  // EventSource auto-reconnects
+}
+connect();
+</script>
+</body></html>

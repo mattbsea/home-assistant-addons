@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.29
+
+### Added — raw-telemetry Console page
+- New **🖥 Console** button on the dashboard opens `/console`, a live feed of raw telemetry records as
+  they arrive (one row per record: timestamp · VIN · `field=value` pairs), backed by a new
+  `/api/console` SSE endpoint (`api.console_stream`) that taps the Store event bus with no coalescing.
+  Includes pause/resume, clear, autoscroll, and a field filter.
+
+### Changed — tuning to cut telemetry chatter / cost
+- `PackCurrent` `minimum_delta` 0.2 → **0.5 A**, `PackVoltage` 0.5 → **1.0 V** — during charging these
+  swing constantly but TeslaMate uses `ACChargingPower`/`DCChargingPower` (not `PackV·PackC`), so the
+  finer deltas were the top chatterer; coarser deltas roughly halve it while keeping drive-regen
+  resolution fine (~0.2 kW).
+- `FT_SLEEP_RECHECK_SECS` default 900 → **1800 s** — halves the no-wake `/products` sleep-confirm poll
+  cost (~$2.5 → ~$1.2/mo) while still picking up offline↔asleep↔online transitions.
+
 ## 1.0.28
 
 ### Added — on-change telemetry (minimum_delta / resend) for accurate regen at low cost

@@ -177,7 +177,7 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
         # While asleep/offline the car won't stream to clear the state, and Tesla can change
         # offline<->asleep<->online while silent — so re-confirm via /products (a no-wake call) on this
         # cadence instead of latching the first reading until telemetry happens to resume.
-        sleep_recheck = max(bridge_secs, int(os.environ.get("FT_SLEEP_RECHECK_SECS", "900")))
+        sleep_recheck = max(bridge_secs, int(os.environ.get("FT_SLEEP_RECHECK_SECS", "1800")))
         bridged = {}   # vin -> consecutive bridge-poll count (reset when streaming resumes or asleep)
         _log = lambda m: print(m, flush=True)
 

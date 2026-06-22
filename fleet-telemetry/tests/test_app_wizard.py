@@ -23,6 +23,12 @@ def test_setup_page(tmp_path):
     assert r.status_code == 200 and "<!DOCTYPE html>" in r.text
 
 
+def test_console_page_served(tmp_path):
+    r = _client(tmp_path).get("/console")
+    assert r.status_code == 200 and "<!DOCTYPE html>" in r.text
+    assert "Raw Telemetry" in r.text and "./api/console" in r.text
+
+
 def test_index_redirects_to_setup_until_completed(tmp_path):
     c = _client(tmp_path)
     r = c.get("/", follow_redirects=False)
