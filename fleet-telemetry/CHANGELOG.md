@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.30
+
+### Added — causal EMA smoothing of DEM elevation (cleaner ascent/descent)
+- Tesla provides no altitude, so the streaming `elevation` column is filled from a local SRTM DEM. The
+  per-point lookup is accurate (~2 m vs GPS), but it's a function of the jittery GPS lat/long, so
+  horizontal jitter × terrain slope injects noise that — summed over a drive — inflates TeslaMate's
+  ascent/descent and elevation-based efficiency.
+- New `elevation.ElevationSmoother`: a per-VIN **causal EMA** applied in the stream sink before the
+  integer round (resets after a 60 s gap so it never carries across drives; `FT_ELEVATION_EMA_ALPHA`,
+  default **0.2**; `>= 1.0` disables). Validated against stored GPS on a climb: **RMSE 1.87 → 1.20 m,
+  ascent inflation +20% → ~+5%**. Per-point accuracy is unchanged where the residual is systematic;
+  independent of the regen/power path. (`elevation.py`, `app/sinks/stream.py`)
+
 ## 1.0.29
 
 ### Added — raw-telemetry Console page
