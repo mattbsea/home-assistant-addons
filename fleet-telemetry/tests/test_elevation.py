@@ -128,3 +128,20 @@ def test_load_disk_reads_cached_tiles(tmp_path):
     r = elevation.Resolver(str(tmp_path), enabled=False)
     r.load_disk()
     assert r.elevation(47.5, 5.5) == 4
+
+
+# --- ElevationSmoother: causal EMA that removes jitter×slope noise (inflates TeslaMate ascent) ---
+def test_elevation_smoother_ema_reset_and_passthrough():
+    sm = elevation.ElevationSmoother(alpha=0.5, gap_reset_s=60)
+    assert sm.smooth("V", 100.0, ts=0) == 100.0          # first sample seeds (passthrough)
+    assert sm.smooth("V", 200.0, ts=1) == 150.0          # 0.5*200 + 0.5*100
+    assert sm.smooth("V", None, ts=2) is None            # None -> None, state unchanged
+    assert sm.smooth("V", 200.0, ts=3) == 175.0          # 0.5*200 + 0.5*150 (continues from 150)
+    assert sm.smooth("W", 10.0, ts=3) == 10.0            # per-VIN independent
+    assert sm.smooth("V", 50.0, ts=200) == 50.0          # gap > gap_reset_s -> reset (re-seed)
+
+
+def test_elevation_smoother_alpha_one_disables():
+    sm = elevation.ElevationSmoother(alpha=1.0)
+    assert sm.smooth("V", 100.0, ts=0) == 100.0
+    assert sm.smooth("V", 200.0, ts=1) == 200.0          # no smoothing

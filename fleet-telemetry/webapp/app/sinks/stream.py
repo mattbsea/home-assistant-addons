@@ -10,6 +10,7 @@ import time
 
 import websockets
 
+import elevation as elevation_mod
 import fields
 import ws_stream
 
@@ -28,9 +29,12 @@ def lv_from_snapshot(snap):
 
 
 class StreamSink:
-    def __init__(self, store, elevation=None):
+    def __init__(self, store, elevation=None, elevation_ema_alpha=0.2):
         self.store = store
         self.elevation = elevation   # elevation.Resolver or None — fills the stream elevation column
+        # Causal EMA over the DEM elevation series: removes horizontal-jitter×slope noise that would
+        # otherwise inflate TeslaMate's ascent/descent. alpha>=1.0 disables it. See elevation.ElevationSmoother.
+        self.elev_smoother = elevation_mod.ElevationSmoother(alpha=elevation_ema_alpha)
         self.subs = {}          # vin -> set[websocket]
         self.driving = {}       # vin -> bool: is the car currently driving (gates data:update, like Tesla)
 
@@ -104,6 +108,7 @@ class StreamSink:
         if not driving and not was_driving:
             return
         elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
+        elev = self.elev_smoother.smooth(vin, elev, time.time())   # causal EMA -> de-jittered ascent/descent
         update = ws_stream.build_data_update(vin, {vin: lv}, created_at, elevation=elev)
         if not update:
             return

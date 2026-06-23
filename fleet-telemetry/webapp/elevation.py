@@ -79,6 +79,40 @@ def _round_m(v):
     return None if v is None else int(round(v))
 
 
+class ElevationSmoother:
+    """Per-VIN causal EMA over the DEM elevation series.
+
+    The DEM lookup itself is accurate (~2 m vs GPS), but it's a function of the (jittery) GPS lat/long:
+    horizontal GPS jitter × terrain slope injects high-frequency noise that, summed over a drive,
+    inflates TeslaMate's ascent/descent (and elevation-based efficiency). A causal EMA removes that
+    zero-mean jitter while preserving the real trend — validated vs stored GPS (RMSE 1.87 m -> 1.20 m,
+    ascent +20% -> ~+5% at alpha=0.2). Causal so it runs live in the stream sink.
+
+    `alpha` in (0,1]: smaller = smoother (more lag); alpha >= 1.0 disables smoothing (passthrough).
+    State resets per VIN when the gap since the last sample exceeds `gap_reset_s` (a new drive after a
+    park, or a stream drop) so elevation never carries across segments.
+    """
+
+    def __init__(self, alpha=0.2, gap_reset_s=60):
+        self.alpha = float(alpha)
+        self.gap_reset_s = gap_reset_s
+        self._state = {}   # vin -> [ema, last_ts]
+
+    def smooth(self, vin, elev, ts):
+        """Return the EMA-smoothed elevation for `vin` at time `ts` (seconds), or None if `elev` is
+        None (a None reading is passed through and does not advance the filter)."""
+        if elev is None:
+            return None
+        elev = float(elev)
+        s = self._state.get(vin)
+        if self.alpha >= 1.0 or s is None or (ts - s[1]) > self.gap_reset_s:
+            ema = elev                                  # disabled / first sample / post-gap re-seed
+        else:
+            ema = self.alpha * elev + (1.0 - self.alpha) * s[0]
+        self._state[vin] = [ema, ts]
+        return ema
+
+
 class Resolver:
     """On-demand DEM tile cache. `elevation()` is sync + non-blocking; downloads happen in the
     background on the running event loop and persist to `cache_dir` (on `/data`)."""

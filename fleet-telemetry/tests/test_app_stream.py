@@ -220,3 +220,32 @@ async def test_stream_sink_broadcasts_from_bus():
             assert (p[6], p[7], p[9]) == ("47.77", "-122.15", "D")
             assert p[1] == "30" and p[3] == "51"
     run_task.cancel()
+
+
+class _SeqElevation:
+    """Returns a preset sequence of elevations regardless of lat/lon, to test the EMA in the sink."""
+    def __init__(self, vals):
+        self.vals = list(vals)
+        self.i = 0
+
+    def elevation(self, lat, lon):
+        v = self.vals[min(self.i, len(self.vals) - 1)]
+        self.i += 1
+        return v
+
+
+async def test_stream_smooths_elevation_with_causal_ema():
+    """The stream sink applies a per-VIN causal EMA to the DEM elevation (de-jitters ascent/descent).
+    With alpha=0.5: first sample seeds (100), second = 0.5*200 + 0.5*100 = 150."""
+    store = state.Store()
+    sink = stream.StreamSink(store, elevation=_SeqElevation([100, 200]), elevation_ema_alpha=0.5)
+    ws = _RecWS()
+    sink.subs[VIN] = {ws}
+    _ingest(store, Location={"latitude": 47.77, "longitude": -122.15}, Soc=50)
+    _ingest(store, CreatedAt="2026-06-18T01:21:45Z", Gear="ShiftStateD", VehicleSpeed=30)
+    await sink._broadcast(VIN, "2026-06-18T01:21:45Z")
+    _ingest(store, CreatedAt="2026-06-18T01:21:46Z", VehicleSpeed=31)
+    await sink._broadcast(VIN, "2026-06-18T01:21:46Z")
+    cols = [m["value"].split(",")[4] for m in ws.sent if m["msg_type"] == "data:update"]
+    assert cols[0] == "100"     # first elevation seeds the EMA
+    assert cols[-1] == "150"    # second is smoothed toward the prior, not the raw 200

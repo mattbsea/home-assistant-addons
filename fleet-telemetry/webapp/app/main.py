@@ -229,7 +229,8 @@ async def _supervise(name, factory):
 
 async def run(store, *, shim_app, ingress_app, pubkey_app, shim_port, ws_port, web_port, pubkey_port,
               elevation=None):
-    sink = stream.StreamSink(store, elevation=elevation)
+    sink = stream.StreamSink(store, elevation=elevation,
+                             elevation_ema_alpha=float(os.environ.get("FT_ELEVATION_EMA_ALPHA", "0.2")))
 
     async def ws_server():
         server = await websockets.serve(sink.handler, "0.0.0.0", ws_port)
