@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.31
+
+### Fixed — dashboard Vehicle tile "Last record" (and other relative times) now tick live
+- The per-vehicle tiles were only re-rendered on an SSE data push, so relative-time fields like
+  **"Last record"** (`ago(last_seen_epoch)`) froze between records — looking stuck at "just now". The
+  header's "last record" pill already ticked (it adds elapsed time), but the tiles didn't.
+- Split the tile rendering into `renderVehicles()` and re-run it on the existing 1 s ticker (without
+  resetting the header time anchor), so `ago()`-based fields count up between pushes and reset when a
+  new record lands. Pure dashboard JS. (`app/web/static/dashboard.html`)
+
 ## 1.0.30
 
 ### Added — causal EMA smoothing of DEM elevation (cleaner ascent/descent)

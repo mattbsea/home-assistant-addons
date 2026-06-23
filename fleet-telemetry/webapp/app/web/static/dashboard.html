@@ -305,6 +305,12 @@ function render(st){
  $("#verPill").textContent="v"+(st.version||"—");
  view={st,clientT:Date.now()/1000};   // anchor for the per-second header counters
  paintHeader();
+ renderVehicles(st);
+}
+// Rebuild the per-vehicle tiles. Split out of render() so the 1s ticker can re-run it from the last
+// state WITHOUT resetting the time anchor — keeps relative-time fields ("Last record") counting up
+// between SSE pushes (ago() reads live wall-clock; pulses don't fire when values are unchanged).
+function renderVehicles(st){
  const vehiclesEl=$("#vehicles");
  $("#empty").style.display=st.vehicles.length?"none":"";
  const seen=new Set();
@@ -374,6 +380,6 @@ if(window.EventSource){
  // heartbeat) for 45s, fall back to polling. A healthy SSE (data or 20s heartbeats) keeps poll off.
  setInterval(()=>{if(Date.now()-lastLive>45000)startPoll();},5000);
 }else{startPoll();}
-setInterval(paintHeader,1000);
+setInterval(()=>{if(view){paintHeader();renderVehicles(view.st);}},1000);
 </script>
 </body></html>
