@@ -74,7 +74,7 @@ def test_lv_from_snapshot_flattens_location_and_gear():
 
 
 class _FakeElevation:
-    def elevation(self, lat, lon):
+    def elevation(self, lat, lon, round_m=True):
         return 137 if (lat, lon) == (47.77, -122.15) else None
 
 
@@ -228,15 +228,16 @@ class _SeqElevation:
         self.vals = list(vals)
         self.i = 0
 
-    def elevation(self, lat, lon):
+    def elevation(self, lat, lon, round_m=True):
         v = self.vals[min(self.i, len(self.vals) - 1)]
         self.i += 1
         return v
 
 
 async def test_stream_smooths_elevation_with_causal_ema():
-    """The stream sink applies a per-VIN causal EMA to the DEM elevation (de-jitters ascent/descent).
-    With alpha=0.5: first sample seeds (100), second = 0.5*200 + 0.5*100 = 150."""
+    """The stream sink applies a per-VIN causal EMA to the DEM elevation (de-jitters ascent/descent),
+    advancing once per POSITION. With alpha=0.5: first position seeds (100), the next position =
+    0.5*200 + 0.5*100 = 150."""
     store = state.Store()
     sink = stream.StreamSink(store, elevation=_SeqElevation([100, 200]), elevation_ema_alpha=0.5)
     ws = _RecWS()
@@ -244,8 +245,30 @@ async def test_stream_smooths_elevation_with_causal_ema():
     _ingest(store, Location={"latitude": 47.77, "longitude": -122.15}, Soc=50)
     _ingest(store, CreatedAt="2026-06-18T01:21:45Z", Gear="ShiftStateD", VehicleSpeed=30)
     await sink._broadcast(VIN, "2026-06-18T01:21:45Z")
-    _ingest(store, CreatedAt="2026-06-18T01:21:46Z", VehicleSpeed=31)
+    _ingest(store, Location={"latitude": 47.78, "longitude": -122.16},
+            CreatedAt="2026-06-18T01:21:46Z", VehicleSpeed=31)   # car moved -> EMA advances
     await sink._broadcast(VIN, "2026-06-18T01:21:46Z")
     cols = [m["value"].split(",")[4] for m in ws.sent if m["msg_type"] == "data:update"]
-    assert cols[0] == "100"     # first elevation seeds the EMA
-    assert cols[-1] == "150"    # second is smoothed toward the prior, not the raw 200
+    assert cols[0] == "100"     # first position seeds the EMA
+    assert cols[-1] == "150"    # next position is smoothed toward the prior, not the raw 200
+
+
+async def test_stream_holds_elevation_when_position_unchanged():
+    """Regression (ascent inflation): the sink broadcasts on EVERY field change, but most broadcasts
+    land at the SAME location (PackCurrent/Soc tick between 1 Hz GPS updates). Those repeats must NOT
+    advance the EMA — otherwise it re-converges toward the raw DEM at each location and the smoothing
+    is effectively weakened (drive 1180: 696 m vs the per-position 589 m). Elevation holds at the seed
+    until the position actually moves."""
+    store = state.Store()
+    sink = stream.StreamSink(store, elevation=_SeqElevation([100, 200, 300]), elevation_ema_alpha=0.5)
+    ws = _RecWS()
+    sink.subs[VIN] = {ws}
+    _ingest(store, Location={"latitude": 47.77, "longitude": -122.15}, Soc=50)
+    _ingest(store, CreatedAt="2026-06-18T01:21:45Z", Gear="ShiftStateD", VehicleSpeed=30)
+    await sink._broadcast(VIN, "2026-06-18T01:21:45Z")              # seed at P1
+    _ingest(store, CreatedAt="2026-06-18T01:21:46Z", VehicleSpeed=31)      # same location
+    await sink._broadcast(VIN, "2026-06-18T01:21:46Z")
+    _ingest(store, CreatedAt="2026-06-18T01:21:47Z", Soc=49)               # same location
+    await sink._broadcast(VIN, "2026-06-18T01:21:47Z")
+    cols = [m["value"].split(",")[4] for m in ws.sent if m["msg_type"] == "data:update"]
+    assert cols == ["100", "100", "100"]   # no EMA advance without a position change

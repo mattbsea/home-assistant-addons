@@ -91,25 +91,39 @@ class ElevationSmoother:
     `alpha` in (0,1]: smaller = smoother (more lag); alpha >= 1.0 disables smoothing (passthrough).
     State resets per VIN when the gap since the last sample exceeds `gap_reset_s` (a new drive after a
     park, or a stream drop) so elevation never carries across segments.
+
+    The filter advances once per POSITION, not per broadcast. The sink emits a frame on every field
+    change, so many broadcasts share one (lat, lon) (PackCurrent/Soc tick between 1 Hz GPS updates).
+    Re-running the EMA on a repeated position re-converges it toward the raw DEM there, weakening the
+    smoothing and inflating ascent (drive 1180: 696 m per-broadcast vs 589 m per-position). So a
+    repeated (lat, lon) seeds-from-last (returns the prior value); only a real move advances the EMA.
+    Dedup keys on (lat, lon) — never the elevation value — so a slow climb that rounds to the same
+    meter still advances.
     """
 
     def __init__(self, alpha=0.2, gap_reset_s=60):
         self.alpha = float(alpha)
         self.gap_reset_s = gap_reset_s
-        self._state = {}   # vin -> [ema, last_ts]
+        self._state = {}   # vin -> [ema, last_ts, last_lat, last_lon]
 
-    def smooth(self, vin, elev, ts):
+    def smooth(self, vin, elev, ts, *, lat=None, lon=None):
         """Return the EMA-smoothed elevation for `vin` at time `ts` (seconds), or None if `elev` is
-        None (a None reading is passed through and does not advance the filter)."""
+        None (a None reading is passed through and does not advance the filter). When `lat`/`lon` are
+        given and unchanged since the last call (same position), the prior value is returned without
+        advancing the EMA."""
         if elev is None:
             return None
         elev = float(elev)
         s = self._state.get(vin)
-        if self.alpha >= 1.0 or s is None or (ts - s[1]) > self.gap_reset_s:
+        reset = s is None or (ts - s[1]) > self.gap_reset_s
+        if not reset and lat is not None and s[2] == lat and s[3] == lon:
+            s[1] = ts                                   # same position: hold value, keep gap clock fresh
+            return s[0]
+        if self.alpha >= 1.0 or reset:
             ema = elev                                  # disabled / first sample / post-gap re-seed
         else:
             ema = self.alpha * elev + (1.0 - self.alpha) * s[0]
-        self._state[vin] = [ema, ts]
+        self._state[vin] = [ema, ts, lat, lon]
         return ema
 
 
@@ -145,14 +159,17 @@ class Resolver:
             except OSError:
                 pass
 
-    def elevation(self, lat, lon):
-        """Meters at (lat, lon) if the tile is cached, else None (scheduling a background fetch)."""
+    def elevation(self, lat, lon, round_m=True):
+        """Meters at (lat, lon) if the tile is cached, else None (scheduling a background fetch).
+        `round_m=False` returns the unrounded float — the smoother filters the float and rounds once
+        at the end, so rounding here first would bake quantization noise into the smoothed series."""
         if lat is None or lon is None:
             return None
         name = tile_name(lat, lon)
         t = self.tiles.get(name)
         if t is not None:
-            return _round_m(elevation_at(t[0], t[1], lat, lon))
+            v = elevation_at(t[0], t[1], lat, lon)
+            return _round_m(v) if round_m else v
         if self.enabled and name not in self.missing and name not in self.pending:
             self._schedule(name)
         return None

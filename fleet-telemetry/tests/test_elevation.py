@@ -145,3 +145,29 @@ def test_elevation_smoother_alpha_one_disables():
     sm = elevation.ElevationSmoother(alpha=1.0)
     assert sm.smooth("V", 100.0, ts=0) == 100.0
     assert sm.smooth("V", 200.0, ts=1) == 200.0          # no smoothing
+
+
+def test_elevation_smoother_seeds_from_last_on_repeat_position():
+    """The sink broadcasts on every field change, so many broadcasts land at the SAME location
+    (PackCurrent/Soc tick between GPS updates). Re-running the EMA on a repeated position re-converges
+    it toward the raw DEM there, weakening the smoothing and inflating ascent. So a repeated
+    (lat, lon) must seed-from-last (return the prior value, no advance); only a real move advances."""
+    sm = elevation.ElevationSmoother(alpha=0.5, gap_reset_s=60)
+    assert sm.smooth("V", 100.0, ts=0, lat=47.0, lon=-122.0) == 100.0   # first position seeds
+    # same position, different reading (would be 150 if it advanced) -> held at the seed
+    assert sm.smooth("V", 200.0, ts=1, lat=47.0, lon=-122.0) == 100.0
+    assert sm.smooth("V", 200.0, ts=2, lat=47.0, lon=-122.0) == 100.0
+    # a genuine move advances the EMA: 0.5*200 + 0.5*100 = 150
+    assert sm.smooth("V", 200.0, ts=3, lat=47.1, lon=-122.1) == 150.0
+    # ...and the new position then becomes the "last" for dedup
+    assert sm.smooth("V", 999.0, ts=4, lat=47.1, lon=-122.1) == 150.0
+
+
+def test_elevation_resolver_round_m_false_returns_unrounded_float():
+    """The smoother must filter the float DEM and round once at the end; rounding to integer meters
+    *before* smoothing bakes in quantization noise. round_m=False exposes the unrounded value."""
+    r = elevation.Resolver("/tmp/ft-elev-test-x", enabled=False)
+    r.tiles["N47E005"] = (_GRID, 3)
+    v = r.elevation(47.3, 5.2, round_m=False)
+    assert v == pytest.approx(4.6)        # genuinely fractional interpolation
+    assert r.elevation(47.3, 5.2) == 5    # default still rounds to int

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.32
+
+### Fixed — elevation EMA now smooths per-position (cuts the residual ascent inflation)
+- The v1.0.30 EMA advanced on **every broadcast**, but the sink emits a frame on every field change,
+  so most broadcasts share one GPS position (PackCurrent/Soc tick between 1 Hz Location updates). Each
+  repeat re-converged the EMA toward the raw DEM at that location, weakening the smoothing — so the
+  drive's ascent landed at **696 m** instead of the per-position **589 m** (GPS-era reference ~540 m).
+  Root cause confirmed by simulation: 1→4 broadcasts/position drove ascent 589 → 670 → 733 → 794 m,
+  with the shipped result sitting at ~2.5×.
+- `ElevationSmoother.smooth()` now takes `lat`/`lon` and **advances once per position**: a repeated
+  (lat, lon) seeds-from-last (returns the prior value, no advance). Dedup keys on position, never the
+  elevation value, so a slow climb that rounds to the same meter still advances. (`elevation.py`,
+  `app/sinks/stream.py`)
+- The smoother now filters the **unrounded float** DEM and rounds once on the wire (`round_m=False`),
+  instead of smoothing pre-rounded integers (~10 m of extra correctness at α=0.2).
+- Note: the 60 s gap-reset was *not* the cause — no drive has a position gap over ~30 s, so it only
+  ever fires across drives (where it correctly avoids carrying elevation between segments).
+
 ## 1.0.31
 
 ### Fixed — dashboard Vehicle tile "Last record" (and other relative times) now tick live

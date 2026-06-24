@@ -107,8 +107,11 @@ class StreamSink:
         # frames (the old behavior) kept TeslaMate on its slow poll, so drives hung open.
         if not driving and not was_driving:
             return
-        elev = self.elevation.elevation(lv.get("Latitude"), lv.get("Longitude")) if self.elevation else None
-        elev = self.elev_smoother.smooth(vin, elev, time.time())   # causal EMA -> de-jittered ascent/descent
+        lat, lon = lv.get("Latitude"), lv.get("Longitude")
+        # Filter the unrounded float DEM and round once on the wire; advance the EMA per POSITION
+        # (lat/lon) so repeated same-location broadcasts don't re-converge it and inflate ascent.
+        elev = self.elevation.elevation(lat, lon, round_m=False) if self.elevation else None
+        elev = self.elev_smoother.smooth(vin, elev, time.time(), lat=lat, lon=lon)
         update = ws_stream.build_data_update(vin, {vin: lv}, created_at, elevation=elev)
         if not update:
             return
