@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
-"""Python TeslaMate streaming-websocket server (replaces the bundled Node teslamate-ws + bridge.py).
+"""Pure builders for TeslaMate ``data:update`` streaming frames.
 
-TeslaMate's streaming client connects to ``ws://<host>:8081/streaming/`` and subscribes by VIN
-(``data:subscribe_oauth``). This server tails the fleet-telemetry records file directly, accumulates
-the latest per-VIN values, and pushes TeslaMate ``data:update`` frames to subscribers — no Google
-Pub/Sub, no double JSON transform, no Node runtime.
+The live app serves the TeslaMate streaming ws via ``app/sinks/stream.py`` (StreamSink), which reads
+the shared Store and calls ``build_data_update`` here. These functions carry no state and do no I/O —
+they're the verified CSV-frame transforms, kept in one place so the sink and its tests share them.
 
 The ``data:update`` value is a CSV in the exact column order TeslaMate's stream parser expects:
   time_ms, speed, odometer, soc, elevation, est_heading, est_lat, est_lng, power, shift_state,
   range, est_range, heading
-A frame is only emitted once Latitude, Longitude and Gear have all been seen for the VIN (matches
-the previous behavior).
+A frame is only emitted once Latitude, Longitude and Gear have all been seen for the VIN.
 """
-import asyncio
-import json
-import threading
 from datetime import datetime
 
-import websockets
-
 import fields
-import records
 
 
 def _epoch_ms(created_at):
@@ -40,27 +32,6 @@ def _int_or_blank(v):
 
 def _blank_if_none(v):
     return "" if v is None else v
-
-
-def accumulate(last_values, rec):
-    """Fold one record's data into the per-VIN last_values dict. Returns the VIN or None."""
-    data = rec.get("data") or {}
-    vin = rec.get("vin") or data.get("Vin")
-    if not vin:
-        return None
-    lv = last_values.setdefault(vin, {})
-    for key, value in data.items():
-        if key in fields.META_BASE:
-            continue
-        if key == "Location":
-            lat, lon = fields.parse_location(value)
-            if lat is not None and lon is not None:
-                lv["Latitude"], lv["Longitude"] = lat, lon
-        elif key == "Gear":
-            lv["Gear"] = fields.strip_state(value) if isinstance(value, str) else value
-        else:
-            lv[key] = value
-    return vin
 
 
 def build_data_update(vin, last_values, created_at, elevation=None):
@@ -105,86 +76,3 @@ def build_data_update(vin, last_values, created_at, elevation=None):
         _blank_if_none(lv.get("GpsHeading")),    # heading
     ])
     return {"msg_type": "data:update", "tag": vin, "value": value}
-
-
-class Stream:
-    """Accumulates per-VIN state and fans data:update frames out to subscribed websockets."""
-
-    def __init__(self):
-        self.subs = {}          # vin -> set[websocket]
-        self.last = {}          # vin -> {field: value}
-        self.loop = None
-
-    async def handler(self, ws):
-        """One TeslaMate connection. Registers on subscribe, keepalive-pings, cleans up on close."""
-        tags = set()
-        keepalive = asyncio.create_task(self._keepalive(ws))
-        try:
-            async for raw in ws:
-                try:
-                    msg = json.loads(raw)
-                except ValueError:
-                    continue
-                if msg.get("msg_type") in ("data:subscribe_oauth", "data:subscribe_all"):
-                    tag = msg.get("tag")
-                    if tag:
-                        self.subs.setdefault(tag, set()).add(ws)
-                        tags.add(tag)
-                    await ws.send(json.dumps({"msg_type": "control:hello", "connection_timeout": 30000}))
-        except websockets.ConnectionClosed:
-            pass
-        finally:
-            keepalive.cancel()
-            for tag in tags:
-                self.subs.get(tag, set()).discard(ws)
-
-    async def _keepalive(self, ws):
-        try:
-            while True:
-                await asyncio.sleep(10)
-                await ws.send(json.dumps({"msg_type": "control:hello", "connection_timeout": 30000}))
-        except (asyncio.CancelledError, websockets.ConnectionClosed):
-            pass
-
-    async def feed(self, rec):
-        """Ingest one telemetry record and broadcast a data:update if one is producible."""
-        if rec.get("msg") != "record_payload":
-            return
-        vin = accumulate(self.last, rec)
-        if not vin or not self.subs.get(vin):
-            return
-        update = build_data_update(vin, self.last, (rec.get("data") or {}).get("CreatedAt"))
-        if not update:
-            return
-        payload = json.dumps(update)
-        dead = set()
-        for ws in list(self.subs.get(vin, ())):
-            try:
-                await ws.send(payload)
-            except websockets.ConnectionClosed:
-                dead.add(ws)
-        for ws in dead:
-            self.subs[vin].discard(ws)
-
-    def start_tail(self, path):
-        """Background thread: follow the records file and schedule feed() on the event loop."""
-        def run():
-            for rec in records.tail(path):
-                if self.loop is not None:
-                    asyncio.run_coroutine_threadsafe(self.feed(rec), self.loop)
-        threading.Thread(target=run, daemon=True).start()
-
-
-async def main(records_file, port=8081):
-    stream = Stream()
-    stream.loop = asyncio.get_running_loop()
-    stream.start_tail(records_file)
-    async with websockets.serve(stream.handler, "0.0.0.0", port):
-        print(f"[ws-stream] TeslaMate websocket server listening on :{port}/streaming/", flush=True)
-        await asyncio.Future()  # run forever
-
-
-if __name__ == "__main__":
-    import os
-    asyncio.run(main(os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"),
-                     int(os.environ.get("FT_WS_PORT", "8081"))))
