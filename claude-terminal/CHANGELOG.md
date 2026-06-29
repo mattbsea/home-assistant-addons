@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.11
+
+### ✨ Improvements
+- **Media folder access**: The add-on now maps the Home Assistant `/media` folder (`media:rw`), so mounted storage such as `/media/USBDisk` is accessible from inside the terminal. Requires reinstalling/updating the add-on and a restart for the new mount to take effect.
+- **Tabs repaint on switch**: Switching to a tab now forces a full xterm repaint (`refresh`) after the fit, so terminals that were hidden (`display:none`) re-render their visible contents immediately instead of showing stale or garbled output until the next keystroke.
+
 ## 2.0.10
 
 ### ✨ Improvements

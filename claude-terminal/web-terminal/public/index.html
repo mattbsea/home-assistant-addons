@@ -402,9 +402,12 @@
             // Tell server which tab is active
             send({ type: 'select', tabId: tabId });
 
-            // Fit after becoming visible
+            // Fit after becoming visible, then force a full repaint. Hidden
+            // xterm tabs don't paint while their wrapper is display:none, so on
+            // switch we re-render the visible rows to refresh stale contents.
             requestAnimationFrame(function() {
                 next.fitAddon.fit();
+                next.terminal.refresh(0, next.terminal.rows - 1);
                 next.terminal.focus();
             });
 
