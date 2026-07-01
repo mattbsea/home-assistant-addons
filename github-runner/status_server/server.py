@@ -38,13 +38,59 @@ def fetch_runners(target, timeout=10):
     return body.get("runners", [])
 
 
-def summarize_target(target, runners):
+def actions_url_for(target):
+    if target["scope"] == "org":
+        return f"https://github.com/{target['url']}"
+    return f"https://github.com/{target['url']}/actions"
+
+
+def fetch_latest_run(target, timeout=10):
+    """Return the target repo's most recent workflow run as
+    {'name', 'status', 'conclusion', 'html_url'}, or None.
+
+    None for org-scope targets (no single-repo run to show), on any fetch failure,
+    or when the repo has no workflow runs yet.
+    """
+    if target["scope"] != "repo":
+        return None
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{target['url']}/actions/runs?per_page=1",
+        headers={
+            "Authorization": f"Bearer {target['token']}",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read())
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        return None
+    runs = body.get("workflow_runs", [])
+    if not runs:
+        return None
+    run = runs[0]
+    return {
+        "name": run.get("name") or run.get("display_title") or "run",
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "html_url": run.get("html_url", "#"),
+    }
+
+
+def summarize_target(target, runners, latest_run=None):
     """Reduce one target + its GitHub API runners list into a display row.
 
     `runners` is None when the API call failed, or a (possibly empty) list of
-    GitHub's runner objects on success.
+    GitHub's runner objects on success. `latest_run` is whatever fetch_latest_run
+    returned (a dict or None) — passed through unchanged for render_html to format.
     """
-    row = {"name": target["name"], "url": target["url"], "scope": target["scope"]}
+    row = {
+        "name": target["name"],
+        "url": target["url"],
+        "scope": target["scope"],
+        "actions_url": actions_url_for(target),
+        "latest_run": latest_run,
+    }
     if runners is None:
         row["state"] = "unknown"
         row["detail"] = "GitHub API call failed — check the PAT and network"

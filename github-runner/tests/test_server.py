@@ -3,7 +3,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "status_server"))
 
-from server import api_url_for, summarize_target, render_html, parse_targets_env
+from server import (
+    api_url_for,
+    summarize_target,
+    render_html,
+    parse_targets_env,
+    actions_url_for,
+    fetch_latest_run,
+)
 
 
 def test_api_url_for_repo_scope():
@@ -65,3 +72,37 @@ def test_parse_targets_env_parses_json_array():
     raw = '[{"name": "addons", "scope": "repo", "url": "mattbsea/home-assistant-addons"}]'
     result = parse_targets_env(raw)
     assert result == [{"name": "addons", "scope": "repo", "url": "mattbsea/home-assistant-addons"}]
+
+
+def test_actions_url_for_repo_scope():
+    target = {"scope": "repo", "url": "mattbsea/car-lights"}
+    assert actions_url_for(target) == "https://github.com/mattbsea/car-lights/actions"
+
+
+def test_actions_url_for_org_scope():
+    target = {"scope": "org", "url": "my-org"}
+    assert actions_url_for(target) == "https://github.com/my-org"
+
+
+def test_fetch_latest_run_returns_none_for_org_scope():
+    target = {"scope": "org", "url": "my-org", "token": "x"}
+    assert fetch_latest_run(target) is None
+
+
+def test_summarize_target_includes_actions_url():
+    target = {"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo"}
+    row = summarize_target(target, runners=[])
+    assert row["actions_url"] == "https://github.com/mattbsea/home-assistant-addons/actions"
+
+
+def test_summarize_target_passes_through_latest_run():
+    target = {"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo"}
+    latest_run = {"name": "build-test", "status": "completed", "conclusion": "success", "html_url": "https://x"}
+    row = summarize_target(target, runners=[], latest_run=latest_run)
+    assert row["latest_run"] == latest_run
+
+
+def test_summarize_target_latest_run_defaults_to_none():
+    target = {"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo"}
+    row = summarize_target(target, runners=[])
+    assert row["latest_run"] is None
