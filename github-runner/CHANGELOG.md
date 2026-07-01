@@ -1,3 +1,14 @@
+## 0.2.2 - 2026-07-01
+
+### Changed
+
+- Redesigned the status page: card layout with an explicit dark theme (fixes text
+  rendering unreadable — near-black on near-black — inside Home Assistant's dark
+  mobile app, since the old table had no explicit colors), a status pill per target,
+  a link to each repo's GitHub Actions tab, and the current/latest workflow run's
+  name and conclusion. Auto-refreshes every 30s via a meta tag instead of requiring
+  a manual reload.
+
 ## 0.2.1 - 2026-07-01
 
 ### Fixed
