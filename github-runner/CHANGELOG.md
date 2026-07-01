@@ -1,3 +1,14 @@
+## 0.1.2 - 2026-07-01
+
+### Fixed
+
+- Docker builds inside a job failed with `unable to apply cgroup configuration: mkdir
+  /sys/fs/cgroup/docker: read-only file system`. `privileged: [SYS_ADMIN, NET_ADMIN]` was enough
+  for the nested `dockerd` to start and pull images, but not enough for `runc` to actually create
+  a container's cgroup. Switched to `full_access: true` (real `--privileged`), which real
+  Docker-in-Docker needs. Found by running an actual `docker build` job on a real self-hosted
+  runner target.
+
 ## 0.1.1 - 2026-06-30
 
 ### Fixed

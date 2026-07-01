@@ -1,7 +1,7 @@
 ---
 name: "GitHub Actions Runner"
 description: "Self-hosted GitHub Actions runner(s) for long-running container builds, backed by USB storage"
-version: "0.1.1"
+version: "0.1.2"
 slug: "github_runner"
 init: false
 url: "https://github.com/mattbsea/home-assistant-addons"
@@ -12,9 +12,7 @@ arch:
 startup: application
 boot: auto
 
-privileged:
-  - SYS_ADMIN
-  - NET_ADMIN
+full_access: true
 apparmor: false
 
 ingress: true
