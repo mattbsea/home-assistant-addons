@@ -9,6 +9,16 @@ Docker-in-Docker?" below). This means **any workflow this runner executes has co
 other container on this host**, not just its own sandbox. Only point this at repos/orgs whose
 workflow files you trust completely.
 
+## Required one-time step: turn off Protection Mode
+
+**`docker_api: true` silently does nothing until you also disable this add-on's Protection
+Mode.** Home Assistant's Supervisor has a separate, per-install "Protection Mode" toggle (the
+shield icon on the add-on's Info page, Settings → Add-ons → GitHub Actions Runner) that overrides
+`config.yaml`'s dangerous options — with it on (the default on every fresh install), `docker_api:
+true` is silently ignored: no error, the container just never gets `/run/docker.sock` mounted in,
+and every job fails with "Cannot reach the Docker socket." Turn Protection Mode **off** for this
+add-on after installing (and again after any uninstall/reinstall — it resets to on every time).
+
 ## Prerequisite: USB disk mounted as a Supervisor Mount
 
 Docker's image/layer cache and every job's checkout directory need real local disk, not the small HAOS system partition. Attach a USB disk to the Home Assistant host and add it under **Settings → System → Storage → Add Mount** with usage `media`, mount type `Local` (not a network share — Docker's storage driver requires a real local filesystem). Once added, it appears inside this add-on at `/media/<your-disk-name>`.
@@ -52,7 +62,7 @@ Supervisor's own Docker installation already does; this add-on doesn't manage it
 ## Troubleshooting
 
 - **"data_path is not writable" at startup** — the USB mount either isn't attached, isn't configured as a Supervisor Mount, or this add-on's `media` mapping isn't enabled. Check Settings → System → Storage.
-- **"Cannot reach the Docker socket" at startup** — confirm `docker_api: true` is set in this add-on's config (it should be, out of the box).
+- **"Cannot reach the Docker socket" at startup** — almost always **Protection Mode is on**. Turn it off (Settings → Add-ons → GitHub Actions Runner → shield icon), then restart. See "Required one-time step" above.
 - **A target never shows "Idle" on GitHub** — check the add-on log for `registration failed`; this almost always means the PAT lacks the right permission for that target's scope (see above).
 - **Runner restarts constantly** — check the add-on log around the `restarting` line; the job it was mid-way through when killed will show as failed on GitHub's Actions tab for that repo.
 
@@ -73,8 +83,12 @@ PID from pipe: EOF`, regardless of:
 
 One confirmed fact from that investigation: **`full_access: true` on this Supervisor does not set
 Docker's actual `--privileged` flag** — inspecting the running container showed `Privileged:
-false`, capabilities coming only from the explicit `privileged:` list. There appears to be no
-`config.yaml` key that grants a truly `--privileged` container here, which is very likely why
-nested Docker-in-Docker can't work on this Supervisor at all. `docker_api: true` (the host socket)
-was adopted as the working alternative, accepting the isolation tradeoff described at the top of
-this document.
+false`, capabilities coming only from the explicit `privileged:` list.
+
+**Retrospective note:** the real cause was very likely the same **Protection Mode** setting
+described above — it silently downgrades dangerous `config.yaml` grants (`full_access`,
+`privileged`, `docker_api`) for any add-on until explicitly turned off per-install. All of 0.1.x's
+DinD attempts ran with Protection Mode still on; it was never re-tested with it off. `docker_api:
+true` (the host socket) was adopted as the working alternative instead, accepting the isolation
+tradeoff described at the top of this document — this is now confirmed working end-to-end (real
+registration + a real `docker build`/`docker run` job) once Protection Mode was turned off.

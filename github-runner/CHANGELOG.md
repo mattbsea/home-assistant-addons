@@ -1,3 +1,19 @@
+## 0.2.1 - 2026-07-01
+
+### Fixed
+
+- `docker_api: true` was silently doing nothing — no error, `/run/docker.sock` just never got
+  mounted into the container, so every job failed with "Cannot reach the Docker socket." Root
+  cause: Home Assistant's per-install **Protection Mode** (Settings → Add-ons → shield icon)
+  overrides dangerous `config.yaml` grants until explicitly disabled, resetting to on after every
+  uninstall/reinstall. This was very likely also the real reason 0.1.x's Docker-in-Docker attempts
+  never worked (`full_access: true` never actually behaved like real `--privileged` either).
+  Documented as a required one-time step in DOCS.md. **Verified end-to-end** with Protection Mode
+  off: real runner registration against a disposable repo, a real `docker build`, and a real
+  `docker run` all succeeded.
+- Added `hassio_api: true` alongside `docker_api: true`, matching the one other working
+  `docker_api` example available in this environment (Portainer's add-on).
+
 ## 0.2.0 - 2026-07-01
 
 ### Changed
