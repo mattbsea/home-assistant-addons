@@ -20,6 +20,7 @@ boot: auto
 # can control every other container on this host, not just its own sandbox. Accepted as a
 # conscious tradeoff after DinD proved unworkable here.
 docker_api: true
+hassio_api: true
 
 ingress: true
 ingress_port: 8099
