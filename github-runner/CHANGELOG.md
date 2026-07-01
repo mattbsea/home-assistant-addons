@@ -1,3 +1,13 @@
+## 0.2.3 - 2026-07-01
+
+### Fixed
+
+- Status page rendered workflow run names/conclusions and target config values into
+  HTML via raw f-string interpolation with no escaping. Since run names come from
+  GitHub's API rather than purely local config, this was a real XSS risk (flagged by
+  automated security review). Every interpolated value now goes through
+  `html.escape()`, and `href` attributes are restricted to `http(s)` URLs only.
+
 ## 0.2.2 - 2026-07-01
 
 ### Changed
