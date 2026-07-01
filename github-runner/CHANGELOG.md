@@ -1,3 +1,18 @@
+## 0.2.0 - 2026-07-01
+
+### Changed
+
+- **Architecture change:** dropped nested Docker-in-Docker entirely — it could not create any
+  container on this Supervisor after exhausting every configuration in 0.1.1-0.1.7 (storage
+  driver, cgroup driver, runc/Docker version, seccomp/AppArmor, capability combinations, the
+  cgroup v2 "no internal process" constraint). Builds now run against the Supervisor's own Docker
+  socket via `docker_api: true`. `privileged`/`full_access`/`apparmor` all removed — no longer
+  needed since there's no local daemon to run. `run.sh` no longer starts or supervises `dockerd`;
+  it just verifies the Docker socket is reachable at startup.
+- **Accepted tradeoff:** any workflow this runner executes now has control over every other
+  container on the host, not just its own sandbox — `docker_api: true` is documented by Home
+  Assistant as dangerous for exactly this reason.
+
 ## 0.1.7 - 2026-07-01
 
 ### Fixed

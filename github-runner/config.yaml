@@ -1,7 +1,7 @@
 ---
 name: "GitHub Actions Runner"
 description: "Self-hosted GitHub Actions runner(s) for long-running container builds, backed by USB storage"
-version: "0.1.7"
+version: "0.2.0"
 slug: "github_runner"
 init: false
 url: "https://github.com/mattbsea/home-assistant-addons"
@@ -12,11 +12,14 @@ arch:
 startup: application
 boot: auto
 
-privileged:
-  - SYS_ADMIN
-  - NET_ADMIN
-full_access: true
-apparmor: false
+# Nested Docker-in-Docker (privileged/full_access) could not create any container on this
+# Supervisor regardless of storage driver, cgroup driver, runc version, or capability combination
+# tried (see CHANGELOG 0.1.1-0.1.7 and DOCS.md). Builds now run on the Supervisor's own Docker
+# daemon via its socket instead. This is a real, documented risk — HA calls docker_api
+# "dangerous... can be used to gain root access to the host system" — any job this runner executes
+# can control every other container on this host, not just its own sandbox. Accepted as a
+# conscious tradeoff after DinD proved unworkable here.
+docker_api: true
 
 ingress: true
 ingress_port: 8099

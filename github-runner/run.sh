@@ -6,55 +6,30 @@
 set +e +u +E +o pipefail
 
 DATA_PATH="$(bashio::config 'data_path')"
-DOCKER_DATA_ROOT="${DATA_PATH}/docker"
 RUNNERS_DIR="${DATA_PATH}/runners"
 
 bashio::log.info "Starting GitHub Runner add-on (data_path=${DATA_PATH})…"
 
 # Fail fast if the USB mount isn't actually there — silently falling back to the container's own
-# ephemeral disk would defeat the entire point of the mount (and lose the build cache on restart).
+# ephemeral disk would defeat the entire point of the mount (and lose the runner's job checkouts).
 if ! mkdir -p "${DATA_PATH}" 2>/dev/null || [ ! -w "${DATA_PATH}" ]; then
     bashio::log.error "data_path '${DATA_PATH}' is not writable."
     bashio::log.error "Check Settings → System → Storage → Mounts, and that this add-on's" \
         "'media' mapping is enabled."
     exit 1
 fi
-mkdir -p "${DOCKER_DATA_ROOT}" "${RUNNERS_DIR}"
-: > "${DATA_PATH}/dockerd.log"
+mkdir -p "${RUNNERS_DIR}"
 
-# The Supervisor mounts /sys/fs/cgroup read-only into every add-on container regardless of
-# privileged capabilities — there's no config.yaml key that changes this. Remounting it
-# read-write is still possible because it only changes OUR OWN mount namespace's view (not the
-# host's), and CAP_SYS_ADMIN is enough to do that even though the underlying mount is read-only.
-# Without this, runc fails every nested container create with "mkdir /sys/fs/cgroup/docker:
-# read-only file system" — dockerd itself starts fine, but no job can actually run a container.
-mount --make-rprivate /sys/fs/cgroup 2>>"${DATA_PATH}/dockerd.log"
-mount -o remount,rw /sys/fs/cgroup 2>>"${DATA_PATH}/dockerd.log"
-
-# --- Start the Docker daemon (Docker-in-Docker) ------------------------------------------------
-# storage-driver=vfs: overlay2 (the default) requires mounting overlayfs on top of the add-on
-# container's own root filesystem, which is itself overlayfs on HAOS — nested overlay-on-overlay
-# isn't supported here ("failed to mount overlay: operation not permitted"). vfs has no such
-# requirement; it costs more disk per layer, which is exactly what the USB-backed data_path is for.
-# native.cgroupdriver=cgroupfs: this base image has no real systemd/dbus, but dockerd's driver
-# auto-detection still tried the systemd cgroup driver, which then hung talking to a dbus that
-# doesn't exist — every nested container create failed with "can't get final child's PID from
-# pipe: EOF" until this was pinned explicitly.
-dockerd --data-root "${DOCKER_DATA_ROOT}" --storage-driver=vfs --exec-opt native.cgroupdriver=cgroupfs \
-    --host=unix:///var/run/docker.sock \
-    >> "${DATA_PATH}/dockerd.log" 2>&1 &
-DOCKERD_PID=$!
-
-bashio::log.info "Waiting for the Docker daemon to become ready…"
-for _ in $(seq 1 60); do
-    docker info >/dev/null 2>&1 && break
-    sleep 1
-done
+# --- Confirm the Supervisor's Docker socket is reachable ---------------------------------------
+# Builds run against the host's own Docker daemon (config.yaml docker_api: true) — nested
+# Docker-in-Docker could not create any container on this Supervisor (see CHANGELOG 0.1.1-0.1.7),
+# so there is no local dockerd to start here; docker_api mounts the real socket in for us.
+bashio::log.info "Checking Docker API access (Supervisor's own socket, via docker_api: true)…"
 if ! docker info >/dev/null 2>&1; then
-    bashio::log.error "Docker daemon did not become ready — see ${DATA_PATH}/dockerd.log"
+    bashio::log.error "Cannot reach the Docker socket. Confirm 'docker_api: true' is set for this add-on."
     exit 1
 fi
-bashio::log.info "Docker daemon ready (data-root=${DOCKER_DATA_ROOT})."
+bashio::log.info "Docker API reachable — builds run on the Supervisor's own Docker daemon."
 
 # --- Register + launch one runner process per configured target -------------------------------
 declare -A RUNNER_PIDS
@@ -105,12 +80,11 @@ shutdown() {
     bashio::log.info "Shutting down…"
     for name in "${!RUNNER_PIDS[@]}"; do kill "${RUNNER_PIDS[${name}]}" 2>/dev/null; done
     kill "${STATUS_PID}" 2>/dev/null
-    kill "${DOCKERD_PID}" 2>/dev/null
     exit 0
 }
 trap shutdown TERM INT
 
-# --- Supervision loop: restart any runner process that dies, or the whole add-on if dockerd dies
+# --- Supervision loop: restart any runner process that dies ------------------------------------
 while true; do
     sleep 10
     for name in "${!RUNNER_PIDS[@]}"; do
@@ -126,8 +100,4 @@ while true; do
                 "$(target_field "${line}" '.labels // ""')"
         fi
     done
-    if ! kill -0 "${DOCKERD_PID}" 2>/dev/null; then
-        bashio::log.error "Docker daemon died — exiting so the Supervisor restarts the add-on."
-        exit 1
-    fi
 done
