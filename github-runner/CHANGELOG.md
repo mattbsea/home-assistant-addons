@@ -1,3 +1,13 @@
+## 0.1.6 - 2026-07-01
+
+### Fixed
+
+- After the cgroup remount fix, nested container creation still failed:
+  `unable to start container process: can't get final child's PID from pipe: EOF`. This base
+  image has no functioning systemd/dbus, but dockerd's cgroup-driver auto-detection tried
+  `systemd` anyway and hung talking to a dbus that isn't there. Pinned
+  `--exec-opt native.cgroupdriver=cgroupfs` explicitly.
+
 ## 0.1.5 - 2026-07-01
 
 ### Fixed

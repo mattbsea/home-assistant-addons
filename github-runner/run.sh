@@ -36,7 +36,12 @@ mount -o remount,rw /sys/fs/cgroup 2>>"${DATA_PATH}/dockerd.log"
 # container's own root filesystem, which is itself overlayfs on HAOS — nested overlay-on-overlay
 # isn't supported here ("failed to mount overlay: operation not permitted"). vfs has no such
 # requirement; it costs more disk per layer, which is exactly what the USB-backed data_path is for.
-dockerd --data-root "${DOCKER_DATA_ROOT}" --storage-driver=vfs --host=unix:///var/run/docker.sock \
+# native.cgroupdriver=cgroupfs: this base image has no real systemd/dbus, but dockerd's driver
+# auto-detection still tried the systemd cgroup driver, which then hung talking to a dbus that
+# doesn't exist — every nested container create failed with "can't get final child's PID from
+# pipe: EOF" until this was pinned explicitly.
+dockerd --data-root "${DOCKER_DATA_ROOT}" --storage-driver=vfs --exec-opt native.cgroupdriver=cgroupfs \
+    --host=unix:///var/run/docker.sock \
     >> "${DATA_PATH}/dockerd.log" 2>&1 &
 DOCKERD_PID=$!
 
