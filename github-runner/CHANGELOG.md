@@ -1,3 +1,12 @@
+## 0.2.4 - 2026-07-01
+
+### Fixed
+
+- Status page links (Actions tab, latest run) now open with `target="_blank"
+  rel="noopener noreferrer"` instead of navigating inside Home Assistant's ingress
+  iframe — on mobile, tapping a link inside the iframe just went to a blank screen
+  since GitHub's site can't render inside the embed.
+
 ## 0.2.3 - 2026-07-01
 
 ### Fixed

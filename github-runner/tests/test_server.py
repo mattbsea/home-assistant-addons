@@ -68,6 +68,17 @@ def test_render_html_includes_actions_link():
     assert 'href="https://github.com/mattbsea/home-assistant-addons/actions"' in html
 
 
+def test_render_html_links_open_in_new_tab():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker",
+             "actions_url": "https://github.com/mattbsea/home-assistant-addons/actions",
+             "latest_run": {"name": "build-test", "status": "completed",
+                             "conclusion": "success", "html_url": "https://x/runs/1"}}]
+    html = render_html(rows)
+    # both the Actions link and the latest-run link must open in a new tab, not the ingress iframe
+    assert html.count('target="_blank" rel="noopener noreferrer"') == 2
+
+
 def test_render_html_shows_no_runs_yet_when_latest_run_none():
     rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
              "state": "online", "detail": "labels: docker", "latest_run": None}]

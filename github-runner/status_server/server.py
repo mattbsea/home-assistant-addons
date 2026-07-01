@@ -147,7 +147,7 @@ def render_html(rows):
         url = _safe_href(latest_run.get("html_url", "#"))
         conclusion_text = html.escape(str(conclusion))
         return (
-            f'<div class="run"><a href="{url}">{name}</a> '
+            f'<div class="run"><a href="{url}" target="_blank" rel="noopener noreferrer">{name}</a> '
             f'<span class="pill" style="background:{bg};color:{fg}">{conclusion_text}</span></div>'
         )
 
@@ -165,7 +165,7 @@ def render_html(rows):
     <span class="pill" style="background:{bg};color:{fg}">{state}</span>
   </div>
   {run_html(r.get('latest_run'))}
-  <div class="meta">{scope} &middot; {url} &middot; <a href="{actions_url}">Actions</a></div>
+  <div class="meta">{scope} &middot; {url} &middot; <a href="{actions_url}" target="_blank" rel="noopener noreferrer">Actions</a></div>
   <div class="detail">{detail}</div>
 </div>"""
 
