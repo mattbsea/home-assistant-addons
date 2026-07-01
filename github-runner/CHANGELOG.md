@@ -1,3 +1,16 @@
+## 0.1.4 - 2026-07-01
+
+### Fixed
+
+- `full_access: true` alone does NOT grant Linux capabilities on this Supervisor — inspecting the
+  running container showed `Privileged: false` and no added capabilities, just unconfined
+  seccomp/apparmor. Replacing `privileged: [SYS_ADMIN, NET_ADMIN]` with `full_access: true` (0.1.2)
+  silently dropped both capabilities, so dockerd couldn't even set up its iptables NAT chain
+  (`Permission denied (you must be root)`) despite running as uid 0. Now sets **both**
+  `privileged: [SYS_ADMIN, NET_ADMIN]` and `full_access: true` together — capabilities from the
+  list, unconfined seccomp/apparmor from full_access. Found by inspecting the container's actual
+  HostConfig via the Docker API after 0.1.3 also failed to start dockerd.
+
 ## 0.1.3 - 2026-07-01
 
 ### Fixed
