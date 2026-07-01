@@ -1,3 +1,13 @@
+## 0.1.3 - 2026-07-01
+
+### Fixed
+
+- After switching to `full_access`, the nested `dockerd` failed to start entirely: `failed to
+  mount overlay: operation not permitted` / `driver not supported`. The add-on's own container
+  root is itself overlayfs on HAOS, and nested overlay-on-overlay isn't supported here. Pinned
+  `dockerd --storage-driver=vfs` — no nesting requirement, more disk per layer, which is what the
+  USB-backed `data_path` is for. Found by watching the add-on crash-loop on a real restart.
+
 ## 0.1.2 - 2026-07-01
 
 ### Fixed

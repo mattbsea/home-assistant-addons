@@ -22,7 +22,11 @@ fi
 mkdir -p "${DOCKER_DATA_ROOT}" "${RUNNERS_DIR}"
 
 # --- Start the Docker daemon (Docker-in-Docker) ------------------------------------------------
-dockerd --data-root "${DOCKER_DATA_ROOT}" --host=unix:///var/run/docker.sock \
+# storage-driver=vfs: overlay2 (the default) requires mounting overlayfs on top of the add-on
+# container's own root filesystem, which is itself overlayfs on HAOS — nested overlay-on-overlay
+# isn't supported here ("failed to mount overlay: operation not permitted"). vfs has no such
+# requirement; it costs more disk per layer, which is exactly what the USB-backed data_path is for.
+dockerd --data-root "${DOCKER_DATA_ROOT}" --storage-driver=vfs --host=unix:///var/run/docker.sock \
     > "${DATA_PATH}/dockerd.log" 2>&1 &
 DOCKERD_PID=$!
 
