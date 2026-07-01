@@ -1,3 +1,12 @@
+## 0.1.1 - 2026-06-30
+
+### Fixed
+
+- Status page crashed on startup: `bashio::config 'targets'` emits bare newline-separated JSON
+  objects (or nothing for an empty list), not a JSON array — `GH_STATUS_TARGETS` now goes through
+  `jq -s -c` to produce the array `server.py` actually expects, including a correct `[]` for zero
+  targets. Found by installing and starting the add-on on a real Home Assistant instance.
+
 ## 0.1.0 - 2026-06-30
 
 ### Added

@@ -134,8 +134,16 @@ def make_handler(cache):
     return Handler
 
 
+def parse_targets_env(raw):
+    """Parse the GH_STATUS_TARGETS env var. Treats unset or blank the same as an empty
+    list — the shell side can produce an empty string for zero configured targets."""
+    if not raw:
+        return []
+    return json.loads(raw)
+
+
 def main():
-    targets = json.loads(os.environ.get("GH_STATUS_TARGETS", "[]"))
+    targets = parse_targets_env(os.environ.get("GH_STATUS_TARGETS"))
     cache = StatusCache(targets)
     threading.Thread(target=cache.poll_forever, daemon=True).start()
     server = HTTPServer(("0.0.0.0", LISTEN_PORT), make_handler(cache))

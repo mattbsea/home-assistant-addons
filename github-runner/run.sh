@@ -74,7 +74,10 @@ for line in "${TARGET_LINES[@]}"; do
 done
 
 # --- Status server (ingress) ---------------------------------------------------------------
-export GH_STATUS_TARGETS="$(bashio::config 'targets')"
+# bashio::config emits one bare JSON object per line for a list option (or nothing at all when
+# the list is empty) — never a JSON array. jq -s (slurp) wraps that into the array server.py
+# expects, and correctly produces "[]" when there are zero targets.
+export GH_STATUS_TARGETS="$(bashio::config 'targets' | jq -s -c '.')"
 python3 /opt/status_server/server.py &
 STATUS_PID=$!
 bashio::log.info "Status page listening on :8099"

@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "status_server"))
 
-from server import api_url_for, summarize_target, render_html
+from server import api_url_for, summarize_target, render_html, parse_targets_env
 
 
 def test_api_url_for_repo_scope():
@@ -51,3 +51,17 @@ def test_render_html_includes_target_name_and_state():
     html = render_html(rows)
     assert "addons" in html
     assert "online" in html
+
+
+def test_parse_targets_env_none_is_empty_list():
+    assert parse_targets_env(None) == []
+
+
+def test_parse_targets_env_blank_string_is_empty_list():
+    assert parse_targets_env("") == []
+
+
+def test_parse_targets_env_parses_json_array():
+    raw = '[{"name": "addons", "scope": "repo", "url": "mattbsea/home-assistant-addons"}]'
+    result = parse_targets_env(raw)
+    assert result == [{"name": "addons", "scope": "repo", "url": "mattbsea/home-assistant-addons"}]
