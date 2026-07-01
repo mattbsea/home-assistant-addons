@@ -1,0 +1,44 @@
+---
+name: "GitHub Actions Runner"
+description: "Self-hosted GitHub Actions runner(s) for long-running container builds, backed by USB storage"
+version: "0.1.0"
+slug: "github_runner"
+init: false
+url: "https://github.com/mattbsea/home-assistant-addons"
+
+arch:
+  - amd64
+
+startup: application
+boot: auto
+
+privileged:
+  - SYS_ADMIN
+  - NET_ADMIN
+apparmor: false
+
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:github
+panel_title: "GitHub Runner"
+
+map:
+  - media:rw
+
+options:
+  data_path: "/media/usbdisk/github-runner"
+  targets:
+    - name: "example"
+      scope: "repo"
+      url: "owner/repo"
+      token: ""
+      labels: ""
+
+schema:
+  data_path: str
+  targets:
+    - name: str
+      scope: list(repo|org)
+      url: str
+      token: password
+      labels: str?

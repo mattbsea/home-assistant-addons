@@ -1,0 +1,15 @@
+[project]
+name = "github-runner-addon"
+version = "0.1.0"
+description = "GitHub Actions self-hosted runner Home Assistant add-on — status page"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
