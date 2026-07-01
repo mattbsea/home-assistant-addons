@@ -9,10 +9,27 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gnupg \
         jq \
         git \
-        docker.io \
         python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian bookworm's own docker.io package (Docker 20.10 / runc 1.1.5, circa 2023) fails to create
+# any nested container on this HAOS host's kernel ("can't get final child's PID from pipe: EOF") —
+# an old-runc/new-kernel incompatibility. Install Docker's official upstream repo instead for a
+# current, actively-maintained containerd/runc stack.
+# hadolint ignore=DL3008
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and stage the official GitHub Actions runner release, checksum-verified against the

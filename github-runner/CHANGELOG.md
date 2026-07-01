@@ -1,3 +1,16 @@
+## 0.1.7 - 2026-07-01
+
+### Fixed
+
+- Nested container creation still failed identically (`can't get final child's PID from pipe:
+  EOF`) even with cgroupfs pinned and both seccomp and AppArmor confinement explicitly disabled
+  per-container — ruling those out. Root cause: Debian bookworm's `docker.io` package ships Docker
+  20.10.24 / runc 1.1.5 (2023), which is incompatible with this HAOS host's much newer
+  `6.12.20-haos` kernel for nested container creation. Switched to Docker's official upstream apt
+  repository (`docker-ce`, `docker-ce-cli`, `containerd.io`) for a current, maintained
+  containerd/runc stack. Found by exec'ing `docker run` directly inside the add-on container to
+  iterate faster than round-tripping through a full CI job each time.
+
 ## 0.1.6 - 2026-07-01
 
 ### Fixed
