@@ -3,6 +3,7 @@
 Polls each configured target's GitHub API runners endpoint on a timer and serves
 a small self-contained HTML table showing each runner's online/busy state.
 """
+import html
 import json
 import os
 import threading
@@ -111,6 +112,15 @@ def summarize_target(target, runners, latest_run=None):
     return row
 
 
+def _safe_href(url):
+    """Only allow http(s) URLs in href attributes — anything else (e.g. a
+    javascript: scheme smuggled in via a workflow run name from the GitHub API)
+    becomes '#' instead."""
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        return html.escape(url, quote=True)
+    return "#"
+
+
 def render_html(rows):
     """Render the status rows as a small self-contained, dark-themed HTML page."""
     state_pill = {
@@ -133,24 +143,30 @@ def render_html(rows):
             return '<div class="run muted">No runs yet</div>'
         conclusion = latest_run.get("conclusion") or latest_run.get("status") or "unknown"
         bg, fg = run_pill.get(conclusion, ("#30363d", "#c9d1d9"))
-        name = latest_run.get("name", "run")
-        url = latest_run.get("html_url", "#")
+        name = html.escape(str(latest_run.get("name", "run")))
+        url = _safe_href(latest_run.get("html_url", "#"))
+        conclusion_text = html.escape(str(conclusion))
         return (
             f'<div class="run"><a href="{url}">{name}</a> '
-            f'<span class="pill" style="background:{bg};color:{fg}">{conclusion}</span></div>'
+            f'<span class="pill" style="background:{bg};color:{fg}">{conclusion_text}</span></div>'
         )
 
     def card_html(r):
         bg, fg = state_pill.get(r["state"], ("#30363d", "#c9d1d9"))
-        actions_url = r.get("actions_url", "#")
+        actions_url = _safe_href(r.get("actions_url", "#"))
+        name = html.escape(str(r["name"]))
+        scope = html.escape(str(r["scope"]))
+        url = html.escape(str(r["url"]))
+        state = html.escape(str(r["state"]))
+        detail = html.escape(str(r["detail"]))
         return f"""<div class="card">
   <div class="card-head">
-    <span class="name">{r['name']}</span>
-    <span class="pill" style="background:{bg};color:{fg}">{r['state']}</span>
+    <span class="name">{name}</span>
+    <span class="pill" style="background:{bg};color:{fg}">{state}</span>
   </div>
   {run_html(r.get('latest_run'))}
-  <div class="meta">{r['scope']} &middot; {r['url']} &middot; <a href="{actions_url}">Actions</a></div>
-  <div class="detail">{r['detail']}</div>
+  <div class="meta">{scope} &middot; {url} &middot; <a href="{actions_url}">Actions</a></div>
+  <div class="detail">{detail}</div>
 </div>"""
 
     cards = "\n".join(card_html(r) for r in rows) if rows else '<p class="muted">No targets configured.</p>'

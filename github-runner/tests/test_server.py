@@ -91,6 +91,34 @@ def test_render_html_no_targets_message():
     assert "No targets configured" in html
 
 
+def test_render_html_escapes_target_fields():
+    rows = [{"name": "<script>alert(1)</script>", "url": "mattbsea/x", "scope": "repo",
+             "state": "online", "detail": "<img src=x onerror=alert(1)>"}]
+    html = render_html(rows)
+    assert "<script>" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_render_html_escapes_latest_run_fields():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker",
+             "latest_run": {"name": "<script>alert(1)</script>", "status": "completed",
+                             "conclusion": "success", "html_url": "https://x/runs/1"}}]
+    html = render_html(rows)
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_render_html_rejects_non_http_href():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker",
+             "actions_url": "javascript:alert(1)"}]
+    html = render_html(rows)
+    assert "javascript:" not in html
+    assert 'href="#"' in html
+
+
 def test_parse_targets_env_none_is_empty_list():
     assert parse_targets_env(None) == []
 
