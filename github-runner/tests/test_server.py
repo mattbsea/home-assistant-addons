@@ -60,6 +60,37 @@ def test_render_html_includes_target_name_and_state():
     assert "online" in html
 
 
+def test_render_html_includes_actions_link():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker",
+             "actions_url": "https://github.com/mattbsea/home-assistant-addons/actions"}]
+    html = render_html(rows)
+    assert 'href="https://github.com/mattbsea/home-assistant-addons/actions"' in html
+
+
+def test_render_html_shows_no_runs_yet_when_latest_run_none():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker", "latest_run": None}]
+    html = render_html(rows)
+    assert "No runs yet" in html
+
+
+def test_render_html_includes_latest_run_name_and_conclusion():
+    rows = [{"name": "addons", "url": "mattbsea/home-assistant-addons", "scope": "repo",
+             "state": "online", "detail": "labels: docker",
+             "latest_run": {"name": "build-test", "status": "completed",
+                             "conclusion": "success", "html_url": "https://x/runs/1"}}]
+    html = render_html(rows)
+    assert "build-test" in html
+    assert "success" in html
+    assert 'href="https://x/runs/1"' in html
+
+
+def test_render_html_no_targets_message():
+    html = render_html([])
+    assert "No targets configured" in html
+
+
 def test_parse_targets_env_none_is_empty_list():
     assert parse_targets_env(None) == []
 

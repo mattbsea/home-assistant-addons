@@ -112,34 +112,73 @@ def summarize_target(target, runners, latest_run=None):
 
 
 def render_html(rows):
-    """Render the status rows as a small standalone HTML page (no external assets)."""
-    state_colors = {
-        "online": "#2e7d32",
-        "busy": "#ef6c00",
-        "offline": "#c62828",
-        "not registered": "#757575",
-        "unknown": "#757575",
+    """Render the status rows as a small self-contained, dark-themed HTML page."""
+    state_pill = {
+        "online": ("#238636", "#ffffff"),
+        "busy": ("#9e6a03", "#ffffff"),
+        "offline": ("#da3633", "#ffffff"),
+        "not registered": ("#30363d", "#c9d1d9"),
+        "unknown": ("#30363d", "#c9d1d9"),
     }
-    body_rows = "\n".join(
-        f"<tr><td>{r['name']}</td><td>{r['scope']}</td><td>{r['url']}</td>"
-        f"<td style='color:{state_colors.get(r['state'], '#000')}'>{r['state']}</td>"
-        f"<td>{r['detail']}</td></tr>"
-        for r in rows
-    )
+    run_pill = {
+        "success": ("#238636", "#ffffff"),
+        "failure": ("#da3633", "#ffffff"),
+        "in_progress": ("#9e6a03", "#ffffff"),
+        "queued": ("#9e6a03", "#ffffff"),
+        "cancelled": ("#30363d", "#c9d1d9"),
+    }
+
+    def run_html(latest_run):
+        if latest_run is None:
+            return '<div class="run muted">No runs yet</div>'
+        conclusion = latest_run.get("conclusion") or latest_run.get("status") or "unknown"
+        bg, fg = run_pill.get(conclusion, ("#30363d", "#c9d1d9"))
+        name = latest_run.get("name", "run")
+        url = latest_run.get("html_url", "#")
+        return (
+            f'<div class="run"><a href="{url}">{name}</a> '
+            f'<span class="pill" style="background:{bg};color:{fg}">{conclusion}</span></div>'
+        )
+
+    def card_html(r):
+        bg, fg = state_pill.get(r["state"], ("#30363d", "#c9d1d9"))
+        actions_url = r.get("actions_url", "#")
+        return f"""<div class="card">
+  <div class="card-head">
+    <span class="name">{r['name']}</span>
+    <span class="pill" style="background:{bg};color:{fg}">{r['state']}</span>
+  </div>
+  {run_html(r.get('latest_run'))}
+  <div class="meta">{r['scope']} &middot; {r['url']} &middot; <a href="{actions_url}">Actions</a></div>
+  <div class="detail">{r['detail']}</div>
+</div>"""
+
+    cards = "\n".join(card_html(r) for r in rows) if rows else '<p class="muted">No targets configured.</p>'
+
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>GitHub Runner Status</title>
+<html><head><meta charset="utf-8"><meta http-equiv="refresh" content="30">
+<title>GitHub Runner Status</title>
 <style>
-body {{ font-family: sans-serif; margin: 1.5rem; }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
-th {{ background: #f5f5f5; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0; padding: 1.5rem; background: #0d1117; color: #c9d1d9; }}
+h1 {{ font-size: 1.4rem; margin: 0 0 1rem; color: #ffffff; }}
+.card {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+         padding: 1rem; margin-bottom: 1rem; }}
+.card-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }}
+.name {{ font-weight: 600; font-size: 1.05rem; color: #ffffff; }}
+.pill {{ display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+         font-size: 0.8rem; font-weight: 600; }}
+.run {{ margin-bottom: 0.5rem; }}
+.run a {{ color: #58a6ff; text-decoration: none; }}
+.run a:hover {{ text-decoration: underline; }}
+.meta {{ color: #8b949e; font-size: 0.85rem; margin-bottom: 0.25rem; }}
+.meta a {{ color: #58a6ff; text-decoration: none; }}
+.detail {{ color: #8b949e; font-size: 0.8rem; }}
+.muted {{ color: #8b949e; }}
 </style></head>
 <body>
 <h1>GitHub Runner Status</h1>
-<table>
-<tr><th>Target</th><th>Scope</th><th>Repo/Org</th><th>State</th><th>Detail</th></tr>
-{body_rows}
-</table>
+{cards}
 </body></html>"""
 
 
@@ -154,7 +193,10 @@ class StatusCache:
 
     def poll_forever(self):
         while True:
-            rows = [summarize_target(t, fetch_runners(t)) for t in self._targets]
+            rows = [
+                summarize_target(t, fetch_runners(t), fetch_latest_run(t))
+                for t in self._targets
+            ]
             with self._lock:
                 self._html = render_html(rows)
             time.sleep(self._poll_seconds)
