@@ -1,3 +1,16 @@
+## 0.1.5 - 2026-07-01
+
+### Fixed
+
+- Docker builds still failed with `mkdir /sys/fs/cgroup/docker: read-only file system` even with
+  `privileged: [SYS_ADMIN, NET_ADMIN]` + `full_access: true` combined — the Supervisor mounts
+  `/sys/fs/cgroup` read-only into every add-on container and there's no `config.yaml` key that
+  changes that. `run.sh` now remounts it read-write in its own mount namespace at startup
+  (`mount --make-rprivate` + `mount -o remount,rw`), which `CAP_SYS_ADMIN` permits even though the
+  underlying mount is read-only — this doesn't touch the host's view, only the container's own.
+  Found by running the same real docker-build job three times across three different privilege
+  configurations before isolating the actual constraint.
+
 ## 0.1.4 - 2026-07-01
 
 ### Fixed

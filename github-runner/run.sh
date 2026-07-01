@@ -20,6 +20,16 @@ if ! mkdir -p "${DATA_PATH}" 2>/dev/null || [ ! -w "${DATA_PATH}" ]; then
     exit 1
 fi
 mkdir -p "${DOCKER_DATA_ROOT}" "${RUNNERS_DIR}"
+: > "${DATA_PATH}/dockerd.log"
+
+# The Supervisor mounts /sys/fs/cgroup read-only into every add-on container regardless of
+# privileged capabilities — there's no config.yaml key that changes this. Remounting it
+# read-write is still possible because it only changes OUR OWN mount namespace's view (not the
+# host's), and CAP_SYS_ADMIN is enough to do that even though the underlying mount is read-only.
+# Without this, runc fails every nested container create with "mkdir /sys/fs/cgroup/docker:
+# read-only file system" — dockerd itself starts fine, but no job can actually run a container.
+mount --make-rprivate /sys/fs/cgroup 2>>"${DATA_PATH}/dockerd.log"
+mount -o remount,rw /sys/fs/cgroup 2>>"${DATA_PATH}/dockerd.log"
 
 # --- Start the Docker daemon (Docker-in-Docker) ------------------------------------------------
 # storage-driver=vfs: overlay2 (the default) requires mounting overlayfs on top of the add-on
@@ -27,7 +37,7 @@ mkdir -p "${DOCKER_DATA_ROOT}" "${RUNNERS_DIR}"
 # isn't supported here ("failed to mount overlay: operation not permitted"). vfs has no such
 # requirement; it costs more disk per layer, which is exactly what the USB-backed data_path is for.
 dockerd --data-root "${DOCKER_DATA_ROOT}" --storage-driver=vfs --host=unix:///var/run/docker.sock \
-    > "${DATA_PATH}/dockerd.log" 2>&1 &
+    >> "${DATA_PATH}/dockerd.log" 2>&1 &
 DOCKERD_PID=$!
 
 bashio::log.info "Waiting for the Docker daemon to become ready…"
