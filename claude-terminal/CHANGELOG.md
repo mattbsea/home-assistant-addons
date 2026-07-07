@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.12
+
+### 🐛 Bug Fixes
+- **Configured tabs run on startup**: Configured tabs (including a Claude tab with a configured prompt) now spawn as soon as the add-on starts, instead of waiting for the web UI to be opened in a browser. Previously the terminal sessions were created only when the first browser WebSocket connected, so a configured prompt would not execute until you manually opened the panel/tab. Output produced before you connect is captured and replayed when the UI loads.
+
 ## 2.0.11
 
 ### ✨ Improvements
