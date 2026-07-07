@@ -392,6 +392,11 @@ function handleConnection(ws) {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Claude Web Terminal running on port ${PORT}`);
     console.log(`Tab config: ${tabConfig.length} tab(s) configured`);
+    // Spawn all configured tabs immediately at startup so their commands
+    // (e.g. a Claude tab with a configured prompt) run without waiting for a
+    // browser to connect. Output produced before a client connects is captured
+    // in each session's ring buffer and replayed on connect.
+    createInitialTabs();
 });
 
 // Keepalive ping every 30s
