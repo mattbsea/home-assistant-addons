@@ -46,6 +46,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Install uv (provides uvx) - needed by plugins like claude-mem for spawning Python MCP servers
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL=/usr/local/bin sh
 
+# Install the latest stable Python via uv and put it ahead of apt's python3 on PATH.
+# Debian bookworm's apt python3 stays installed (at /usr/bin) for any OS-level tooling
+# that expects Debian's own interpreter; this uv-managed build is what `python3`/`python`
+# resolve to for interactive/dev use since /usr/local/bin precedes /usr/bin on PATH.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
+RUN uv python install 3.14 \
+    && ln -sf "$(uv python find 3.14)" /usr/local/bin/python3 \
+    && ln -sf /usr/local/bin/python3 /usr/local/bin/python \
+    && chmod -R a+rX /opt/uv/python
+
 # Install bun (fast JavaScript runtime / package manager).
 # Bun publishes prebuilt binaries for amd64 and aarch64 only; armv7 is unsupported,
 # so skip the install there rather than failing the build.

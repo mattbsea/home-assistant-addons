@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.13
+
+### ✨ Improvements
+- **Latest Python via uv**: `python3`/`python` in the terminal now resolve to a uv-managed CPython 3.14 build instead of Debian bookworm's apt-provided Python 3.11, so interactive/dev work gets a current interpreter. Debian's own `python3` remains installed at `/usr/bin/python3` for any OS-level tooling that expects it.
+
 ## 2.0.12
 
 ### 🐛 Bug Fixes
