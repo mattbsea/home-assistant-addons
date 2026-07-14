@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.33
+
+### Fixed — dashboard tire pressure warnings rendered as garbage
+- `TpmsHardWarnings`/`TpmsSoftWarnings` are a per-wheel `TireLocation` object (one bool per wheel),
+  not a scalar. The dashboard was doing `"hard: " + raw(...)`, which stringified the object to
+  `"[object Object]"`, and its "is there a warning" check was truthy for *any* non-null object — so
+  a garbled warning row showed on every record regardless of whether a tire actually had one.
+- The tire pressure card now decodes the object into labeled wheels (Front L/R, Rear L/R) and only
+  shows a "Hard warning"/"Soft warning" row when a wheel is actually `true`. Key casing match is
+  case/underscore-insensitive (`FrontLeft`/`frontLeft`/`front_left`) since the exact casing the
+  telemetry bridge emits wasn't independently confirmed. (`dashboard.html`)
+
 ## 1.0.32
 
 ### Fixed — elevation EMA now smooths per-position (cuts the residual ascent inflation)

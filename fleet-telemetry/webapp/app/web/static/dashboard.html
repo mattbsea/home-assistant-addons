@@ -246,13 +246,21 @@ function buildCards(v){
 
  // Tire pressure (bar -> psi)
  const tp=k=>{const n=N(k);return n==null?null:(useImperial?Math.round(n*14.5038):Math.round(n*100)/100);};
+ // TpmsHardWarnings/TpmsSoftWarnings arrive as a TireLocation object (one bool per wheel), not a
+ // scalar — mirror the Doors/Windows handling below. Key casing from the telemetry bridge is not
+ // guaranteed (FrontLeft / frontLeft / front_left have all been seen from different Tesla field
+ // encodings), so match case/underscore-insensitively rather than assuming one exact spelling.
+ const TIRELBL={frontleft:"Front L",frontright:"Front R",rearleft:"Rear L",rearright:"Rear R"};
+ const norm=s=>String(s).toLowerCase().replace(/_/g,"");
+ const tireWarnings=k=>{const w=raw(k);if(!w||typeof w!=="object")return[];
+   const byNorm={};for(const key in w)byNorm[norm(key)]=w[key];
+   return Object.keys(TIRELBL).filter(p=>byNorm[p]===true).map(p=>TIRELBL[p]);};
+ const hardWarn=tireWarnings('TpmsHardWarnings'),softWarn=tireWarnings('TpmsSoftWarnings');
  cards+=mcard("Tire pressure",
    row("Front L",tp('TpmsPressureFl'),pressUnit)+row("Front R",tp('TpmsPressureFr'),pressUnit)
    +row("Rear L",tp('TpmsPressureRl'),pressUnit)+row("Rear R",tp('TpmsPressureRr'),pressUnit)
-   +(()=>{const w=x=>x!=null&&x!=="<invalid>"&&x!==""&&x!==0&&x!=="0";  // only when a warning is set
-      const p=[];if(w(raw('TpmsHardWarnings')))p.push("hard: "+raw('TpmsHardWarnings'));
-      if(w(raw('TpmsSoftWarnings')))p.push("soft: "+raw('TpmsSoftWarnings'));
-      return p.length?row("Warnings",p.join(", ")):"";})());
+   +(hardWarn.length?row("Hard warning",hardWarn.join(", ")):"")
+   +(softWarn.length?row("Soft warning",softWarn.join(", ")):""));
 
  // Vehicle
  cards+=card("Vehicle",
