@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.15
+
+### ✨ Improvements
+- **Paste an image (e.g. a macOS screenshot) directly into the terminal.** Since the `claude`
+  CLI runs inside this container and can't read your Mac's clipboard directly, pasting an image
+  now uploads it to the add-on, saves it to `~/.claude-terminal/pasted-images/`, and types the
+  resulting file path into the terminal so you can hand it to Claude like any other file
+  argument. The scratch folder is capped at 200MB, pruning the oldest images first. Plain text
+  paste is unaffected.
+
 ## 2.0.14
 
 ### 🐛 Fixed

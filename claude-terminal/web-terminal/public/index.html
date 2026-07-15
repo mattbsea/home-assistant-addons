@@ -196,6 +196,19 @@
                 removeTab(msg.tabId);
                 break;
             }
+
+            case 'pasteImageSaved': {
+                if (tabs.has(msg.tabId)) {
+                    send({ type: 'input', tabId: msg.tabId, data: msg.path });
+                }
+                showToast('Image pasted: ' + msg.path);
+                break;
+            }
+
+            case 'pasteImageError': {
+                showToast('Image paste failed: ' + (msg.message || 'unknown error'));
+                break;
+            }
         }
     }
 
@@ -257,6 +270,10 @@
         terminal.loadAddon(fitAddon);
 
         terminal.open(wrapper);
+
+        wrapper.addEventListener('paste', function(e) {
+            handleTerminalPaste(e, tabId);
+        });
 
         // Custom link provider that handles URLs spanning multiple terminal rows.
         // Works for both soft-wrapped (isWrapped) and hard-wrapped (app newlines)
@@ -370,6 +387,36 @@
         if (activate) {
             switchTab(tabId);
         }
+    }
+
+    // Detect an image on the system clipboard (e.g. a macOS screenshot) pasted into a
+    // terminal tab. The `claude` CLI runs inside this container, not on the user's
+    // machine, so it can't read the OS clipboard directly -- upload the image bytes to
+    // the add-on instead, which saves them to a file and hands back a path the CLI can
+    // read like any other file argument.
+    function handleTerminalPaste(e, tabId) {
+        var items = (e.clipboardData && e.clipboardData.items) || [];
+        var imageItem = null;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                imageItem = items[i];
+                break;
+            }
+        }
+        if (!imageItem) return; // no image on the clipboard: let normal text paste proceed
+
+        e.preventDefault();
+        var file = imageItem.getAsFile();
+        if (!file) return;
+
+        var reader = new FileReader();
+        reader.onload = function() {
+            var dataUrl = reader.result || '';
+            var comma = dataUrl.indexOf(',');
+            var base64 = comma >= 0 ? dataUrl.slice(comma + 1) : '';
+            send({ type: 'pasteImage', tabId: tabId, mimeType: imageItem.type, data: base64 });
+        };
+        reader.readAsDataURL(file);
     }
 
     // Switch active tab
