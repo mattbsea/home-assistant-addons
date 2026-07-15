@@ -4,11 +4,14 @@ const path = require('path');
 const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
 const { AutoContinueWatcher } = require('./auto-continue');
+const pasteImage = require('./paste-image');
 
 const PORT = parseInt(process.env.WEB_TERMINAL_PORT || '7681', 10);
 const AUTO_CONTINUE = (process.env.AUTO_CONTINUE || 'true').toLowerCase() !== 'false';
 const RING_BUFFER_SIZE = 512 * 1024; // 512KB per session
 const ALLOWED_COMMANDS = new Set(['claude', '/bin/bash', '/bin/sh', 'bash', 'sh']);
+const PASTE_IMAGES_DIR = pasteImage.resolveImagesDir(process.env.HOME || '/home/claude');
+const PASTE_IMAGES_MAX_BYTES = 200 * 1024 * 1024; // 200MB
 
 // Parse tab configuration from environment
 let tabConfig = [];
@@ -372,6 +375,21 @@ function handleConnection(ws) {
                     activeTabId: activeTabId,
                     version: process.env.ADDON_VERSION || '',
                 }));
+                break;
+            }
+
+            case 'pasteImage': {
+                try {
+                    const savedPath = pasteImage.saveImage({
+                        dir: PASTE_IMAGES_DIR,
+                        mimeType: msg.mimeType,
+                        base64Data: msg.data,
+                        maxBytes: PASTE_IMAGES_MAX_BYTES,
+                    });
+                    ws.send(JSON.stringify({ type: 'pasteImageSaved', tabId: msg.tabId, path: savedPath }));
+                } catch (e) {
+                    ws.send(JSON.stringify({ type: 'pasteImageError', tabId: msg.tabId, message: e.message }));
+                }
                 break;
             }
         }
