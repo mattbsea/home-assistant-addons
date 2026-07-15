@@ -407,7 +407,10 @@
 
         e.preventDefault();
         var file = imageItem.getAsFile();
-        if (!file) return;
+        if (!file) {
+            showToast('Image paste failed: could not read clipboard image');
+            return;
+        }
 
         var reader = new FileReader();
         reader.onload = function() {
@@ -415,6 +418,9 @@
             var comma = dataUrl.indexOf(',');
             var base64 = comma >= 0 ? dataUrl.slice(comma + 1) : '';
             send({ type: 'pasteImage', tabId: tabId, mimeType: imageItem.type, data: base64 });
+        };
+        reader.onerror = function() {
+            showToast('Image paste failed: could not read file');
         };
         reader.readAsDataURL(file);
     }
