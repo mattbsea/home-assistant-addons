@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.14
+
+### 🐛 Fixed
+- **Cmd-C didn't copy the terminal selection in Safari.** xterm.js keeps its selection purely
+  internal (rendered text is `user-select: none`) and normally copies by intercepting the browser's
+  native `copy` command. Safari doesn't reliably fire that command from a keyboard shortcut unless
+  there's a real DOM selection, so Cmd+C silently did nothing there (Chrome is more permissive and
+  worked already). A keydown handler for Cmd+C (and Ctrl+Shift+C, the Win/Linux terminal
+  convention) now writes the active xterm selection straight to the clipboard via the async
+  Clipboard API when one exists, otherwise it's a no-op so plain Ctrl+C still sends SIGINT as
+  normal. (`index.html`)
+
 ## 2.0.13
 
 ### ✨ Improvements
