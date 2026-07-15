@@ -2,6 +2,9 @@
   "name": "claude-web-terminal",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "test": "node --test test/"
+  },
   "dependencies": {
     "express": "^4.21.0",
     "ws": "^8.18.0",
