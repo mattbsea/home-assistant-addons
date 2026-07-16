@@ -35,5 +35,8 @@ async def require_ha_token(request: Request) -> None:
     except httpx.TransportError:
         log.warning("Could not reach Supervisor to validate token")
         raise HTTPException(401, "token validation unavailable")
+    except Exception:
+        log.warning("Token validation failed unexpectedly", exc_info=True)
+        raise HTTPException(401, "token validation unavailable")
     if resp.status_code != 200:
         raise HTTPException(401, "invalid token")

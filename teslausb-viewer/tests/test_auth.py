@@ -11,9 +11,10 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    def __init__(self, *, status_code, raise_transport_error=False):
+    def __init__(self, *, status_code, raise_transport_error=False, raise_other_error=False):
         self._status = status_code
         self._raise = raise_transport_error
+        self._raise_other = raise_other_error
 
     async def __aenter__(self):
         return self
@@ -25,6 +26,8 @@ class _FakeAsyncClient:
         import httpx
         if self._raise:
             raise httpx.TransportError("boom")
+        if self._raise_other:
+            raise RuntimeError("unexpected bug")
         return _FakeResponse(self._status)
 
 
@@ -67,6 +70,16 @@ def run():
         )
         r = c.get("/protected", headers={"Authorization": "Bearer whatever"})
         check("supervisor unreachable -> 401", r.status_code == 401, str(r.status_code))
+
+        auth_mod.httpx.AsyncClient = lambda **kw: _FakeAsyncClient(
+            status_code=200, raise_other_error=True
+        )
+        r = c.get("/protected", headers={"Authorization": "Bearer whatever"})
+        check(
+            "unexpected exception during validation -> 401 (not 500)",
+            r.status_code == 401,
+            str(r.status_code),
+        )
 
     print()
     print("RESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILURE(S): {failures}")
