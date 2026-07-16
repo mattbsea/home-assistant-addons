@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -58,14 +59,23 @@ def run():
             )
             check("sidecar upload -> 204", r.status_code == 204, str(r.status_code))
 
+            before_bad_folder = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
             r = c.put("/api/upload/NotAFolder/2024-01-15_10-30-22/thumb.png", content=b"x")
             check("bad folder -> 400", r.status_code == 400, str(r.status_code))
+            after_bad_folder = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
+            check("bad folder leaves no filesystem trace", before_bad_folder == after_bad_folder)
 
+            before_bad_event_dir = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
             r = c.put("/api/upload/SavedClips/not-a-date/thumb.png", content=b"x")
             check("bad event_dir -> 400", r.status_code == 400, str(r.status_code))
+            after_bad_event_dir = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
+            check("bad event_dir leaves no filesystem trace", before_bad_event_dir == after_bad_event_dir)
 
+            before_bad_filename = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
             r = c.put("/api/upload/SavedClips/2024-01-15_10-30-22/not-a-clip.txt", content=b"x")
             check("bad filename -> 400", r.status_code == 400, str(r.status_code))
+            after_bad_filename = {str(p.relative_to(teslacam)) for p in Path(teslacam).rglob("*")}
+            check("bad filename leaves no filesystem trace", before_bad_filename == after_bad_filename)
 
             r = c.put(
                 "/api/upload/SavedClips/2024-01-15_10-30-22/2024-01-15_10-30-22-front.mp4",
