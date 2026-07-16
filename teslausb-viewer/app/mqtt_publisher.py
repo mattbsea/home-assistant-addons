@@ -2,8 +2,8 @@
 
 All sensors are grouped under one device, "TeslaUSB Viewer". Discovery configs are
 retained and published once on connect; states are republished after every index scan.
-Byte-count sensors that the backend can't report (rclone `about` unsupported on many S3
-remotes) are published as the MQTT "unavailable" payload rather than omitted.
+Byte-count sensors that the backend can't report (e.g. if shutil.disk_usage fails when
+teslacam_path is not mounted) are published as the MQTT "unavailable" payload rather than omitted.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ DEVICE = {
     "identifiers": ["teslausb_viewer"],
     "name": "TeslaUSB Viewer",
     "manufacturer": "TeslaUSB Viewer Add-on",
-    "model": "rclone",
+    "model": "TeslaUSB Viewer",
 }
 
 AVAILABILITY_TOPIC = "teslausb_viewer/status"
