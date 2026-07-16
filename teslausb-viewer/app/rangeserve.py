@@ -34,8 +34,14 @@ def serve_file_range(path: Path, range_header: str | None) -> Response:
 
     start_s, _, end_s = range_header[len("bytes="):].partition("-")
     try:
-        start = int(start_s) if start_s else 0
-        end = int(end_s) if end_s else size - 1
+        if not start_s and end_s:
+            # Suffix range: bytes=-N means the last N bytes of the resource.
+            suffix_length = int(end_s)
+            start = max(0, size - suffix_length)
+            end = size - 1
+        else:
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else size - 1
     except ValueError:
         raise HTTPException(416, "invalid range")
     end = min(end, size - 1)

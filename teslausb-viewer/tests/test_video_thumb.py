@@ -62,6 +62,16 @@ def run():
                   r.headers.get("content-range", "").startswith("bytes 0-1023/4096"))
             check("range body 1024 bytes", len(r.content) == 1024, str(len(r.content)))
 
+            r = c.get(
+                "/api/events/SavedClips/2024-01-15_10-30-22/video/front/2024-01-15_10-30-22",
+                headers={"Range": "bytes=-1024"},
+            )
+            check("suffix range 206", r.status_code == 206, str(r.status_code))
+            check("suffix content-range header",
+                  r.headers.get("content-range", "").startswith("bytes 3072-4095/4096"),
+                  r.headers.get("content-range", ""))
+            check("suffix range body 1024 bytes", len(r.content) == 1024, str(len(r.content)))
+
             # Legacy rows with an empty path fall back to event_id/filename and still stream.
             _db = sqlite3.connect(get_settings().db_path)
             _db.execute(
