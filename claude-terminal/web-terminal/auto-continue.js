@@ -156,21 +156,41 @@ class AutoContinueWatcher {
     fire() {
         this.timer = null;
         this.scheduledResetAt = null;
-        this.tail = '';
         this.cooldownUntil = Date.now() + COOLDOWN_MS;
-        this.log(`[auto-continue] "${this.label}": limit should have reset; sending "continue"`);
+        // Log what the terminal actually shows right before we act. If the CLI has
+        // moved on to some other screen (a banner, a menu, a re-auth prompt) instead
+        // of sitting at an idle input line, typing "continue" into it silently does
+        // nothing -- this snapshot is what tells us that happened after the fact.
+        this.log(`[auto-continue] "${this.label}": limit should have reset; sending "continue". ` +
+                 `Screen right before sending: ${JSON.stringify(this.tail.slice(-300))}`);
+        this.tail = '';
         try {
             this.write('continue');
+            this.log(`[auto-continue] "${this.label}": wrote "continue" to PTY`);
             // Send Enter separately so the TUI registers the text before submit
             setTimeout(() => {
-                try { this.write('\r'); } catch (e) {}
+                try {
+                    this.write('\r');
+                    this.log(`[auto-continue] "${this.label}": wrote Enter to PTY`);
+                } catch (e) {
+                    this.log(`[auto-continue] "${this.label}": failed to write Enter to PTY: ${e.message}`);
+                }
             }, 500);
         } catch (e) {
-            this.log(`[auto-continue] "${this.label}": failed to write to PTY: ${e.message}`);
+            this.log(`[auto-continue] "${this.label}": failed to write "continue" to PTY: ${e.message}`);
         }
     }
 
     dispose() {
+        if (this.timer) {
+            // If the PTY restarts (e.g. the CLI process exited and the add-on respawned
+            // it) while a "continue" was scheduled, that schedule is silently lost here
+            // -- attachPtyHandlers builds a brand new watcher for the new process, and
+            // the reset time this one learned isn't carried over. Log it so a lost
+            // auto-continue shows up as a respawn-timing log line instead of nothing.
+            this.log(`[auto-continue] "${this.label}": disposed with a pending "continue" ` +
+                     `scheduled for ${new Date(this.scheduledResetAt).toISOString()} -- it will not fire`);
+        }
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.scheduledResetAt = null;

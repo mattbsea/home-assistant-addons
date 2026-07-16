@@ -264,6 +264,13 @@
                 selectionBackground: '#264f78',
             },
             allowProposedApi: true,
+            // Default is true on Mac: xterm.js replaces the current selection with
+            // just the word under the pointer on every right-click, even when a
+            // wider block is already selected. That made "select a block, then
+            // right-click to copy" impossible on Safari/macOS. Disabling this keeps
+            // the existing selection intact so the native context menu's Copy acts
+            // on the whole block.
+            rightClickSelectsWord: false,
         });
 
         const fitAddon = new FitAddon.FitAddon();
@@ -596,9 +603,18 @@
     // xterm.js keeps its selection purely internal (the rendered text has user-select:none) and
     // normally copies by intercepting the browser's native 'copy' command. Safari doesn't reliably
     // fire that command from a keyboard shortcut without a real DOM selection, so Cmd+C silently
-    // does nothing there (Chrome is more permissive and "just works"). Write the clipboard directly
+    // does nothing there (Chrome is more permissive and "just works"). Copy the selection directly
     // from this trusted keydown instead of depending on the native copy path.
-    document.addEventListener('keydown', async function(e) {
+    //
+    // legacyCopy (execCommand) runs FIRST and synchronously, before any async call. Browsers only
+    // honor execCommand('copy')/clipboard writes while still inside the synchronous call stack of a
+    // trusted user gesture ("transient activation"); that window can close after just one `await`.
+    // Calling the async Clipboard API first and awaiting it (the previous approach) risked burning
+    // that window -- if writeText hung or was slow to reject (e.g. a permission check needing a
+    // round trip), the execCommand fallback ran too late and silently did nothing too. Doing the
+    // synchronous copy first avoids that race entirely; the async API is only used as a best-effort
+    // extra afterward, and its outcome no longer gates anything.
+    document.addEventListener('keydown', function(e) {
         const isCopyChord = (e.metaKey && !e.ctrlKey && (e.key === 'c' || e.key === 'C'))
             || (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C'));
         if (!isCopyChord || !activeTabId) return;
@@ -607,34 +623,52 @@
         const sel = tab.terminal.getSelection();
         if (!sel) return;   // no selection: let the shortcut pass through untouched
         e.preventDefault();
-        let copied = false;
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(sel);
-                copied = true;
-            }
-        } catch (_) {}
-        if (!copied) legacyCopy(sel);
+        const copied = legacyCopy(sel);
+        if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sel).catch(function(_) {});
+        }
     });
 
+    // Copies text via the legacy execCommand('copy') path using a temporary contenteditable
+    // element and a real Selection/Range, rather than a <textarea>.select(). textarea.select()
+    // is a documented no-op on iOS Safari; Selection/Range works there and on desktop browsers
+    // alike. Restores whatever had focus beforehand, since stealing focus here would otherwise
+    // knock the xterm input out of focus on every copy.
     function legacyCopy(text) {
+        const previouslyFocused = document.activeElement;
+        let ok = false;
+        let el = null;
         try {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.setAttribute('readonly', '');
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            const ok = document.execCommand('copy');
-            document.body.removeChild(ta);
-            return ok;
+            el = document.createElement('div');
+            el.contentEditable = 'true';
+            el.style.position = 'fixed';
+            el.style.top = '0';
+            el.style.left = '0';
+            el.style.opacity = '0';
+            el.textContent = text;
+            document.body.appendChild(el);
+
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            el.focus();
+
+            ok = document.execCommand('copy');
+            selection.removeAllRanges();
         } catch (_) {
-            return false;
+            ok = false;
+        } finally {
+            if (el) el.remove();
+            if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+                previouslyFocused.focus();
+            }
         }
+        return ok;
     }
 
-    mobileCopyBtn.addEventListener('click', async function() {
+    mobileCopyBtn.addEventListener('click', function() {
         if (!activeTabId) return;
         const tab = tabs.get(activeTabId);
         if (!tab) return;
@@ -643,14 +677,15 @@
             showToast('Long-press in terminal to select text first');
             return;
         }
-        let copied = false;
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(sel);
-                copied = true;
-            }
-        } catch (_) {}
-        if (!copied) copied = legacyCopy(sel);
+        const copied = legacyCopy(sel);
+        if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sel).then(function() {
+                showToast('Copied');
+            }).catch(function() {
+                showToast('Copy failed');
+            });
+            return;
+        }
         showToast(copied ? 'Copied' : 'Copy failed');
     });
 

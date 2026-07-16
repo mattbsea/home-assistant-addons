@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.0.16
+
+### 🐛 Fixed
+- **Right-clicking after highlighting a block of text deselected it.** xterm.js defaults to
+  `rightClickSelectsWord: true` on macOS, which replaces whatever is currently selected with just
+  the single word under the pointer on every right-click — so right-clicking to bring up the
+  native Copy menu after dragging a selection lost the block and only offered to copy one word.
+  Disabled that default so the existing selection survives a right-click. (`index.html`)
+- **Cmd-C still didn't reliably copy the terminal selection in Safari**, even after the 2.0.14
+  fix. That fix awaited the async Clipboard API before falling back to `execCommand('copy')`;
+  if the async call hung or was slow to resolve/reject (plausible inside an ingress iframe), the
+  browser's window for honoring a user-gesture-triggered copy could close before the fallback
+  ever ran, silently swallowing it either way. The `execCommand('copy')` path now runs first and
+  synchronously — before any `await` — with the async Clipboard API used only as a best-effort
+  extra afterward. Also switched the copy implementation from a `<textarea>.select()` (a documented
+  no-op on iOS Safari) to a `contenteditable` element with a real Selection/Range, and restored
+  whatever had focus beforehand so copying no longer knocks the terminal out of focus. Verified
+  against Chromium and a Linux WebKit build; Apple's Safari has meaningfully different clipboard
+  internals not modeled by either, so real-device confirmation is still needed. (`index.html`)
+
+### 🔍 Diagnostics
+- **Auto-continue: added logging to root-cause a report that "continue" is detected and sent but
+  never reaches Claude.** The PTY-write mechanism itself checks out (verified against a live
+  `claude` session), so the likely cause is the CLI showing something other than an idle input
+  line (a banner, a menu, a re-auth prompt) at the moment "continue" is typed. `fire()` now logs
+  the terminal's actual on-screen content right before it acts, and `dispose()` now logs when a
+  scheduled "continue" is discarded because the underlying process restarted first. Next
+  occurrence should show up clearly in the add-on logs. (`auto-continue.js`)
+
 ## 2.0.15
 
 ### ✨ Improvements
