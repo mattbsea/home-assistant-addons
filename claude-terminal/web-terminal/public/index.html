@@ -273,7 +273,7 @@
 
         wrapper.addEventListener('paste', function(e) {
             handleTerminalPaste(e, tabId);
-        });
+        }, true);
 
         // Custom link provider that handles URLs spanning multiple terminal rows.
         // Works for both soft-wrapped (isWrapped) and hard-wrapped (app newlines)
@@ -406,6 +406,7 @@
         if (!imageItem) return; // no image on the clipboard: let normal text paste proceed
 
         e.preventDefault();
+        e.stopPropagation(); // prevent xterm's own paste handler from also firing for this event
         var file = imageItem.getAsFile();
         if (!file) {
             showToast('Image paste failed: could not read clipboard image');

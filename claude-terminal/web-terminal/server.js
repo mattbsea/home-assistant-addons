@@ -266,6 +266,10 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({
     noServer: true,
     perMessageDeflate: false,  // CRITICAL: HA ingress strips Sec-WebSocket-Extensions
+    maxPayload: 250 * 1024 * 1024, // 250MB -- comfortably above the 200MB pasted-images folder cap,
+                                    // so a single (base64-inflated) pasted image is never rejected by
+                                    // WebSocket transport limits before it even reaches our own
+                                    // 200MB-folder-cap pruning logic.
 });
 
 server.on('upgrade', (request, socket, head) => {
