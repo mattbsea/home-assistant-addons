@@ -18,7 +18,6 @@ from .config import get_settings
 from .db import Database
 from .indexer import Indexer
 from .mqtt_publisher import MqttPublisher
-from .stream import StreamServer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("teslausb_viewer")
@@ -73,8 +72,6 @@ async def lifespan(app: FastAPI):
     app.state.db = Database(settings.db_path)
     app.state.indexer = Indexer(settings, app.state.db)
     app.state.cache = CacheManager(settings)
-    app.state.stream = StreamServer(settings)
-    await app.state.stream.start()
     app.state.mqtt = MqttPublisher(settings)
     app.state.mqtt.start()
     app.state.scan_task = asyncio.create_task(_scan_loop(app))
@@ -86,7 +83,6 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await app.state.scan_task
         app.state.mqtt.stop()
-        await app.state.stream.stop()
         app.state.db.close()
 
 

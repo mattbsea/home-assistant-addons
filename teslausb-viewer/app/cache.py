@@ -1,16 +1,16 @@
 """Thumbnail cache for events (Tesla-supplied `thumb.png` or an ffmpeg-generated frame).
 
-Video is no longer copied here — clips stream on demand through the rclone serve http
-sidecar (see app/stream.py). This module now only owns the on-disk thumbnail cache and
-the camera-ordering helper used by the player grid.
+Video is served directly off local disk (app/rangeserve.py) — no caching needed for it. This
+module only owns the on-disk thumbnail cache and the camera-ordering helper used by the
+player grid.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
-from . import rclone
 from .config import Settings
 from .models import CAMERAS
 
@@ -42,10 +42,6 @@ class CacheManager:
     def has_thumb(self, event_id: str) -> bool:
         return self.thumb_path(event_id).is_file()
 
-    def thumb_src_dir(self) -> Path:
-        """Disk-backed scratch dir for clips pulled to extract a frame (never /tmp/tmpfs)."""
-        return self.root / ".thumb_src"
-
     def prune_thumbs(self, valid_keys: set[str]) -> None:
         """Delete cached thumbnails whose event key is no longer present in the index."""
         thumbs = self.root / THUMB_DIR_NAME
@@ -59,18 +55,18 @@ class CacheManager:
                     pass
 
     async def get_thumb(self, event_id: str) -> bytes | None:
-        """Return thumbnail bytes, fetching+caching the Tesla thumb on first request. None if absent.
+        """Return thumbnail bytes, caching the Tesla thumb on first request. None if absent.
 
         A previously generated frame (thumbnailer) lives at the same path, so it is served
-        here too without a backend round-trip.
+        here too without re-reading the source clip.
         """
         cached = self.thumb_path(event_id)
         if cached.is_file():
-            return cached.read_bytes()
-        try:
-            data = await rclone.cat(self.settings, f"{event_id}/thumb.png", max_bytes=2_000_000)
-        except rclone.RcloneError:
+            return await asyncio.to_thread(cached.read_bytes)
+        src = self.settings.teslacam_path / event_id / "thumb.png"
+        if not await asyncio.to_thread(src.is_file):
             return None
+        data = await asyncio.to_thread(src.read_bytes)
         if data:
             cached.write_bytes(data)
         return data or None

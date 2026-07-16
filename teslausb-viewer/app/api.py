@@ -2,8 +2,8 @@
 
 Every URL the browser uses is built in the frontend from window.INGRESS_BASE, so these
 handlers use plain relative paths. The one exception is `/` which injects that base into
-index.html. Video is streamed on demand: `/video` proxies the browser's Range request to
-the rclone serve http sidecar (see app/stream.py), passing 206/Content-Range straight back.
+index.html. /video serves the clip directly off local disk with Range support (see
+app/rangeserve.py).
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from . import __version__, stats
 from .cache import order_cameras
 from .models import FOLDERS
+from .rangeserve import serve_file_range
 
 router = APIRouter()
 WEB_DIR = Path(__file__).parent / "web"
@@ -126,15 +127,17 @@ async def thumb(event_id: str, request: Request) -> Response:
 @router.get("/api/events/{event_id:path}/video/{camera}/{minute_ts}")
 async def video(event_id: str, camera: str, minute_ts: str, request: Request) -> Response:
     st = _state(request)
-    if not st.stream.available:
-        raise HTTPException(503, "backend not configured")
     row = await asyncio.to_thread(st.db.find_file, event_id, camera, minute_ts)
     if not row:
         raise HTTPException(404, "no such clip")
-    # `path` is the clip's location under the remote base (recorded since 0.1.7); older
-    # rows fall back to the folder-shaped path the copy model assumed.
-    remote_path = row.get("path") or f"{event_id}/{row['filename']}"
-    return await st.stream.video_response(remote_path, request.headers.get("range"))
+    # `path` is the clip's location under teslacam_path (recorded since 0.1.7); older rows
+    # fall back to the folder-shaped path the copy model assumed.
+    rel_path = row.get("path") or f"{event_id}/{row['filename']}"
+    local_path = (st.settings.teslacam_path / rel_path).resolve()
+    root = st.settings.teslacam_path.resolve()
+    if not local_path.is_relative_to(root):
+        raise HTTPException(404, "no such clip")
+    return serve_file_range(local_path, request.headers.get("range"))
 
 
 @router.post("/api/refresh")

@@ -2,8 +2,9 @@
 
 TeslaUSB only writes thumb.png for SavedClips/SentryClips events; RecentClips (and any
 event whose thumbnail hasn't uploaded yet) have none, so the grid would show a placeholder.
-For those we grab one frame from the event's front-camera clip with ffmpeg and store it in
-the same on-disk thumb cache get_thumb() already serves from — so no API change is needed.
+For those we grab one frame from the event's front-camera clip, read directly off
+teslacam_path (no network pull), with ffmpeg and store it in the same on-disk thumb cache
+get_thumb() already serves from — so no API change is needed.
 
 Runs at scan time (eager), is idempotent (skips events already thumbed), bounds work per
 pass, and prunes thumbnails for events that have rolled out of the index (RecentClips is a
@@ -16,7 +17,6 @@ import asyncio
 import logging
 from pathlib import Path
 
-from . import rclone
 from .cache import CacheManager
 from .config import Settings
 from .db import Database
@@ -72,22 +72,12 @@ async def _generate(settings: Settings, cache: CacheManager, event_id: str, file
     clip = _pick_clip(files)
     if not clip:
         return False
-    tmp_dir = cache.thumb_src_dir()
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    tmp_name = f"{cache.key(event_id)}-{clip['filename']}"
-    tmp_clip = tmp_dir / tmp_name
+    src = settings.teslacam_path / clip["path"]
     dest = cache.thumb_path(event_id)
-    try:
-        await rclone.copy_files(settings, [(clip["path"], tmp_name)], str(tmp_dir))
-        if await _extract_frame(tmp_clip, dest):
-            log.info("Generated thumbnail for %s (from %s)", event_id, clip["camera"])
-            return True
-        return False
-    finally:
-        try:
-            tmp_clip.unlink()
-        except OSError:
-            pass
+    if await _extract_frame(src, dest):
+        log.info("Generated thumbnail for %s (from %s)", event_id, clip["camera"])
+        return True
+    return False
 
 
 async def _extract_frame(src: Path, dest: Path) -> bool:
