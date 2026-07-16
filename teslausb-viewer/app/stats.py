@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import datetime
 
-from . import rclone
 from .config import Settings
 from .db import Database
 
 
 async def compute(settings: Settings, db: Database) -> dict:
     base = await _from_db(db)
-    disk = await rclone.about(settings) if settings.has_backend() else None
+    disk = _disk_usage(settings) if settings.has_backend() else None
     base["backend_used_bytes"] = (disk or {}).get("used")
     base["backend_free_bytes"] = (disk or {}).get("free")
     base["backend_total_bytes"] = (disk or {}).get("total")
     return base
+
+
+def _disk_usage(settings: Settings) -> dict | None:
+    try:
+        usage = shutil.disk_usage(settings.teslacam_path)
+    except OSError:
+        return None
+    return {"total": usage.total, "used": usage.used, "free": usage.free}
 
 
 async def _from_db(db: Database) -> dict:

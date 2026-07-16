@@ -46,6 +46,12 @@ def run():
             r = c.post("/api/refresh")
             check("refresh 200", r.status_code == 200, str(r.json()))
 
+            s = c.get("/api/stats").json()
+            check("stats backend_total_bytes present", isinstance(s.get("backend_total_bytes"), int),
+                  str(s.get("backend_total_bytes")))
+            check("stats total >= used", s["backend_total_bytes"] >= s["backend_used_bytes"],
+                  str(s))
+
             r = c.get("/api/events/SavedClips/2024-01-15_10-30-22/thumb")
             check("thumb served", r.status_code == 200 and r.content == b"PNGDATA")
 
