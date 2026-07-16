@@ -45,7 +45,7 @@ class CameraFile:
     minute_ts: str  # YYYY-MM-DD_HH-MM-SS of this one-minute clip
     filename: str  # basename, e.g. 2024-01-15_10-30-22-front.mp4
     size: int = 0
-    path: str = ""  # remote subpath under remote_base (handles nested layouts like RecentClips/<date>/)
+    path: str = ""  # local subpath under teslacam_path (handles nested layouts like RecentClips/<date>/)
 
 
 @dataclass
