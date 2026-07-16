@@ -18,7 +18,7 @@ from .config import get_settings
 from .db import Database
 from .indexer import Indexer
 from .mqtt_publisher import MqttPublisher
-from .upload import router as upload_router
+from .upload import router as upload_router, sweep_orphaned_tmp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("teslausb_viewer")
@@ -46,6 +46,15 @@ async def refresh_and_publish(app: FastAPI) -> dict:
         await thumbnailer.backfill(app.state.settings, app.state.db, app.state.cache)
     except Exception:  # noqa: BLE001 — thumbnail generation must never break a scan
         log.exception("Thumbnail backfill failed")
+    try:
+        removed = await asyncio.to_thread(
+            sweep_orphaned_tmp, app.state.settings.teslacam_path,
+            max_age_seconds=app.state.settings.refresh_minutes * 60,
+        )
+        if removed:
+            log.info("Swept %d orphaned upload temp file(s)", removed)
+    except Exception:  # noqa: BLE001 — sweep must never break a scan
+        log.exception("Orphaned upload sweep failed")
     try:
         values = await stats.compute(app.state.settings, app.state.db)
         app.state.mqtt.publish_states(values)

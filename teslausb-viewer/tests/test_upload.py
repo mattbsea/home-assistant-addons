@@ -93,6 +93,16 @@ def run():
             removed = sweep_orphaned_tmp(get_settings().teslacam_path, max_age_seconds=1)
             check("stale tmp swept", removed >= 1 and not os.path.exists(stale), str(removed))
 
+            # Integration: /api/refresh itself sweeps stale orphaned tmp files (not just a
+            # direct sweep_orphaned_tmp() call, exercised above).
+            stale2 = os.path.join(os.path.dirname(written), ".stale2.tmp-cafef00d")
+            open(stale2, "wb").close()
+            old_time2 = time.time() - 3600
+            os.utime(stale2, (old_time2, old_time2))
+            r = c.post("/api/refresh")
+            check("refresh via API -> 200", r.status_code == 200, str(r.status_code))
+            check("refresh swept stale tmp file", not os.path.exists(stale2))
+
         del m.app.dependency_overrides[require_ha_token]
 
         # Real auth path (no override): Supervisor isn't reachable in this test env, so the
