@@ -18,6 +18,7 @@ from .config import get_settings
 from .db import Database
 from .indexer import Indexer
 from .mqtt_publisher import MqttPublisher
+from .upload import router as upload_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("teslausb_viewer")
@@ -104,4 +105,5 @@ async def ingress_base(request: Request, call_next):
 
 
 app.include_router(router)
+app.include_router(upload_router)
 app.mount("/static", _RevalidatingStatic(directory=str(WEB_DIR)), name="static")
