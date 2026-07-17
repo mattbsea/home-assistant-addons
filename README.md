@@ -60,20 +60,30 @@ Features:
 
 ### RustDesk Server
 
-Self-hosted [RustDesk](https://rustdesk.com) in one add-on: the server (`hbbs`/`hbbr`) and a
-browser-accessible RustDesk client (via `linuxserver/docker-rustdesk`, streamed with Selkies),
-both reachable from the Home Assistant sidebar over ingress.
+Self-hosted [RustDesk](https://rustdesk.com) relay server (`hbbs`/`hbbr`), headless — no GUI,
+no browser client of its own. Pair with **RustDesk Web Client** below for browser access.
 
 Features:
-- Opens the actual RustDesk desktop client, streamed to your browser — no native install needed
-- Runs the official `rustdesk-server` `hbbs`/`hbbr` binaries alongside it, auto-restarted on crash
-- Persistent server identity keypair and client settings across restarts and updates
-- Optional pre-shared key or encrypted-only enforcement for the server
+- Runs the official `rustdesk-server` `hbbs`/`hbbr` binaries, each independently auto-restarted on crash
+- Persistent server identity keypair across restarts and updates
+- Optional pre-shared key or encrypted-only enforcement
 
-Note: amd64/arm64 only (no armv7) — see [Documentation](rustdesk/DOCS.md) for known limitations
-(shared-memory size, ingress WebSocket load) and what to forward for remote server access.
+[Documentation](rustdesk-server/DOCS.md)
 
-[Documentation](rustdesk/DOCS.md)
+### RustDesk Web Client
+
+Browser-accessible RustDesk client — web-admin and web client, served from your Home Assistant
+sidebar over ingress. Requires the **RustDesk Server** add-on above.
+
+Features:
+- Web-admin (`/_admin/`) for managing users, address books, and share links
+- Browser-based remote control of any RustDesk peer, no native app install needed
+- Persistent database (users, address book, logs) across restarts and updates
+
+Note: the browser client's remote-control connection needs a reverse proxy TLS setup beyond
+ingress — see [Documentation](rustdesk-web/DOCS.md) for the NGINX Proxy Manager steps.
+
+[Documentation](rustdesk-web/DOCS.md)
 
 ## Community Tools
 
