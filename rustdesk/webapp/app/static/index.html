@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RustDesk Server</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1a1d23;
+    --muted: #667085;
+    --border: #e3e6ea;
+    --accent: #2f6feb;
+    --ok: #1a7f37;
+    --bad: #cf222e;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1c1f26;
+      --text: #e8eaed;
+      --muted: #9aa4b2;
+      --border: #2b2f38;
+      --accent: #6ea8fe;
+      --ok: #3fb950;
+      --bad: #f85149;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1.5rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 1.25rem; font-size: .9rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .card h2 { font-size: .95rem; margin: 0 0 .75rem; display: flex; align-items: center; gap: .5rem; }
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--bad); }
+  .row { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--muted); }
+  .row .v { font-family: var(--mono); text-align: right; word-break: break-all; }
+  .copyable { display: flex; align-items: center; gap: .5rem; }
+  button.copy {
+    font: inherit; font-size: .75rem; padding: .15rem .5rem; border-radius: 6px;
+    border: 1px solid var(--border); background: transparent; color: var(--accent); cursor: pointer;
+  }
+  button.copy:hover { background: var(--border); }
+  .banner {
+    grid-column: 1 / -1;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: .85rem 1rem;
+    font-size: .88rem;
+    background: var(--card);
+  }
+  .banner a { color: var(--accent); }
+  .ports-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .ports-table th, .ports-table td { text-align: left; padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+  .ports-table td:first-child { font-family: var(--mono); white-space: nowrap; }
+  .logs { grid-column: 1 / -1; }
+  .tabs { display: flex; gap: .5rem; margin-bottom: .5rem; }
+  .tabs button {
+    font: inherit; font-size: .8rem; padding: .3rem .7rem; border-radius: 6px;
+    border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer;
+  }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  pre.log {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .75rem; max-height: 320px; overflow: auto; font-size: .78rem; font-family: var(--mono);
+    white-space: pre-wrap; word-break: break-all; margin: 0;
+  }
+  footer { margin-top: 1.5rem; color: var(--muted); font-size: .78rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>RustDesk Server</h1>
+  <p class="sub">hbbs/hbbr status &amp; connection info · add-on v<span id="version">…</span></p>
+
+  <div class="grid">
+    <div class="banner">
+      This dashboard shows server status and connection details. It is <strong>not</strong> an
+      in-browser remote-desktop viewer — Home Assistant's ingress can only proxy a single
+      HTTP/WebSocket port, and RustDesk's remote-desktop protocol needs raw TCP/UDP on the ports
+      below. Install the <a href="https://rustdesk.com/download" target="_blank" rel="noopener noreferrer">native RustDesk client</a>
+      on the machines you want to control from, or use the official
+      <a href="https://rustdesk.com/web" target="_blank" rel="noopener noreferrer">web client</a>
+      once you've forwarded the ports below to this add-on.
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="dot-hbbs"></span> hbbs (ID / rendezvous server)</h2>
+      <div class="row"><span class="k">Status</span><span class="v" id="status-hbbs">…</span></div>
+      <div class="row"><span class="k">ID / Rendezvous server</span><span class="v" id="id-server">…</span></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="dot-hbbr"></span> hbbr (relay server)</h2>
+      <div class="row"><span class="k">Status</span><span class="v" id="status-hbbr">…</span></div>
+      <div class="row"><span class="k">Relay server</span><span class="v" id="relay-server">…</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Connection info</h2>
+      <div class="row">
+        <span class="k">Public key</span>
+        <span class="copyable"><span class="v" id="pubkey">…</span><button class="copy" data-copy="pubkey">Copy</button></span>
+      </div>
+      <div class="row"><span class="k">Encryption</span><span class="v" id="encryption">…</span></div>
+      <p class="sub" style="margin:.6rem 0 0;">
+        Paste the public key into each RustDesk client's Settings → Network → Key field, and the
+        ID/relay server addresses above into ID Server / Relay Server.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Ports to forward</h2>
+      <table class="ports-table">
+        <thead><tr><th>Port</th><th>Purpose</th></tr></thead>
+        <tbody id="ports-body"><tr><td colspan="2">…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card logs">
+      <h2>Logs</h2>
+      <div class="tabs">
+        <button data-log="hbbs" class="active">hbbs</button>
+        <button data-log="hbbr">hbbr</button>
+      </div>
+      <pre class="log" id="log-view">…</pre>
+    </div>
+  </div>
+
+  <footer>Refreshes every 5s.</footer>
+
+<script>
+  let activeLog = "hbbs";
+
+  function setDot(el, ok) {
+    el.classList.remove("ok", "bad");
+    el.classList.add(ok ? "ok" : "bad");
+  }
+
+  async function refreshStatus() {
+    let s;
+    try {
+      s = await (await fetch("/api/status")).json();
+    } catch (e) {
+      return;
+    }
+    document.getElementById("version").textContent = s.version || "unknown";
+
+    const host = s.relay_host || s.local_ip || "(not set)";
+    document.getElementById("id-server").textContent = s.relay_host ? host : `${host} (LAN only — set relay_host)`;
+    document.getElementById("relay-server").textContent = `${host}:21117`;
+
+    for (const name of ["hbbs", "hbbr"]) {
+      const ok = !!(s.procs && s.procs[name]);
+      setDot(document.getElementById(`dot-${name}`), ok);
+      document.getElementById(`status-${name}`).textContent = ok ? "running" : "stopped";
+    }
+
+    document.getElementById("pubkey").textContent = s.public_key || "(not generated yet)";
+
+    let enc = "disabled (unencrypted connections allowed)";
+    if (s.custom_key_set) enc = "custom pre-shared key";
+    else if (s.encrypted_only) enc = "required (auto key)";
+    document.getElementById("encryption").textContent = enc;
+
+    const tbody = document.getElementById("ports-body");
+    tbody.innerHTML = "";
+    for (const [port, desc] of Object.entries(s.ports || {})) {
+      const tr = document.createElement("tr");
+      const tdPort = document.createElement("td");
+      tdPort.textContent = port;
+      const tdDesc = document.createElement("td");
+      tdDesc.textContent = desc;
+      tr.append(tdPort, tdDesc);
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function refreshLog() {
+    try {
+      const text = await (await fetch(`/api/logs/${activeLog}`)).text();
+      const el = document.getElementById("log-view");
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+      el.textContent = text || "(no output yet)";
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    } catch (e) {
+      // ignore transient fetch errors
+    }
+  }
+
+  document.querySelectorAll(".tabs button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeLog = btn.dataset.log;
+      refreshLog();
+    });
+  });
+
+  document.querySelectorAll("button.copy").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const text = document.getElementById(btn.dataset.copy).textContent;
+      navigator.clipboard?.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(() => { btn.textContent = original; }, 1200);
+      });
+    });
+  });
+
+  refreshStatus();
+  refreshLog();
+  setInterval(refreshStatus, 5000);
+  setInterval(refreshLog, 5000);
+</script>
+</body>
+</html>

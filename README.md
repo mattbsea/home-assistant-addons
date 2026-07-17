@@ -58,6 +58,23 @@ Features:
 
 [Documentation](fleet-telemetry/DOCS.md)
 
+### RustDesk Server
+
+Self-hosted [RustDesk](https://rustdesk.com) remote-desktop server — runs the official `hbbs`
+(ID/rendezvous) and `hbbr` (relay) binaries with a status/connection dashboard over ingress.
+
+Features:
+- Runs the official `rustdesk-server` binaries, auto-restarted if either process crashes
+- Persistent server identity keypair across restarts and updates
+- Ingress dashboard: live health, public key, ID/relay addresses, ports to forward, and logs
+- Optional pre-shared key or encrypted-only enforcement
+
+Note: the ingress panel is a status/connection dashboard, not an in-browser remote-desktop viewer
+— see [Documentation](rustdesk/DOCS.md) for why, and what you still need to forward for remote
+access.
+
+[Documentation](rustdesk/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:

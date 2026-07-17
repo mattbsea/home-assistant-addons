@@ -1,0 +1,66 @@
+---
+name: "RustDesk Server"
+description: "Self-hosted RustDesk remote-desktop server (hbbs/hbbr) with a status & connection dashboard over ingress"
+version: "1.0.0"
+slug: "rustdesk"
+init: false
+
+# rustdesk-server publishes .deb packages for these three architectures.
+arch:
+  - aarch64
+  - amd64
+  - armv7
+
+url: "https://github.com/rustdesk/rustdesk-server"
+
+startup: application
+boot: auto
+
+# Web interface configuration.
+# NOTE: this is a status/connection dashboard, NOT an in-browser remote-desktop viewer.
+# HA ingress only proxies a single HTTP(S)+WebSocket port, and RustDesk's actual remote-desktop
+# protocol needs raw TCP/UDP on the ports below — those cannot be tunneled through ingress.
+# See DOCS.md for what the dashboard does and does not do.
+ingress: true
+ingress_port: 8092
+panel_icon: mdi:monitor-share
+panel_title: "RustDesk"
+
+# hbbs/hbbr listen ports. These are FIXED internal ports; remap the host side from the add-on's
+# Network tab if needed. They must be reachable from the internet (via router port-forward) for
+# devices outside your LAN to connect — ingress has no bearing on this.
+ports:
+  21115/tcp: 21115
+  21116/tcp: 21116
+  21116/udp: 21116
+  21117/tcp: 21117
+  21118/tcp: 21118
+  21119/tcp: 21119
+ports_description:
+  21115/tcp: "hbbs: NAT type test"
+  21116/tcp: "hbbs: hole punching / connection service"
+  21116/udp: "hbbs: ID registration & heartbeat (required)"
+  21117/tcp: "hbbr: relay service"
+  21118/tcp: "hbbs: web client WebSocket (only needed for browser-based RustDesk clients)"
+  21119/tcp: "hbbr: web client WebSocket (only needed for browser-based RustDesk clients)"
+
+options:
+  relay_host: ""
+  encrypted_only: true
+  custom_key: ""
+schema:
+  relay_host: "str?"
+  encrypted_only: "bool"
+  custom_key: "password?"
+
+# Persistent storage for the server's identity keypair (id_ed25519 / id_ed25519.pub), logs, and
+# dashboard state. Losing this directory changes the server's identity and breaks every client
+# that already trusts the old public key.
+map:
+  - data:rw
+
+# Used to read the add-on's LAN IP for the dashboard's connection-info panel when relay_host
+# is left blank.
+homeassistant_api: true
+
+webui: "http://[HOST]:[PORT:8092]/"
