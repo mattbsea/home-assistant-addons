@@ -1,0 +1,13 @@
+# linuxserver/rustdesk publishes a single multi-arch manifest list covering amd64+arm64, so both
+# entries point at the same tag — the platform-specific build resolves the right image per arch.
+# No armv7: linuxserver.io deprecated 32-bit ARM org-wide, and Selkies' WebCodecs streaming path
+# needs a modern browser engine that armv7 can't reasonably run anyway.
+build_from:
+  aarch64: lscr.io/linuxserver/rustdesk:latest
+  amd64: lscr.io/linuxserver/rustdesk:latest
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: RustDesk Server"
+  org.opencontainers.image.description: "Self-hosted RustDesk server (hbbs/hbbr) plus a browser-accessible RustDesk client, served over ingress"
+  org.opencontainers.image.source: "https://github.com/linuxserver/docker-rustdesk"
+  org.opencontainers.image.licenses: "AGPL-3.0"

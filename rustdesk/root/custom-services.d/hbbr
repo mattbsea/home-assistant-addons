@@ -1,0 +1,22 @@
+#!/usr/bin/with-contenv bash
+# hbbr (relay server). Supervised by s6 like any other long-running service in this image —
+# restarted automatically if it exits. Reads Home Assistant's add-on options directly rather than
+# relying on env vars threaded through from custom-cont-init.d (see that script for why).
+
+OPTIONS_FILE="/data/options.json"
+ENCRYPTED_ONLY="true"
+CUSTOM_KEY=""
+if [ -f "${OPTIONS_FILE}" ]; then
+    ENCRYPTED_ONLY="$(jq -r 'if .encrypted_only == false then "false" else "true" end' "${OPTIONS_FILE}")"
+    CUSTOM_KEY="$(jq -r '.custom_key // ""' "${OPTIONS_FILE}")"
+fi
+
+KEY_ARGS=()
+if [ -n "${CUSTOM_KEY}" ]; then
+    KEY_ARGS=(-k "${CUSTOM_KEY}")
+elif [ "${ENCRYPTED_ONLY}" = "true" ]; then
+    KEY_ARGS=(-k _)
+fi
+
+cd /data/rustdesk || exit 1
+exec /usr/local/bin/hbbr "${KEY_ARGS[@]}"

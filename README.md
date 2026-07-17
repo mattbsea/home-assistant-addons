@@ -58,6 +58,23 @@ Features:
 
 [Documentation](fleet-telemetry/DOCS.md)
 
+### RustDesk Server
+
+Self-hosted [RustDesk](https://rustdesk.com) in one add-on: the server (`hbbs`/`hbbr`) and a
+browser-accessible RustDesk client (via `linuxserver/docker-rustdesk`, streamed with Selkies),
+both reachable from the Home Assistant sidebar over ingress.
+
+Features:
+- Opens the actual RustDesk desktop client, streamed to your browser — no native install needed
+- Runs the official `rustdesk-server` `hbbs`/`hbbr` binaries alongside it, auto-restarted on crash
+- Persistent server identity keypair and client settings across restarts and updates
+- Optional pre-shared key or encrypted-only enforcement for the server
+
+Note: amd64/arm64 only (no armv7) — see [Documentation](rustdesk/DOCS.md) for known limitations
+(shared-memory size, ingress WebSocket load) and what to forward for remote server access.
+
+[Documentation](rustdesk/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:
