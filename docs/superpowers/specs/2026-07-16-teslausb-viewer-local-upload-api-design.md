@@ -129,10 +129,14 @@ Body: raw file bytes
   `backend_configured` health signal, now keyed on `Path(teslacam_path).is_dir()` +
   writable, instead of `has_backend()`).
 
-Upload order across a single event's files is **not required** to follow any sequence —
-`db.incomplete_event_ids()`'s existing retry logic already tolerates a folder that fills in
-over several indexer passes, so the Pi archiver can upload files in whatever order it reads
-them off its snapshot.
+Upload order across a single event's files **matters**: `thumb.png` (and `event.json`, if
+sent) must be the last file(s) uploaded for the event. `db.incomplete_event_ids()` keys
+"incomplete" purely on `thumb_present=0`, and `indexer.py`'s `_scan_event_folder` never
+re-lists an event once a scan has observed its `thumb.png` — there is no retry logic that
+revisits an event after that point. If `thumb.png` lands before the event's clip files and a
+scan fires in that window, any clip uploaded afterward is silently and permanently missing
+from the index until a full re-index/DB wipe. The Pi archiver must upload clips (and
+`event.json`) first and `thumb.png` last for each event.
 
 ### 3.3 Auth
 

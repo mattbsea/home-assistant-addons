@@ -3,9 +3,12 @@
 
 One PUT per file, in the exact TeslaUSB folder layout the indexer already expects
 (models.FOLDERS / EVENT_DIR_RE / CLIP_RE). Writes are atomic (temp file + rename) so the
-indexer never sees a half-written file. Upload order across an event's files does not
-matter — db.incomplete_event_ids() already tolerates a folder that fills in over several
-scan passes.
+indexer never sees a half-written file. Upload order across an event's files DOES matter:
+`thumb.png` (and `event.json`, if sent) must be uploaded LAST. db.incomplete_event_ids()
+keys "incomplete" purely on `thumb_present=0`, and indexer.py's `_scan_event_folder` never
+re-lists an event once a scan has observed its `thumb.png` — so if `thumb.png` lands before
+all of an event's clip files and a scan fires in that window, any clip uploaded afterward is
+silently and permanently missing from the index until a full re-index/DB wipe.
 """
 
 from __future__ import annotations

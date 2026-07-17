@@ -12,9 +12,16 @@ no cloud backend, no rclone. Uploaded files land on this Home Assistant host's o
 `teslacam_path`, e.g. a mounted USB drive) in the same `SavedClips/SentryClips/RecentClips`
 layout Tesla itself uses. This add-on just indexes and serves what's on disk.
 
-> **Ingress + LAN.** The browse/watch UI is reachable through the Home Assistant sidebar
-> panel (ingress). The upload API is also reachable on the LAN (port 8099), authenticated by
-> a Home Assistant long-lived access token — see "Archiver setup" below.
+> **Ingress + LAN — read this.** The browse/watch UI is reachable through the Home Assistant
+> sidebar panel (ingress), as before. But this add-on also exposes port 8099 directly on the
+> LAN, and Home Assistant's ingress access control only covers ingress-proxied traffic — it
+> does not apply to that direct port. That means the *entire* app is now reachable straight
+> from the LAN, unauthenticated: the browse/watch UI, `GET /api/events`, video streaming,
+> `POST /api/refresh` — all of it, not just the upload API. Only
+> `PUT /api/upload/...` checks a bearer token (see "Archiver setup" below); every read route
+> relies on your LAN itself being trusted, the same assumption most self-hosted home-network
+> dashboards make. This is a deliberate tradeoff, not an oversight — if your LAN includes
+> untrusted devices, treat that as a reason to segment your network, not a bug report.
 
 ## Configuration
 
@@ -37,6 +44,12 @@ lived access token**:
 3. The archiver `PUT`s each clip file to
    `.../api/upload/<SavedClips|SentryClips|RecentClips>/<event_dir>/<filename>` with
    `Authorization: Bearer <token>` and the raw file bytes as the body.
+4. **Upload order matters.** For each event, upload all clip `.mp4` files first, then
+   `event.json` (if applicable), and upload `thumb.png` **last**. The indexer treats the
+   presence of `thumb.png` as its sole signal that an event is fully uploaded and complete —
+   once a scan observes it, that event is never re-checked again. If `thumb.png` arrives
+   before the clips and a scan happens to run in between, the later clips can be silently and
+   permanently missing from the index until a full re-index.
 
 ## Statistics entities
 
