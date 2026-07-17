@@ -26,3 +26,13 @@
   constructing the URL client-side, so no server-side rewrite could fix it. Patched the compiled
   bundle at build time to compute the real prefix from the current page's own path instead.
   (`Dockerfile`)
+- **Accessing this add-on through a plain reverse proxy (e.g. NGINX Proxy Manager, for a native
+  client's "API server" field) redirected to this container's own internal address and port
+  instead of the public domain** — `http://<public-domain>:21114/_admin/`, which doesn't work
+  (wrong port, downgraded to plain HTTP). Root cause: nginx auto-qualifies a bare-path
+  `proxy_redirect` replacement using its own internal scheme/host/port whenever it doesn't
+  already have one, and that internal view is never what the actual browser is talking to
+  through a reverse proxy that (unlike Home Assistant's own ingress proxy) doesn't rewrite
+  Location headers on the way back out. Now builds the correct absolute URL explicitly from
+  `X-Forwarded-Proto`/`X-Forwarded-Host` (which your reverse proxy needs to send — see "Reaching
+  this add-on directly" in DOCS.md) before nginx gets a chance to guess wrong. (`nginx.conf`)

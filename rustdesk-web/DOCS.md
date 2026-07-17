@@ -19,6 +19,29 @@ lightweight Go web-admin + browser client, pointed at the **RustDesk Server** ad
    first start.
 4. From `/_admin/`, open the web client directly, or generate a share link for a peer.
 
+## Reaching this add-on directly (native clients' "API server" field)
+
+Native RustDesk clients have an optional "API server" setting (account/address-book/OIDC
+features — not required for basic remote control). If you want it to work, this add-on's port
+`21114` needs its own public-facing reverse proxy — separate from the `ws_host` WebSocket setup
+above, since that fronts **RustDesk Server**, not this add-on.
+
+**Setup with NGINX Proxy Manager:**
+
+1. Create a Proxy Host for your domain (e.g. `rustdesk.yourdomain.org`) forwarding to this
+   add-on's host/IP, port `21114`. Enable SSL, force SSL, enable "Websockets Support".
+2. **Add these two headers**, via the proxy host's Advanced tab:
+   ```
+   proxy_set_header X-Forwarded-Proto $scheme;
+   proxy_set_header X-Forwarded-Host $host;
+   ```
+   Without these, redirects from this add-on (e.g. opening `https://rustdesk.yourdomain.org/`)
+   come back pointing at this container's own internal address and port instead of your public
+   domain — nginx has no way to know what the browser is actually talking to unless a header
+   tells it. `nginx.conf` in this add-on falls back to reconstructing the correct URL from these
+   headers when present; confirmed live against a real NPM proxy host with them set.
+3. Set the native client's "API server" field to `https://rustdesk.yourdomain.org`.
+
 ## Configuration
 
 ### Option: `ws_host`
