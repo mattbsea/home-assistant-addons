@@ -1,0 +1,41 @@
+---
+name: "RustDesk Web Client"
+description: "Browser-accessible RustDesk client (web-admin + web client), served over ingress"
+version: "1.0.0"
+slug: "rustdesk_web"
+init: false
+
+arch:
+  - aarch64
+  - amd64
+
+url: "https://github.com/lejianwen/rustdesk-api"
+
+startup: application
+boot: auto
+
+# Serves the web-admin (/_admin/) and browser RustDesk client. The client's actual
+# remote-control data path is a WebSocket the browser opens directly to the rustdesk-server
+# add-on's 21118/21119 (NOT proxied through this ingress tunnel) — see DOCS.md for the NPM
+# TLS setup that path needs.
+ingress: true
+ingress_port: 21114
+panel_icon: mdi:monitor-share
+panel_title: "RustDesk"
+
+# Optional: only needed to reach this add-on's API directly from outside HA ingress (e.g. for
+# share links usable by guests without an HA login, or native clients that discover the API
+# server directly). Ingress-only browser access works with this left blank.
+ports:
+  21114/tcp: 21114
+ports_description:
+  21114/tcp: "API + web-admin (/_admin/) + web client — optional, only if you want this reachable outside HA ingress."
+
+options:
+  ws_host: ""
+schema:
+  ws_host: "str?"
+
+# rustdesk-api's own sqlite db (users, address book, connection/transfer logs).
+map:
+  - data:rw
