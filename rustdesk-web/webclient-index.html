@@ -41,11 +41,13 @@
 
     <title>RustDesk</title>
     <link rel="manifest" href="manifest.json">
-    <!-- PATCHED: was the domain-absolute "/webclient-config/index.js" -- a leading slash always
-         resolves against the origin root regardless of <base href>, so fixing the base tag above
-         alone would not have fixed this one too. Dropped the leading slash so it resolves
-         against the corrected base instead. -->
-    <script src="webclient-config/index.js"></script>
+    <!-- PATCHED: was the domain-absolute "/webclient-config/index.js". This route is a SIBLING
+         of /webclient/ on the backend (not nested under it), so neither the original absolute
+         path (ignores any prefix) nor a naive relative one (would resolve under the new
+         /webclient/ base as .../webclient/webclient-config/..., which doesn't exist either --
+         caught by an actual headless-browser load, not just reading the served HTML) is right.
+         Computed the same way as the base href above: prefix + the sibling path, verbatim. -->
+    <script>document.write("<script src=\"" + location.pathname.split("/webclient/")[0] + "/webclient-config/index.js\"><\/script>");</script>
     <script src="ogvjs-1.8.6/ogv.js"></script>
     <script type="module" crossorigin src="js/dist/index.js"></script>
     <script>
