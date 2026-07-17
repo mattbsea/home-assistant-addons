@@ -77,7 +77,8 @@ sidebar over ingress. Requires the **RustDesk Server** add-on above.
 
 Features:
 - Web-admin (`/_admin/`) for managing users, address books, and share links
-- Browser-based remote control of any RustDesk peer, no native app install needed
+- Browser-based remote control of RustDesk peers, no native app install needed (requires a
+  one-time reverse-proxy TLS setup — see the Note below)
 - Persistent database (users, address book, logs) across restarts and updates
 
 Note: the browser client's remote-control connection needs a reverse proxy TLS setup beyond
