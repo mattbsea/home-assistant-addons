@@ -19,6 +19,20 @@ COPY run.sh /run.sh
 COPY nginx.conf /nginx.conf
 RUN chmod a+x /run.sh
 
+# The Flutter-compiled remote-control web client (/webclient/) hardcodes a domain-absolute
+# <base href="/webclient/"> and an absolute script src ("/webclient-config/index.js") in its
+# index.html -- same reverse-proxy-prefix blindness as the admin SPA's baseURL fix below, but in
+# the base tag that governs every OTHER relative asset reference on the page (main.dart.js, the
+# flutter service worker, etc.), so under a path-prefixing proxy none of them load and the page
+# hangs on its own static loading spinner forever (confirmed live: this is exactly what a real
+# user saw). Unlike the admin SPA's hash-named compiled JS chunk, this file has a fixed,
+# predictable name, so rather than a fragile sed patch this replaces it outright with a corrected
+# copy checked into this repo (rustdesk-web/webclient-index.html) -- diffable and easy to review,
+# at the cost of needing a manual re-sync if a future lejianwen/rustdesk-api version changes this
+# file's content (we pin the upstream version in build.yaml specifically so that stays a
+# deliberate, noticed step, not a silent drift).
+COPY webclient-index.html /app/resources/web/index.html
+
 # The compiled admin SPA hardcodes its API calls to the domain-absolute path "/api/admin"
 # (rustdesk-api-web's src/utils/request.js: baseURL: import.meta.env.VITE_SERVER_API, baked in
 # at their build time as "/api/admin"). That's blind to any reverse-proxy path prefix: under HA
