@@ -19,5 +19,27 @@ COPY run.sh /run.sh
 COPY nginx.conf /nginx.conf
 RUN chmod a+x /run.sh
 
+# The compiled admin SPA hardcodes its API calls to the domain-absolute path "/api/admin"
+# (rustdesk-api-web's src/utils/request.js: baseURL: import.meta.env.VITE_SERVER_API, baked in
+# at their build time as "/api/admin"). That's blind to any reverse-proxy path prefix: under HA
+# ingress the browser's JS ends up requesting <ha-host>/api/admin/... directly -- bypassing the
+# ingress proxy (and this container) entirely, since that path doesn't start with the ingress
+# token prefix. The result is a login API call that never reaches anything, so the admin panel
+# hangs on an infinite loading spinner (confirmed live, screenshot from a real device). Unlike
+# the "/" redirect (fixed via nginx.conf's proxy_redirect, a server-side response header), this
+# is the browser's own JS constructing a URL client-side, so no server-side rewrite can fix it --
+# the fix has to change what URL the compiled JS itself requests. Patch it to compute the actual
+# prefix from the current page's own path at runtime instead: strip everything from "/_admin/"
+# onward (giving the ingress prefix, or "" when accessed directly without one) and append
+# "/api/admin" -- correct in both cases, no X-Ingress-Path awareness needed since this runs
+# entirely client-side. Fails the build loudly rather than silently no-op if upstream ever
+# changes this exact string, since a silent no-op here means the spinner bug comes back.
+RUN set -eu; \
+    MATCHES="$(grep -rl 'baseURL:"/api/admin"' /app/resources/admin/)"; \
+    test -n "${MATCHES}"; \
+    for f in ${MATCHES}; do \
+        sed -i 's|baseURL:"/api/admin"|baseURL:(location.pathname.split("/_admin/")[0]+"/api/admin")|' "${f}"; \
+    done
+
 WORKDIR /app
 CMD [ "/run.sh" ]

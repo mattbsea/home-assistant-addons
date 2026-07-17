@@ -13,3 +13,16 @@
   that connection bypasses the ingress tunnel and browsers block a plain `ws://` connection
   from an HTTPS page as mixed content. See DOCS.md.
 - Persistent web-admin database (users, address book, logs) under `/data`.
+
+### Fixed
+- **Opening the add-on from the sidebar 404'd.** `rustdesk-api`'s root handler issues a
+  hardcoded absolute redirect (`/_admin/`) with no awareness of HA ingress's per-session path
+  prefix, sending the browser to `<ha-host>/_admin/` — a route HA itself doesn't have. Fronted
+  apimain with a small nginx that rewrites the `Location` header using `X-Ingress-Path`, the
+  prefix HA's ingress proxy sends for exactly this purpose. (`nginx.conf`, `run.sh`)
+- **The admin panel loaded but hung on an infinite spinner.** The compiled admin SPA also
+  hardcodes its API calls to the domain-absolute path `/api/admin`, which has the same
+  reverse-proxy-prefix blindness as the redirect above — except this one is the browser's own JS
+  constructing the URL client-side, so no server-side rewrite could fix it. Patched the compiled
+  bundle at build time to compute the real prefix from the current page's own path instead.
+  (`Dockerfile`)
