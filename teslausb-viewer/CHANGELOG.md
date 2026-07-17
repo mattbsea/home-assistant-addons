@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+### 🐛 Fixes
+- **Version bump only** — 0.4.0 wasn't picked up as installable by the Supervisor's add-on
+  store (it already had a 0.4.0 build registered). No functional changes over 0.4.0.
+
 ## 0.4.0
 
 ### 💥 Breaking changes
