@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2
+
+### 🐛 Fixes
+- **Upload auth was rejecting every real token.** `require_ha_token()` validated the
+  caller's bearer token against `http://supervisor/core/api/` — but that Supervisor proxy
+  authenticates the *add-on itself* using this container's own `SUPERVISOR_TOKEN`; it has no
+  way to validate an arbitrary caller-supplied token and returned 401 for any token that
+  wasn't the add-on's own. Confirmed live: a genuine long-lived access token got `200 "API
+  running."` from Home Assistant Core directly, but 401 through the supervisor proxy. Fixed
+  to validate against Core directly at `http://homeassistant:8123/api/` instead.
+
 ## 0.4.1
 
 ### 🐛 Fixes
