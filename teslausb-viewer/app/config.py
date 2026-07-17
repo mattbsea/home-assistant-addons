@@ -38,6 +38,7 @@ class Settings:
     refresh_minutes: int
     cache_size_mb: int
     port: int
+    upload_port: int
     mqtt_enabled: bool
     mqtt_host: str
     mqtt_port: int
@@ -62,6 +63,7 @@ def get_settings() -> Settings:
         refresh_minutes=max(5, _int("TUV_REFRESH_MINUTES", 30)),
         cache_size_mb=max(256, _int("TUV_CACHE_SIZE_MB", 2048)),
         port=_int("TUV_PORT", 8099),
+        upload_port=_int("TUV_UPLOAD_PORT", 8100),
         mqtt_enabled=os.environ.get("TUV_MQTT_ENABLED", "false").lower() == "true",
         mqtt_host=_clean(os.environ.get("TUV_MQTT_HOST")),
         mqtt_port=_int("TUV_MQTT_PORT", 1883),
