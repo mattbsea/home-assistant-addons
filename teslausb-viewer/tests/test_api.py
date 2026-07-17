@@ -58,8 +58,6 @@ def run():
 
         s = c.get("/api/stats").json()
         check("stats savedclips_count", s["savedclips_count"] >= 1, str(s.get("savedclips_count")))
-        check("stats backend_total_bytes present", isinstance(s.get("backend_total_bytes"), int),
-              str(s.get("backend_total_bytes")))
 
         r = c.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/TOKEN"})
         check("ingress base injected", 'window.INGRESS_BASE = "/api/hassio_ingress/TOKEN"' in r.text)

@@ -16,6 +16,15 @@ def _write_sample_tree(root):
     with open(os.path.join(ev, "2024-01-15_10-30-22-front.mp4"), "wb") as f:
         f.write(os.urandom(4096))
 
+    # RecentClips event nested under a date sub-folder (non-flat layout), mirroring the
+    # fixture tests/run.sh builds, to exercise playback/thumbnail HTTP serving for RecentClips.
+    rec = os.path.join(root, "RecentClips", "2024-01-15")
+    os.makedirs(rec, exist_ok=True)
+    with open(os.path.join(rec, "2024-01-15_10-31-00-front.mp4"), "wb") as f:
+        f.write(os.urandom(2048))
+    with open(os.path.join(rec, "2024-01-15_10-31-00-back.mp4"), "wb") as f:
+        f.write(os.urandom(2048))
+
 
 def run():
     work = tempfile.mkdtemp()
@@ -88,6 +97,17 @@ def run():
             _db.close()
             r = c.get("/api/events/SavedClips/2024-01-15_10-30-22/video/front/2024-01-15_10-30-22")
             check("legacy empty-path still streams", r.status_code == 200, str(r.status_code))
+
+            # RecentClips: nested date sub-folder, playback fetches by the clip's real path.
+            r = c.get("/api/events/RecentClips/2024-01-15_10-31-00/video/front/2024-01-15_10-31-00")
+            check("recentclips video 200", r.status_code == 200, str(r.status_code))
+            check("recentclips video full length 2048", len(r.content) == 2048, str(len(r.content)))
+
+            # RecentClips events have no Tesla thumb.png; /api/refresh must auto-generate one
+            # via ffmpeg (fake_ffmpeg.py shim on PATH) during thumbnailer.backfill.
+            r = c.get("/api/events/RecentClips/2024-01-15_10-31-00/thumb")
+            check("recentclips thumb generated", r.status_code == 200, str(r.status_code))
+            check("recentclips thumb is a PNG", r.content[:4] == b"\x89PNG", str(r.content[:8]))
 
         print()
         print("RESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILURE(S): {failures}")
