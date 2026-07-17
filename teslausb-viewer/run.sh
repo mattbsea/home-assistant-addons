@@ -60,7 +60,7 @@ else
 fi
 
 # --- Launch the web app as the unprivileged user ----------------------------
-bashio::log.info "Launching web app on port ${PORT} (ingress + LAN upload API)"
+export TUV_UPLOAD_PORT=8100
+bashio::log.info "Launching web app: ingress on ${PORT}, upload API on ${TUV_UPLOAD_PORT}"
 cd "${APP_DIR}"
-exec gosu viewer "${APP_DIR}/venv/bin/uvicorn" app.main:app \
-    --host 0.0.0.0 --port "${PORT}" --workers 1 --no-access-log
+exec gosu viewer "${APP_DIR}/venv/bin/python" -m app.serve

@@ -1,7 +1,7 @@
 ---
 name: "TeslaUSB Viewer"
 description: "Browse and watch Tesla dashcam/Sentry videos archived locally by your car-lights Pi, with stats in Home Assistant"
-version: "0.4.2"
+version: "0.5.0"
 slug: "teslausb_viewer"
 init: false
 
@@ -33,13 +33,14 @@ map:
 hassio_api: true
 homeassistant_api: true
 
-# Expose the ingress port on the LAN too, so an external device (not a browser session) can
-# reach the upload API. The browse/watch UI is unaffected — it still works the same way
-# through ingress.
+# The ingress port (8099, above) has NO entry here — it stays reachable only through
+# Supervisor's ingress proxy. This dedicated port serves ONLY /api/upload/* (enforced by
+# app/main.py's restrict_upload_port middleware), so it's safe to expose on the LAN or even
+# externally via your own reverse proxy — nothing else is reachable through it.
 ports:
-  "8099/tcp": 8099
+  "8100/tcp": 8100
 ports_description:
-  "8099/tcp": "TeslaCam viewer UI (ingress) + upload API (LAN, token-authenticated)"
+  "8100/tcp": "TeslaCam upload API only (LAN/external, always token-authenticated)"
 
 # Auto-discover an MQTT broker for statistics entities, but still run without one
 services:

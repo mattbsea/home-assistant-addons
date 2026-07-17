@@ -12,16 +12,14 @@ no cloud backend, no rclone. Uploaded files land on this Home Assistant host's o
 `teslacam_path`, e.g. a mounted USB drive) in the same `SavedClips/SentryClips/RecentClips`
 layout Tesla itself uses. This add-on just indexes and serves what's on disk.
 
-> **Ingress + LAN — read this.** The browse/watch UI is reachable through the Home Assistant
-> sidebar panel (ingress), as before. But this add-on also exposes port 8099 directly on the
-> LAN, and Home Assistant's ingress access control only covers ingress-proxied traffic — it
-> does not apply to that direct port. That means the *entire* app is now reachable straight
-> from the LAN, unauthenticated: the browse/watch UI, `GET /api/events`, video streaming,
-> `POST /api/refresh` — all of it, not just the upload API. Only
-> `PUT /api/upload/...` checks a bearer token (see "Archiver setup" below); every read route
-> relies on your LAN itself being trusted, the same assumption most self-hosted home-network
-> dashboards make. This is a deliberate tradeoff, not an oversight — if your LAN includes
-> untrusted devices, treat that as a reason to segment your network, not a bug report.
+> **Two ports, two trust levels — read this.** The browse/watch UI is reachable ONLY through
+> the Home Assistant sidebar panel (ingress, port 8099) — that port has no LAN or external
+> exposure at all, restoring the original ingress-only access model. A second, dedicated port
+> (**8100**) serves *only* the upload endpoint (`PUT /api/upload/...`) — nothing else is
+> reachable through it, enforced by which port the connection arrived on, not by a header a
+> client could fake. Because port 8100 can never serve anything but the already
+> token-authenticated upload route, it's safe to expose it on your LAN, or even externally
+> through your own reverse proxy (e.g. NGINX Proxy Manager) — see "Archiver setup" below.
 
 ## Configuration
 
@@ -40,7 +38,7 @@ lived access token**:
 1. In Home Assistant, open your user profile → **Security** → **Long-lived access tokens** →
    **Create token**. Copy it immediately (shown once).
 2. Configure the Pi archiver with that token and this add-on's LAN address, e.g.
-   `http://<home-assistant-host>:8099/api/upload/`.
+   `http://<home-assistant-host>:8100/api/upload/`.
 3. The archiver `PUT`s each clip file to
    `.../api/upload/<SavedClips|SentryClips|RecentClips>/<event_dir>/<filename>` with
    `Authorization: Bearer <token>` and the raw file bytes as the body.
