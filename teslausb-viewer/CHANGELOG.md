@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0
+
+### 💥 Breaking changes
+- **Dropped rclone/S3 entirely.** The add-on no longer reads from a remote backend
+  (S3/MinIO/Drive/SMB/etc.) — it now reads and serves TeslaCam clips directly from a local
+  bind-mounted directory (`teslacam_path`, default `/media/USBDisk/teslausb`). All rclone/S3
+  config options (`rclone_conf`, `remote_name`, `remote_path`, `s3_*`) are removed.
+- **New upload API.** `PUT /api/upload/{folder}/{event_dir}/{filename}` (bearer-token
+  authenticated with a Home Assistant long-lived access token) lets an external archiver
+  push clips directly onto this host's disk, in the same folder layout the indexer expects.
+  See DOCS.md's "Archiver setup" section.
+- **No longer ingress-only.** The add-on now also exposes its port on the LAN so the upload
+  API is reachable from outside Home Assistant's ingress proxy (the browse/watch UI is
+  unaffected and still works the same way through ingress).
+
 ## 0.3.0
 
 ### ✨ Improvements

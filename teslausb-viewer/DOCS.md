@@ -1,79 +1,49 @@
 # TeslaUSB Viewer
 
-Browse and watch the Tesla dashcam / Sentry videos that
-[TeslaUSB](https://github.com/marcone/teslausb) archives to your cloud backend — directly
-inside Home Assistant, behind ingress, with statistics exported as sensors.
+Browse and watch the Tesla dashcam / Sentry videos your car-lights Pi archives to this Home
+Assistant host — directly inside Home Assistant, behind ingress, with statistics exported as
+sensors.
 
 ## How it works
 
-TeslaUSB archives your TeslaCam footage to a backend (S3/MinIO, Google Drive, Dropbox,
-OneDrive, Backblaze B2, SMB/CIFS, SFTP, WebDAV, …). All of those are
-[rclone](https://rclone.org) remotes, so this add-on reads them through **one** layer:
-rclone. You give it your existing rclone configuration; it indexes the events and streams
-the video into your browser. When you open an event, its clips stream on demand straight
-from the backend through an `rclone serve http` sidecar with a read-through disk cache — the
-first frame plays immediately, and the bytes you watch are cached on the Home Assistant host
-so seeking and the multi-camera re-syncs stay fast.
+The Pi-based archiver (a ROCK Pi 4C+ running the car-lights TeslaUSB gadget) pushes clips
+straight to this add-on over the LAN, one file at a time, via an authenticated upload API —
+no cloud backend, no rclone. Uploaded files land on this Home Assistant host's own disk (at
+`teslacam_path`, e.g. a mounted USB drive) in the same `SavedClips/SentryClips/RecentClips`
+layout Tesla itself uses. This add-on just indexes and serves what's on disk.
 
-> **Ingress-only.** The viewer is reachable only through the Home Assistant sidebar panel.
-> No port is exposed.
+> **Ingress + LAN.** The browse/watch UI is reachable through the Home Assistant sidebar
+> panel (ingress). The upload API is also reachable on the LAN (port 8099), authenticated by
+> a Home Assistant long-lived access token — see "Archiver setup" below.
 
 ## Configuration
 
 | Option | Description |
 | --- | --- |
-| `rclone_conf` | Paste your existing `rclone.conf` (or just the relevant `[remote]` block). This is the recommended way — it covers OAuth backends (Google Drive, Dropbox, OneDrive) with no re-authentication. |
-| `remote_name` | The rclone remote to read (e.g. `minio`). Defaults to the first `[section]` in the config. |
-| `remote_path` | Path **within** the remote where TeslaUSB writes, i.e. the folder that contains `SavedClips/`, `SentryClips/`, `RecentClips/` (e.g. `teslacam`). |
-| `refresh_interval_minutes` | How often to re-scan the backend for new events (5–1440). |
-| `cache_size_mb` | Maximum size of the streaming read-through cache on disk before older bytes are reclaimed (256–51200). |
+| `teslacam_path` | Path **inside the container** where TeslaCam clips live (and where the upload API writes them) — the folder that contains (or will contain) `SavedClips/`, `SentryClips/`, `RecentClips/`. Defaults to `/media/USBDisk/teslausb`; requires `/media` to be reachable on the host (this add-on's `map` includes `media:rw`). |
+| `refresh_interval_minutes` | How often to re-scan `teslacam_path` for new events (5–1440). Also bounds how long an orphaned upload temp file can linger before being swept. |
+| `cache_size_mb` | Maximum size of the on-disk thumbnail cache before older entries are reclaimed (256–51200). |
 | `publish_mqtt` | Publish statistics to Home Assistant via MQTT discovery (needs the Mosquitto broker + MQTT integration). |
-| `s3_endpoint` / `s3_access_key_id` / `s3_secret_access_key` / `s3_bucket` / `s3_region` | Optional guided fields for S3-compatible backends, used **only** when `rclone_conf` is empty. |
 
-### Supplying credentials
+## Archiver setup (authenticating the Pi)
 
-> **Home Assistant has no multi-line / textarea option type** — every string option in the
-> Configuration tab is a single-line input. So pick the method that fits your backend:
+The upload API validates the caller against Home Assistant itself — issue the Pi a **long-
+lived access token**:
 
-**Recommended for S3 / MinIO / B2 — the guided fields (all single-line):**
-
-| Field | Example |
-| --- | --- |
-| `s3_endpoint` | `https://s3.example.org` |
-| `s3_access_key_id` | `YOUR_ACCESS_KEY` |
-| `s3_secret_access_key` | `YOUR_SECRET_KEY` (masked) |
-| `s3_bucket` | `teslausb` (used as the path if `remote_path` is empty) |
-| `remote_name` | `minio` (optional; defaults to `s3`) |
-
-No `rclone.conf` needed — the add-on synthesises one at startup.
-
-**For OAuth backends (Google Drive, Dropbox, OneDrive) or any existing remote — paste your
-`rclone.conf`:** because it's multi-line, use the Configuration tab's **"Edit in YAML"
-toggle** (top-right ⋮ menu) and paste under `rclone_conf: |`. For example:
-
-```yaml
-rclone_conf: |
-  [gdrive]
-  type = drive
-  scope = drive
-  token = {"access_token":"...","refresh_token":"...","expiry":"..."}
-remote_name: gdrive
-remote_path: TeslaCam
-```
-
-**Or drop a file** at `/data/rclone.conf` (e.g. via the Samba/SSH add-on) and leave the
-options empty.
-
-**Precedence:** pasted `rclone_conf` → guided S3 fields → existing `/data/rclone.conf`. The
-effective config is written to `/data/rclone.conf` with `600` permissions on every start.
+1. In Home Assistant, open your user profile → **Security** → **Long-lived access tokens** →
+   **Create token**. Copy it immediately (shown once).
+2. Configure the Pi archiver with that token and this add-on's LAN address, e.g.
+   `http://<home-assistant-host>:8099/api/upload/`.
+3. The archiver `PUT`s each clip file to
+   `.../api/upload/<SavedClips|SentryClips|RecentClips>/<event_dir>/<filename>` with
+   `Authorization: Bearer <token>` and the raw file bytes as the body.
 
 ## Statistics entities
 
 When an MQTT broker is available and `publish_mqtt` is on, a **TeslaUSB Viewer** device is
 created with sensors: total events, Saved/Sentry/Recent counts, total video files, last
-event (timestamp), Sentry events today, last index refresh (timestamp), and backend
-used/free bytes. Backend bytes show as *unavailable* on remotes where rclone can't report
-disk usage (common for plain S3).
+event (timestamp), Sentry events today, last index refresh (timestamp), and disk used/free
+bytes for `teslacam_path`.
 
 ## Codec note (HEVC)
 
@@ -92,7 +62,11 @@ and a guided first-run setup screen are on the roadmap (see `CHANGELOG.md`).
 ## Troubleshooting
 
 - **No events / empty list** — click **↻ Refresh**, and check the add-on log. The log
-  reports whether the backend was reachable at startup.
-- **"Backend not reachable"** — verify `remote_name`/`remote_path` and that the pasted
-  `rclone.conf` works (`rclone lsd remote:path` on any machine).
+  reports whether `teslacam_path` was present at startup.
+- **"teslacam_path not available"** — verify the option points at a path under `/media`
+  (this add-on only has access to `/media`, via its `map: media:rw`), and that the directory
+  exists (the add-on creates it at startup if missing, but a typo'd path under a drive that
+  isn't mounted will not appear).
+- **Uploads return 401** — the long-lived access token is missing, expired, or was revoked;
+  issue a new one (see "Archiver setup") and update the Pi's configuration.
 - **Black video** — almost always the HEVC codec issue above; try Safari.
