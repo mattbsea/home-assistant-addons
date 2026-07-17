@@ -11,9 +11,13 @@
   authenticated with a Home Assistant long-lived access token) lets an external archiver
   push clips directly onto this host's disk, in the same folder layout the indexer expects.
   See DOCS.md's "Archiver setup" section.
-- **No longer ingress-only.** The add-on now also exposes its port on the LAN so the upload
-  API is reachable from outside Home Assistant's ingress proxy (the browse/watch UI is
-  unaffected and still works the same way through ingress).
+- **No longer ingress-only.** The add-on now also exposes port 8099 directly on the LAN. HA
+  ingress access control does not cover this direct port, so the *entire* app — the
+  browse/watch UI and all read routes (`GET /api/events`, video streaming,
+  `POST /api/refresh`, etc.), not just the upload API — is now reachable unauthenticated from
+  anywhere on the LAN, in addition to remaining reachable through ingress. Only
+  `PUT /api/upload/...` is token-gated; everything else relies on the LAN itself being
+  trusted. See DOCS.md's "Ingress + LAN" callout.
 
 ## 0.3.0
 
