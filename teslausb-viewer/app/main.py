@@ -8,7 +8,7 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from . import stats, thumbnailer
@@ -110,6 +110,19 @@ async def ingress_base(request: Request, call_next):
     """Expose a validated HA ingress path prefix so the frontend can build absolute URLs."""
     raw = request.headers.get("X-Ingress-Path", "")
     request.state.ingress_base = raw.rstrip("/") if _INGRESS_PATH_RE.fullmatch(raw) else ""
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def restrict_upload_port(request: Request, call_next):
+    """The upload port must never serve anything but /api/upload/* — enforced by which
+    socket accepted the connection (scope["server"][1], a network fact uvicorn itself sets),
+    not by any client-supplied header. Requests on any other port (e.g. the ingress port)
+    pass through unaffected."""
+    local_port = request.scope.get("server", (None, None))[1]
+    settings = get_settings()
+    if local_port == settings.upload_port and not request.url.path.startswith("/api/upload/"):
+        raise HTTPException(404, "not found")
     return await call_next(request)
 
 
