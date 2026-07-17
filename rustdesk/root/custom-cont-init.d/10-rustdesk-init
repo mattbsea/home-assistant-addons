@@ -1,0 +1,33 @@
+#!/bin/bash
+# Runs once at container start, before custom-services.d and the image's own long-running
+# services. Prepares directories for hbbs/hbbr and persists the desktop client's own state
+# directory (/config) into Home Assistant's /data volume so saved peers/settings survive add-on
+# restarts and updates. Add-on options are read directly by each custom-services.d script instead
+# of being passed through here — s6-overlay v3's env-injection path for `with-contenv` isn't
+# documented precisely enough to depend on for values that matter (a wrong path there would mean
+# relay_host/custom_key silently stop applying), whereas /data/options.json is guaranteed present.
+set -e
+
+echo "**** rustdesk add-on: preparing directories ****"
+
+if ! RELAY_HOST="$(jq -r '.relay_host // ""' /data/options.json 2>/dev/null)" || [ -z "${RELAY_HOST}" ]; then
+    echo "**** relay_host is not set: clients outside your LAN will not reach this server."
+    echo "     Set relay_host and forward ports 21115-21119 (21116 also UDP) to reach it remotely. ****"
+fi
+
+# hbbs/hbbr's identity keypair (id_ed25519 / id_ed25519.pub) lives wherever they're launched
+# from; the custom-services.d scripts cd into this directory before exec'ing.
+mkdir -p /data/rustdesk
+
+# Persist the RustDesk desktop client's own state (/config — saved peers, passwords, prefs) into
+# /data, the same symlink-into-/data pattern used by this repo's other add-ons for persistence.
+if [ ! -L /config ]; then
+    mkdir -p /data/config
+    if [ -d /config ] && [ -z "$(ls -A /data/config 2>/dev/null)" ]; then
+        cp -a /config/. /data/config/ 2>/dev/null || true
+    fi
+    rm -rf /config
+    ln -s /data/config /config
+    echo "**** /config -> /data/config (persistent) ****"
+fi
+chown -R abc:abc /data/config 2>/dev/null || true
