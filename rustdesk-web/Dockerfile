@@ -55,5 +55,18 @@ RUN set -eu; \
         sed -i 's|baseURL:"/api/admin"|baseURL:(location.pathname.split("/_admin/")[0]+"/api/admin")|' "${f}"; \
     done
 
+# The admin SPA's "open web client" button and share-link generator both hardcode the path
+# "/webclient2/" (rustdesk-api-web's src/utils/webclient.js) -- but this image only ships
+# /app/resources/web/ ("/webclient/"), not a web2/ directory at all (confirmed by listing
+# /app/resources/ in the running container). Every link the admin UI generates to view a peer
+# 404s. Repoint them at the client that actually exists in this image. Fails the build loudly
+# rather than silently no-op if upstream ever adds a real web2/ build and this string changes.
+RUN set -eu; \
+    MATCHES="$(grep -rl 'webclient2' /app/resources/admin/)"; \
+    test -n "${MATCHES}"; \
+    for f in ${MATCHES}; do \
+        sed -i 's|webclient2|webclient|g' "${f}"; \
+    done
+
 WORKDIR /app
 CMD [ "/run.sh" ]

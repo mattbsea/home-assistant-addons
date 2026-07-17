@@ -36,3 +36,15 @@
   Location headers on the way back out. Now builds the correct absolute URL explicitly from
   `X-Forwarded-Proto`/`X-Forwarded-Host` (which your reverse proxy needs to send — see "Reaching
   this add-on directly" in DOCS.md) before nginx gets a chance to guess wrong. (`nginx.conf`)
+- **The actual remote-control web client (`/webclient/`) hung on its own static loading
+  spinner forever, separately from the admin panel's spinner above.** This is a different bundle
+  entirely (Flutter-compiled, not the Vue admin SPA) with the same reverse-proxy-prefix
+  blindness: its `index.html` hardcodes `<base href="/webclient/">` and an absolute
+  `<script src="/webclient-config/index.js">`. The base tag governs every other relative asset
+  on the page (`main.dart.js`, the flutter service worker, etc.), so under a path-prefixing proxy
+  none of them load at all. Replaced with a corrected `index.html` that computes the base from
+  the current page's path at runtime. (`Dockerfile`, `webclient-index.html`)
+- **The admin panel's "open web client" button and share-link generator both 404'd.** They
+  hardcode `/webclient2/`, which doesn't exist in this image (only `/webclient/` does — this
+  image ships `resources/web/`, not `resources/web2/`). Repointed both at `/webclient/` at build
+  time. (`Dockerfile`)
