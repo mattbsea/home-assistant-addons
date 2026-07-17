@@ -1,11 +1,10 @@
 #!/usr/bin/with-contenv bashio
 # NB: deliberately no `set -e`/`set -o pipefail`. bashio helpers run internal pipelines
 # whose benign non-zero stages would abort the whole startup under those options. Each
-# step below handles its own errors; the app degrades gracefully if the backend is absent.
+# step below handles its own errors; the app degrades gracefully if teslacam_path is absent.
 
 APP_DIR="/opt/teslausb-viewer"
 DATA_DIR="/data"
-RCLONE_CONF="${DATA_DIR}/rclone.conf"
 CACHE_DIR="${DATA_DIR}/cache"
 PORT=8099
 
@@ -14,65 +13,23 @@ bashio::log.info "Starting TeslaUSB Viewer add-on..."
 # --- Initialise persistent storage -----------------------------------------
 mkdir -p "${CACHE_DIR}"
 
-# --- Resolve the rclone configuration ---------------------------------------
-# Precedence: pasted option -> existing /data/rclone.conf -> guided S3 fields.
-#
-# NOTE: read the multiline `rclone_conf` straight from options.json with python, NOT
-# `bashio::config`. bashio's reader mangles/aborts on multiline string values, which sent
-# the add-on into a startup crash loop the moment a config was pasted.
-OPTIONS_JSON="/data/options.json"
-RCLONE_CONF_VALUE="$(python3 -c "import json; print(json.load(open('${OPTIONS_JSON}')).get('rclone_conf') or '', end='')" 2>/dev/null)"
-
-# Guided S3 fields are checked before an existing file so that filling them in always
-# takes effect (otherwise a previously auto-written rclone.conf would shadow them). A
-# pasted rclone_conf still wins over everything; a hand-dropped file is the last resort.
-if [ -n "${RCLONE_CONF_VALUE}" ]; then
-    bashio::log.info "Writing rclone.conf from pasted configuration"
-    printf '%s' "${RCLONE_CONF_VALUE}" > "${RCLONE_CONF}"
-elif bashio::config.has_value 's3_access_key_id'; then
-    bashio::log.info "Synthesising rclone.conf from guided S3 fields"
-    REMOTE="$(bashio::config 'remote_name')"
-    if [ -z "${REMOTE}" ] || [ "${REMOTE}" = "null" ]; then
-        REMOTE="s3"
-    fi
-    {
-        echo "[${REMOTE}]"
-        echo "type = s3"
-        echo "provider = Other"
-        echo "access_key_id = $(bashio::config 's3_access_key_id')"
-        echo "secret_access_key = $(bashio::config 's3_secret_access_key')"
-        if bashio::config.has_value 's3_endpoint'; then echo "endpoint = $(bashio::config 's3_endpoint')"; fi
-        if bashio::config.has_value 's3_region'; then echo "region = $(bashio::config 's3_region')"; fi
-    } > "${RCLONE_CONF}"
-elif [ -f "${RCLONE_CONF}" ]; then
-    bashio::log.info "Using existing rclone.conf at ${RCLONE_CONF}"
-else
-    bashio::log.warning "No backend configured yet — fill the guided S3 fields, paste an"
-    bashio::log.warning "rclone.conf (use the config tab's YAML mode for multi-line), or drop"
-    bashio::log.warning "a file at ${RCLONE_CONF}. The UI will still load."
+# --- Resolve and prepare the local TeslaCam directory -----------------------
+TESLACAM_PATH="$(bashio::config 'teslacam_path')"
+if [ -z "${TESLACAM_PATH}" ] || [ "${TESLACAM_PATH}" = "null" ]; then
+    TESLACAM_PATH="/media/USBDisk/teslausb"
 fi
+mkdir -p "${TESLACAM_PATH}" || bashio::log.warning "Could not create ${TESLACAM_PATH}"
 
-# Lock down credentials and hand /data to the unprivileged user.
-if [ -f "${RCLONE_CONF}" ]; then
-    chmod 600 "${RCLONE_CONF}"
-    bashio::log.info "rclone.conf ready ($(wc -l < "${RCLONE_CONF}") lines)"
-fi
+# This add-on is the sole owner/writer of teslacam_path (the Pi archiver writes over the
+# network via the upload API, not directly to the filesystem), so a recursive chown at
+# startup is safe — same pattern as /data below.
 chown -R viewer:viewer "${DATA_DIR}" || bashio::log.warning "Could not chown ${DATA_DIR}"
+chown -R viewer:viewer "${TESLACAM_PATH}" || bashio::log.warning "Could not chown ${TESLACAM_PATH}"
 
 # --- Application configuration via environment ------------------------------
 export TUV_DATA_DIR="${DATA_DIR}"
-export TUV_RCLONE_CONF="${RCLONE_CONF}"
+export TUV_TESLACAM_PATH="${TESLACAM_PATH}"
 export TUV_CACHE_DIR="${CACHE_DIR}"
-export TUV_REMOTE_NAME="$(bashio::config 'remote_name')"
-# remote_path points at the folder holding SavedClips/. For the guided S3 path, fall back
-# to the bucket name when remote_path isn't set explicitly.
-REMOTE_PATH_VAL="$(bashio::config 'remote_path')"
-if [ -z "${REMOTE_PATH_VAL}" ] || [ "${REMOTE_PATH_VAL}" = "null" ]; then
-    if bashio::config.has_value 's3_bucket'; then
-        REMOTE_PATH_VAL="$(bashio::config 's3_bucket')"
-    fi
-fi
-export TUV_REMOTE_PATH="${REMOTE_PATH_VAL}"
 export TUV_REFRESH_MINUTES="$(bashio::config 'refresh_interval_minutes')"
 export TUV_CACHE_SIZE_MB="$(bashio::config 'cache_size_mb')"
 export TUV_PORT="${PORT}"
@@ -83,13 +40,10 @@ if [ -n "${TZ_VALUE}" ] && [ "${TZ_VALUE}" != "null" ]; then
     export TZ="${TZ_VALUE}"
 fi
 
-# --- Probe backend reachability (non-fatal) ---------------------------------
-if [ -f "${RCLONE_CONF}" ]; then
-    if /opt/scripts/rclone-check.sh "${RCLONE_CONF}" "${TUV_REMOTE_NAME}" "${TUV_REMOTE_PATH}"; then
-        bashio::log.info "Backend reachable: ${TUV_REMOTE_NAME}:${TUV_REMOTE_PATH}"
-    else
-        bashio::log.warning "Backend not reachable yet — check credentials/remote_path; the UI will still load"
-    fi
+if [ -d "${TESLACAM_PATH}" ]; then
+    bashio::log.info "TeslaCam directory ready: ${TESLACAM_PATH}"
+else
+    bashio::log.warning "teslacam_path (${TESLACAM_PATH}) is not a directory — the UI will still load"
 fi
 
 # --- MQTT (optional) --------------------------------------------------------
@@ -106,7 +60,7 @@ else
 fi
 
 # --- Launch the web app as the unprivileged user ----------------------------
-bashio::log.info "Launching web app on port ${PORT} (ingress)"
+bashio::log.info "Launching web app on port ${PORT} (ingress + LAN upload API)"
 cd "${APP_DIR}"
 exec gosu viewer "${APP_DIR}/venv/bin/uvicorn" app.main:app \
     --host 0.0.0.0 --port "${PORT}" --workers 1 --no-access-log

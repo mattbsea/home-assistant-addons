@@ -1,7 +1,7 @@
 ---
 name: "TeslaUSB Viewer"
-description: "Browse and watch TeslaUSB dashcam/Sentry videos from your cloud backend, with stats in Home Assistant"
-version: "0.3.0"
+description: "Browse and watch Tesla dashcam/Sentry videos archived locally by your car-lights Pi, with stats in Home Assistant"
+version: "0.4.0"
 slug: "teslausb_viewer"
 init: false
 
@@ -12,7 +12,7 @@ arch:
 # External resources
 url: "https://github.com/marcone/teslausb"
 
-# Web interface configuration (ingress only — no required exposed port)
+# Web interface configuration — ingress for the UI, plus a LAN port for the upload API
 ingress: true
 ingress_port: 8099
 ingress_stream: true   # stream responses through the proxy (video Range/seek passthrough)
@@ -22,13 +22,24 @@ panel_title: "TeslaUSB Viewer"
 # Service startup configuration
 startup: services
 
-# Volume mappings — rclone.conf, index.db, and the per-event video cache live under /data
+# Volume mappings — index.db/thumbnail cache live under /data; teslacam_path lives under
+# the host's /media (e.g. /media/USBDisk/teslausb).
 map:
   - data:rw
+  - media:rw
 
-# Supervisor API access (used for bashio::info.timezone). Entities go out over MQTT,
-# so the Home Assistant core API is not needed.
+# Supervisor API access (bashio::info.timezone) + Home Assistant Core API access (needed to
+# validate a caller's long-lived access token for the upload endpoint).
 hassio_api: true
+homeassistant_api: true
+
+# Expose the ingress port on the LAN too, so an external device (not a browser session) can
+# reach the upload API. The browse/watch UI is unaffected — it still works the same way
+# through ingress.
+ports:
+  "8099/tcp": 8099
+ports_description:
+  "8099/tcp": "TeslaCam viewer UI (ingress) + upload API (LAN, token-authenticated)"
 
 # Auto-discover an MQTT broker for statistics entities, but still run without one
 services:
@@ -36,26 +47,12 @@ services:
 
 # Add-on configuration options
 options:
-  rclone_conf: ""
-  remote_name: ""
-  remote_path: ""
+  teslacam_path: "/media/USBDisk/teslausb"
   refresh_interval_minutes: 30
   cache_size_mb: 2048
   publish_mqtt: true
-  s3_endpoint: ""
-  s3_access_key_id: ""
-  s3_secret_access_key: ""
-  s3_bucket: ""
-  s3_region: ""
 schema:
-  rclone_conf: str?
-  remote_name: str?
-  remote_path: str?
+  teslacam_path: str
   refresh_interval_minutes: int(5,1440)
   cache_size_mb: int(256,51200)
   publish_mqtt: bool?
-  s3_endpoint: str?
-  s3_access_key_id: str?
-  s3_secret_access_key: password?
-  s3_bucket: str?
-  s3_region: str?
