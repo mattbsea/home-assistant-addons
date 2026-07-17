@@ -1,8 +1,14 @@
-"""Unit checks for the upload-port restriction middleware.
+"""Checks for the upload-port restriction middleware.
 
-Calls the middleware function directly against hand-built Starlette Requests with different
-scope["server"] ports, rather than spinning up real uvicorn sockets (out of scope/flaky for
-this suite — see the design spec's Testing section).
+Includes both:
+  - Direct calls to the middleware function against hand-built Starlette Requests with
+    different scope["server"] ports (fast, but cannot detect whether an exception raised
+    inside the middleware actually gets converted to a clean HTTP response by the ASGI
+    stack — BaseHTTPMiddleware sits outside Starlette's ExceptionMiddleware, so a raised
+    HTTPException does NOT become a 404; it propagates to ServerErrorMiddleware as a 500).
+  - Genuine end-to-end checks using FastAPI's TestClient, which drives a real request
+    through the full ASGI stack (all middleware, real response building) so a
+    500-vs-404 bug like that would actually be caught.
 """
 import asyncio
 import os
@@ -74,6 +80,34 @@ def run():
               str(resp.status_code))
 
     asyncio.run(_run_checks())
+
+    # --- Genuine end-to-end checks: real HTTP requests through the full ASGI stack. ---
+    # BaseHTTPMiddleware sits outside Starlette's ExceptionMiddleware, so raising
+    # HTTPException from inside restrict_upload_port does NOT get converted to a clean
+    # 404 by the stack — it propagates to ServerErrorMiddleware as a 500. Only a real
+    # request through TestClient (not a direct call to the middleware function) can
+    # detect that. TestClient's base_url sets scope["server"] to match the host:port.
+    from starlette.testclient import TestClient
+
+    # raise_server_exceptions=False: mirrors what a real client over the network sees
+    # (a response, be it 200/404/500), instead of TestClient re-raising the exception
+    # in-process — which would hide the exact bug this check exists to catch.
+    upload_client = TestClient(app, base_url=f"http://testserver:{settings.upload_port}",
+                                raise_server_exceptions=False)
+    ingress_client = TestClient(app, base_url=f"http://testserver:{settings.port}",
+                                 raise_server_exceptions=False)
+
+    resp = upload_client.get("/api/events")
+    check("[e2e] non-upload path on upload port -> real HTTP 404",
+          resp.status_code == 404, str(resp.status_code))
+
+    resp = upload_client.get("/api/upload/SavedClips/x/y.mp4")
+    check("[e2e] upload path on upload port -> not 404 (passes through)",
+          resp.status_code != 404, str(resp.status_code))
+
+    resp = ingress_client.get("/api/events")
+    check("[e2e] non-upload path on ingress port -> not 404 (passes through)",
+          resp.status_code != 404, str(resp.status_code))
 
     print()
     print("RESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILURE(S): {failures}")

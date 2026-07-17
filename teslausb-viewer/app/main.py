@@ -8,7 +8,8 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from . import stats, thumbnailer
@@ -122,7 +123,7 @@ async def restrict_upload_port(request: Request, call_next):
     local_port = request.scope.get("server", (None, None))[1]
     settings = get_settings()
     if local_port == settings.upload_port and not request.url.path.startswith("/api/upload/"):
-        raise HTTPException(404, "not found")
+        return Response(status_code=404, content="not found")
     return await call_next(request)
 
 
