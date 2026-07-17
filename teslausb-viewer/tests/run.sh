@@ -40,7 +40,7 @@ head -c 2048 /dev/urandom > "$REC/2024-01-15_10-31-00-back.mp4"
 # test_config/test_indexer/test_video_thumb/test_auth/test_upload each build their own
 # isolated temp fixture internally; test_api.py uses this shared sample tree, mirroring how
 # run.sh configures the real container.
-for t in test_config test_indexer test_video_thumb test_auth test_upload test_api; do
+for t in test_config test_indexer test_video_thumb test_auth test_upload test_serve test_port_restriction test_api; do
   echo "=== ${t} ==="
   PATH="$BIN:$PATH" PYTHONPATH="$ADDON_DIR" \
     TUV_TESLACAM_PATH="$TESLACAM" TUV_DATA_DIR="$DATA" TUV_CACHE_DIR="$DATA/cache" \

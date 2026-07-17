@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0
+
+### 💥 Breaking changes / 🔒 Security
+- **Split the ingress and upload ports.** 0.4.0 exposed the single shared port (8099) on the
+  LAN so the upload endpoint could be reached — but that meant the *entire app*, including the
+  browse/watch UI and all unauthenticated read routes, was also LAN-reachable. Port 8099 is
+  now ingress-only again (no LAN/external exposure at all). A new dedicated port, **8100**,
+  serves *only* `PUT /api/upload/...` — enforced by which port a connection arrives on, not by
+  a forgeable header — and is the only thing safe to expose on your LAN or externally. If you
+  were relying on reaching read routes via the old LAN-exposed 8099, that access is now gone;
+  use ingress (the HA sidebar) instead. See DOCS.md's "Two ports, two trust levels" callout.
+
 ## 0.4.2
 
 ### 🐛 Fixes
