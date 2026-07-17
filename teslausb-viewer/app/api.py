@@ -13,9 +13,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 from . import __version__, stats
 from .cache import order_cameras
+from .delete import delete_events
 from .models import FOLDERS
 from .rangeserve import serve_file_range
 
@@ -138,6 +140,19 @@ async def video(event_id: str, camera: str, minute_ts: str, request: Request) ->
     if not local_path.is_relative_to(root):
         raise HTTPException(404, "no such clip")
     return serve_file_range(local_path, request.headers.get("range"))
+
+
+class DeleteEventsRequest(BaseModel):
+    event_ids: list[str]
+
+
+@router.post("/api/events/delete")
+async def delete_events_endpoint(body: DeleteEventsRequest, request: Request) -> JSONResponse:
+    """Permanently remove the given events' video files from disk and drop them from the
+    index. Partial-success: a bad id in the batch is reported in `failed`, not raised."""
+    st = _state(request)
+    result = await asyncio.to_thread(delete_events, st.settings, st.db, st.cache, body.event_ids)
+    return JSONResponse(result)
 
 
 @router.post("/api/refresh")

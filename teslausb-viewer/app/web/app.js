@@ -33,10 +33,15 @@
 
   function route() {
     const hash = location.hash || "#/";
+    const selectBtn = document.getElementById("select-btn");
     if (hash.startsWith("#/event/")) {
+      // Multi-select only makes sense in the grid, not the single-event player.
+      selectBtn.style.display = "none";
+      window.TUV.browser.exitSelectMode();
       const id = decodeURIComponent(hash.slice("#/event/".length));
       window.TUV.player.open(id);
     } else {
+      selectBtn.style.display = "";
       window.TUV.browser.show(state);
     }
   }
@@ -57,6 +62,10 @@
     document.getElementById("date-filter").addEventListener("change", (e) => {
       state.date = e.target.value;
       window.TUV.browser.show(state);
+    });
+
+    document.getElementById("select-btn").addEventListener("click", () => {
+      window.TUV.browser.toggleSelectMode();
     });
 
     document.getElementById("refresh-btn").addEventListener("click", async () => {

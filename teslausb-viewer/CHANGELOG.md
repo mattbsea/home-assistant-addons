@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.2
+
+### ✨ Features
+- **Multi-select delete.** A new "☑ Select" button in the event grid toggles selection mode:
+  tap cards to check them, "Select all" checks everything currently loaded, and "Delete
+  selected" permanently removes the chosen events — video files and all — from disk after a
+  confirmation prompt. Works across any folder tab, including "All". Deletion is
+  partial-success (one bad id in a batch doesn't block the rest) and reports failures in the
+  status bar so you can retry just those.
+
 ## 0.5.1
 
 ### 🐛 Fixes

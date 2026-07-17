@@ -1,7 +1,7 @@
 ---
 name: "TeslaUSB Viewer"
 description: "Browse and watch Tesla dashcam/Sentry videos archived locally by your car-lights Pi, with stats in Home Assistant"
-version: "0.5.1"
+version: "0.5.2"
 slug: "teslausb_viewer"
 init: false
 

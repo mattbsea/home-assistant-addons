@@ -143,6 +143,12 @@ class Database:
                 )
                 self._conn.commit()
 
+    def delete_event(self, event_id: str) -> None:
+        """Drop an event's row (its `files` rows cascade via ON DELETE CASCADE)."""
+        with self._lock:
+            self._conn.execute("DELETE FROM events WHERE event_id=?", (event_id,))
+            self._conn.commit()
+
     def set_meta(self, key: str, value: str) -> None:
         with self._lock:
             self._conn.execute(

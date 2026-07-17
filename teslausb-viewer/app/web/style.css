@@ -56,6 +56,23 @@ body {
   background: var(--surface-2); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px;
 }
+.actions button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* --- multi-select bar --- */
+.select-bar {
+  display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 0 16px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.select-bar.show { display: flex; padding: 10px 16px; }
+.select-count { color: var(--muted); font-size: .88rem; margin-right: 4px; }
+.select-bar button {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: var(--radius); cursor: pointer; font-size: .85rem;
+}
+.select-bar #delete-selected-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
+.select-bar #delete-selected-btn:disabled {
+  background: var(--surface-2); border-color: var(--border); color: var(--muted); cursor: not-allowed;
+}
 
 /* --- event grid --- */
 main {
@@ -81,8 +98,17 @@ main::-webkit-scrollbar { display: none; } /* …and WebKit/Blink */
   transition: transform .08s ease, border-color .08s ease;
 }
 .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .card-thumb { position: relative; aspect-ratio: 4 / 3; background: #000; }
 .card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-select {
+  display: none; position: absolute; top: 6px; left: 6px;
+  width: 22px; height: 22px; border-radius: 6px;
+  background: rgba(0,0,0,.7); align-items: center; justify-content: center;
+}
+.grid.selecting .card-select { display: flex; }
+.grid.selecting .card:hover { transform: none; }
+.card-select input { width: 16px; height: 16px; accent-color: var(--accent); pointer-events: none; }
 .thumb-placeholder {
   width: 100%; height: 100%; display: flex; align-items: center;
   justify-content: center; font-size: 2.5rem; color: var(--muted);
