@@ -1,34 +1,33 @@
 ---
 name: "RustDesk Server"
-description: "Self-hosted RustDesk remote-desktop server (hbbs/hbbr) with a status & connection dashboard over ingress"
+description: "Self-hosted RustDesk server (hbbs/hbbr) plus a browser-accessible RustDesk client, served over ingress"
 version: "1.0.0"
 slug: "rustdesk"
 init: false
 
-# rustdesk-server publishes .deb packages for these three architectures.
+# linuxserver/rustdesk (the browser-streamed client) publishes amd64/arm64 only — no armv7.
 arch:
   - aarch64
   - amd64
-  - armv7
 
-url: "https://github.com/rustdesk/rustdesk-server"
+url: "https://github.com/linuxserver/docker-rustdesk"
 
-startup: application
+startup: services
 boot: auto
 
-# Web interface configuration.
-# NOTE: this is a status/connection dashboard, NOT an in-browser remote-desktop viewer.
-# HA ingress only proxies a single HTTP(S)+WebSocket port, and RustDesk's actual remote-desktop
-# protocol needs raw TCP/UDP on the ports below — those cannot be tunneled through ingress.
-# See DOCS.md for what the dashboard does and does not do.
+# Ingress serves the RustDesk desktop client itself (streamed via Selkies), not a status page.
+# Port 3000 is the image's plain-HTTP Selkies port; HA's own HTTPS front door satisfies the
+# browser's Secure Context requirement for clipboard/WebCodecs, so the container doesn't need to
+# terminate TLS itself. The container's built-in HTTP Basic Auth is intentionally left disabled
+# (no PASSWORD set) since ingress already gates access to logged-in HA users — which is exactly
+# why port 3000 must stay ingress-only and NEVER be added to `ports:` below.
 ingress: true
-ingress_port: 8092
+ingress_port: 3000
 panel_icon: mdi:monitor-share
 panel_title: "RustDesk"
 
-# hbbs/hbbr listen ports. These are FIXED internal ports; remap the host side from the add-on's
-# Network tab if needed. They must be reachable from the internet (via router port-forward) for
-# devices outside your LAN to connect — ingress has no bearing on this.
+# hbbs/hbbr listen ports — the actual RustDesk wire protocol, unrelated to ingress. These must be
+# reachable from the internet (via router port-forward) for devices outside your LAN to connect.
 ports:
   21115/tcp: 21115
   21116/tcp: 21116
@@ -53,14 +52,9 @@ schema:
   encrypted_only: "bool"
   custom_key: "password?"
 
-# Persistent storage for the server's identity keypair (id_ed25519 / id_ed25519.pub), logs, and
-# dashboard state. Losing this directory changes the server's identity and breaks every client
-# that already trusts the old public key.
+# /data/rustdesk: hbbs/hbbr's identity keypair. /data/config: the desktop client's own state
+# (saved peers, passwords, prefs), symlinked from /config by custom-cont-init.d. Losing this
+# directory changes the server's identity and breaks every client that already trusts the old
+# public key.
 map:
   - data:rw
-
-# Used to read the add-on's LAN IP for the dashboard's connection-info panel when relay_host
-# is left blank.
-homeassistant_api: true
-
-webui: "http://[HOST]:[PORT:8092]/"

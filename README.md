@@ -60,18 +60,18 @@ Features:
 
 ### RustDesk Server
 
-Self-hosted [RustDesk](https://rustdesk.com) remote-desktop server — runs the official `hbbs`
-(ID/rendezvous) and `hbbr` (relay) binaries with a status/connection dashboard over ingress.
+Self-hosted [RustDesk](https://rustdesk.com) in one add-on: the server (`hbbs`/`hbbr`) and a
+browser-accessible RustDesk client (via `linuxserver/docker-rustdesk`, streamed with Selkies),
+both reachable from the Home Assistant sidebar over ingress.
 
 Features:
-- Runs the official `rustdesk-server` binaries, auto-restarted if either process crashes
-- Persistent server identity keypair across restarts and updates
-- Ingress dashboard: live health, public key, ID/relay addresses, ports to forward, and logs
-- Optional pre-shared key or encrypted-only enforcement
+- Opens the actual RustDesk desktop client, streamed to your browser — no native install needed
+- Runs the official `rustdesk-server` `hbbs`/`hbbr` binaries alongside it, auto-restarted on crash
+- Persistent server identity keypair and client settings across restarts and updates
+- Optional pre-shared key or encrypted-only enforcement for the server
 
-Note: the ingress panel is a status/connection dashboard, not an in-browser remote-desktop viewer
-— see [Documentation](rustdesk/DOCS.md) for why, and what you still need to forward for remote
-access.
+Note: amd64/arm64 only (no armv7) — see [Documentation](rustdesk/DOCS.md) for known limitations
+(shared-memory size, ingress WebSocket load) and what to forward for remote server access.
 
 [Documentation](rustdesk/DOCS.md)
 
