@@ -11,9 +11,12 @@ FROM ${BUILD_FROM}
 # specific to Home Assistant's own base images; this one is lejianwen's plain Alpine image), so
 # config has to be read manually, same as this repo's old rustdesk add-on did before bashio was
 # an option there either.
-RUN apk add --no-cache jq
+# nginx: fronts apimain on the real ingress-facing port and rewrites its one hardcoded,
+# prefix-unaware redirect (see nginx.conf) -- apimain itself has no reverse-proxy-prefix support.
+RUN apk add --no-cache jq nginx
 
 COPY run.sh /run.sh
+COPY nginx.conf /nginx.conf
 RUN chmod a+x /run.sh
 
 WORKDIR /app

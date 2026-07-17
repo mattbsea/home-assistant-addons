@@ -14,6 +14,10 @@ export RUSTDESK_API_LANG="en"
 export RUSTDESK_API_RUSTDESK_ID_SERVER="a44b0313-rustdesk-server:21116"
 export RUSTDESK_API_RUSTDESK_RELAY_SERVER="a44b0313-rustdesk-server:21117"
 export RUSTDESK_API_RUSTDESK_API_SERVER="http://a44b0313-rustdesk-web:21114"
+# apimain binds an internal-only port; nginx (started below) fronts the real ingress-facing port
+# 21114 and rewrites apimain's one hardcoded, prefix-unaware redirect (see nginx.conf). Never
+# expose 8099 externally -- it's not declared in config.yaml's ports and must stay that way.
+export RUSTDESK_API_GIN_API_ADDR="127.0.0.1:8099"
 if [ -n "${WS_HOST}" ]; then
     export RUSTDESK_API_RUSTDESK_WS_HOST="${WS_HOST}"
 fi
@@ -37,4 +41,13 @@ if [ ! -L "${DB_FILE}" ]; then
 fi
 
 cd /app
-exec ./apimain
+./apimain &
+
+# nginx is the foreground process (PID 1) so it receives SIGTERM directly on add-on stop/restart;
+# apimain is backgrounded behind it. If apimain dies, nginx keeps running and proxies to a dead
+# upstream (502s) rather than the container silently looking "up" with nothing behind it -- an
+# acceptable tradeoff here since Supervisor's own watchdog/restart handles a fully wedged add-on,
+# and this mirrors the plain single-process-supervision level of rigor already used elsewhere in
+# this add-on set (e.g. rustdesk-server's hbbs/hbbr, which restart independently but nothing
+# restarts run.sh itself if it exits non-zero outside of Supervisor's own container restart).
+exec nginx -c /nginx.conf
