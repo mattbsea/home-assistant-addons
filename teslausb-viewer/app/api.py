@@ -43,7 +43,7 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse({
         "ok": True,
         "backend_configured": st.settings.has_backend(),
-        "remote": st.settings.remote_base() if st.settings.has_backend() else None,
+        "teslacam_path": str(st.settings.teslacam_path) if st.settings.has_backend() else None,
         "last_refresh": last,
         "mqtt_connected": st.mqtt.connected,
     })
