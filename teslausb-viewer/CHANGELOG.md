@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1
+
+### 🐛 Fixes
+- **Upload port moved 8100 → 8101.** On this deploy, port 8100 was already bound by another
+  process on the host, so the add-on's container failed to start at all (Docker port
+  conflict) — meaning port 8099 appeared to "correctly" refuse connections for the wrong
+  reason (the add-on wasn't running), not because the ingress-only restriction was working.
+  No functional change from 0.5.0 otherwise; just a different port number to sidestep the
+  collision on this particular host. If you already configured your archiver or reverse
+  proxy against `:8100`, update it to `:8101`.
+
 ## 0.5.0
 
 ### 💥 Breaking changes / 🔒 Security

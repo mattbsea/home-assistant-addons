@@ -15,9 +15,9 @@ layout Tesla itself uses. This add-on just indexes and serves what's on disk.
 > **Two ports, two trust levels — read this.** The browse/watch UI is reachable ONLY through
 > the Home Assistant sidebar panel (ingress, port 8099) — that port has no LAN or external
 > exposure at all, restoring the original ingress-only access model. A second, dedicated port
-> (**8100**) serves *only* the upload endpoint (`PUT /api/upload/...`) — nothing else is
+> (**8101**) serves *only* the upload endpoint (`PUT /api/upload/...`) — nothing else is
 > reachable through it, enforced by which port the connection arrived on, not by a header a
-> client could fake. Because port 8100 can never serve anything but the already
+> client could fake. Because port 8101 can never serve anything but the already
 > token-authenticated upload route, it's safe to expose it on your LAN, or even externally
 > through your own reverse proxy (e.g. NGINX Proxy Manager) — see "Archiver setup" below.
 
@@ -38,7 +38,7 @@ lived access token**:
 1. In Home Assistant, open your user profile → **Security** → **Long-lived access tokens** →
    **Create token**. Copy it immediately (shown once).
 2. Configure the Pi archiver with that token and this add-on's LAN address, e.g.
-   `http://<home-assistant-host>:8100/api/upload/`.
+   `http://<home-assistant-host>:8101/api/upload/`.
 3. The archiver `PUT`s each clip file to
    `.../api/upload/<SavedClips|SentryClips|RecentClips>/<event_dir>/<filename>` with
    `Authorization: Bearer <token>` and the raw file bytes as the body.

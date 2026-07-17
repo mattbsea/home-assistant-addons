@@ -25,7 +25,7 @@ def run():
 
     get_settings.cache_clear()
     s = get_settings()
-    assert s.upload_port == 8100, s.upload_port
+    assert s.upload_port == 8101, s.upload_port
 
     os.environ["TUV_UPLOAD_PORT"] = "9100"
     get_settings.cache_clear()

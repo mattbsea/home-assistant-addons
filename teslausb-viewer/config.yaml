@@ -1,7 +1,7 @@
 ---
 name: "TeslaUSB Viewer"
 description: "Browse and watch Tesla dashcam/Sentry videos archived locally by your car-lights Pi, with stats in Home Assistant"
-version: "0.5.0"
+version: "0.5.1"
 slug: "teslausb_viewer"
 init: false
 
@@ -38,9 +38,9 @@ homeassistant_api: true
 # app/main.py's restrict_upload_port middleware), so it's safe to expose on the LAN or even
 # externally via your own reverse proxy — nothing else is reachable through it.
 ports:
-  "8100/tcp": 8100
+  "8101/tcp": 8101
 ports_description:
-  "8100/tcp": "TeslaCam upload API only (LAN/external, always token-authenticated)"
+  "8101/tcp": "TeslaCam upload API only (LAN/external, always token-authenticated)"
 
 # Auto-discover an MQTT broker for statistics entities, but still run without one
 services:
