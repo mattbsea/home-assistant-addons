@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.17
+
+### 🐛 Fixed
+- **Auto-continue could park an already-working session on a bogus 24-hour timer.**
+  Root-caused via the 2.0.16 diagnostics: `parseResetTime` scans the whole rolling 4000-char
+  output buffer for the *last* `"resets HH:MM"` text and recomputes "next occurrence" every time
+  it's asked — so if the CLI ever re-painted the exact same limit banner after the session had
+  already resumed from it (confirmed happening live), the still-there "resets 11:10am" text got
+  reinterpreted hours later, and since 11:10am had by then already passed, the day-rollover logic
+  correctly-per-its-own-rules but wrongly-in-fact scheduled the next "continue" for **tomorrow**
+  instead of recognizing the banner as stale. `AutoContinueWatcher` now remembers the literal
+  `"resets ..."` text behind the schedule it just fired, and ignores a verbatim repeat of that
+  same text for 12 hours rather than treating it as a new limit event. (`auto-continue.js`)
+- **Reset-time math could land an hour off across a DST transition.** The previous
+  implementation computed the wait as "N wall-clock minutes from now," which silently drifts by
+  an hour whenever the wait spans a daylight-saving transition (guaranteed to eventually happen
+  for any autonomous wait, and directly relevant to the bug above once a stale banner rolls the
+  target into "tomorrow"). Reset-time resolution now re-derives the target zone's actual UTC
+  offset at the target instant itself (not "now"'s offset), which is correct on both sides of a
+  spring-forward or fall-back transition — covered by new tests using the real 2026
+  America/Los_Angeles transition dates. (`auto-continue.js`)
+
 ## 2.0.16
 
 ### 🐛 Fixed
