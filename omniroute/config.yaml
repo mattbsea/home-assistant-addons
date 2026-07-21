@@ -19,6 +19,7 @@ ingress_port: 20128
 ingress_stream: true
 panel_icon: mdi:router-wireless
 panel_title: "OmniRoute"
+webui: http://[HOST]:[PORT:20128]/dashboard
 
 # Port configuration
 ports:
