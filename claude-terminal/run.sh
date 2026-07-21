@@ -313,6 +313,17 @@ build_tab_config() {
     export AUTO_CONTINUE="$auto_continue"
     bashio::log.info "Auto-continue after rate limit: ${auto_continue}"
 
+    # OpenRouter API key for claude-mem observation agent
+    local openrouter_api_key
+    openrouter_api_key=$(bashio::config 'openrouter_api_key' '')
+    if [ "$openrouter_api_key" = "null" ]; then
+        openrouter_api_key=""
+    fi
+    if [ -n "$openrouter_api_key" ]; then
+        export CLAUDE_MEM_OPENROUTER_API_KEY="$openrouter_api_key"
+        bashio::log.info "OpenRouter API key configured for claude-mem"
+    fi
+
     # Normalize em-dashes to double hyphens (mobile keyboards auto-correct -- to —)
     claude_args=$(echo "$claude_args" | sed 's/—/--/g')
     # Handle bashio "null" for unset values

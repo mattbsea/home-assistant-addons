@@ -100,6 +100,11 @@ USER root
 RUN ln -sf /home/claude/.local/bin/opencode /usr/local/bin/opencode \
     && cp -a /home/claude/.opencode /opt/opencode-cli 2>/dev/null || true
 
+# Configure claude-mem to use OpenRouter for the observation agent
+ENV CLAUDE_MEM_PROVIDER=openrouter \
+    CLAUDE_MEM_OPENROUTER_MODEL=xiaomi/mimo-v2-flash:free \
+    CLAUDE_MEM_OPENROUTER_APP_NAME=claude-mem
+
 # Set working directory to /home/claude (persisted to /data/home at runtime)
 WORKDIR /home/claude
 
