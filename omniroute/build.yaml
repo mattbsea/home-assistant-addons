@@ -1,0 +1,9 @@
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: OmniRoute"
+  org.opencontainers.image.description: "AI gateway — route any LLM through one endpoint"
+  org.opencontainers.image.source: "https://github.com/diegosouzapw/OmniRoute"
+  org.opencontainers.image.licenses: "MIT"

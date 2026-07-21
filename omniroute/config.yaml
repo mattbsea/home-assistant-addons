@@ -1,0 +1,52 @@
+---
+name: "OmniRoute"
+description: "AI gateway — route any LLM through one OpenAI-compatible endpoint with smart routing, load balancing, and fallbacks"
+version: "1.0.0"
+slug: "omniroute"
+init: false
+
+# Supported architectures (armv7 not supported by OmniRoute)
+arch:
+  - aarch64
+  - amd64
+
+# External resources
+url: "https://github.com/diegosouzapw/OmniRoute"
+
+# Web interface configuration
+ingress: true
+ingress_port: 20128
+ingress_stream: true
+panel_icon: mdi:router-wireless
+panel_title: "OmniRoute"
+panel_admin: true
+
+# Port configuration
+ports:
+  20128/tcp: 20128
+ports_description:
+  20128/tcp: "OmniRoute API and dashboard"
+
+# Add-on configuration options
+options:
+  omniroute_password: ""
+  setup_providers: []
+schema:
+  omniroute_password: str?
+  setup_providers:
+    - str
+
+# Volume mappings for persistent data
+map:
+  - data:rw     # Add-on data directory (/data) - OmniRoute database persisted here
+
+# API access for Home Assistant integration
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+
+# Service startup configuration
+startup: services
+
+# Web UI access URL
+webui: http://[HOST]:[PORT:20128]/dashboard
