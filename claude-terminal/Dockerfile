@@ -91,6 +91,15 @@ USER root
 RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude \
     && cp -a /home/claude/.local /opt/claude-cli
 
+# Install OpenCode CLI as the claude user alongside Claude Code.
+# Uses XDG_BIN_DIR to place the binary in ~/.local/bin (same as Claude).
+# Preserved at /opt/opencode-cli/ to survive the /home/claude symlink replacement.
+USER claude
+RUN XDG_BIN_DIR=/home/claude/.local/bin curl -fsSL https://opencode.ai/install | bash
+USER root
+RUN ln -sf /home/claude/.local/bin/opencode /usr/local/bin/opencode \
+    && cp -a /home/claude/.opencode /opt/opencode-cli 2>/dev/null || true
+
 # Set working directory to /home/claude (persisted to /data/home at runtime)
 WORKDIR /home/claude
 

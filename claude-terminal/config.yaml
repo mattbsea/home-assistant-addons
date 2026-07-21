@@ -1,7 +1,7 @@
 ---
 name: "Claude Terminal"
-description: "Terminal interface for Anthropic's Claude Code CLI with persistent auth and packages"
-version: "2.0.17"
+description: "Terminal interface for Anthropic's Claude Code CLI and OpenCode with persistent auth and packages"
+version: "2.0.18"
 slug: "claude_terminal"
 init: false
 
@@ -36,6 +36,7 @@ options:
   persistent_apt_packages: []
   persistent_pip_packages: []
   claude_tabs: []
+  opencode_tabs: []
 schema:
   auto_launch_claude: bool?
   auto_continue: bool?
@@ -45,6 +46,10 @@ schema:
   persistent_pip_packages:
     - str
   claude_tabs:
+    - directory: str
+      args: str?
+      prompt: str?
+  opencode_tabs:
     - directory: str
       args: str?
       prompt: str?

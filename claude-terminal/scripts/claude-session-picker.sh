@@ -8,6 +8,7 @@ TMUX_SESSION_NAME="claude"
 
 # Optional extra CLI args passed from HA config (set by run.sh)
 CLAUDE_ARGS="${CLAUDE_ARGS:-}"
+OPENCODE_ARGS="${OPENCODE_ARGS:-}"
 
 show_banner() {
     clear
@@ -37,9 +38,10 @@ show_menu() {
     echo "  2) ⏩ Continue most recent conversation (-c)"
     echo "  3) 📋 Resume from conversation list (-r)"
     echo "  4) ⚙️  Custom Claude command (manual flags)"
-    echo "  5) 🔐 Authentication helper (if paste doesn't work)"
-    echo "  6) 🐚 Drop to bash shell"
-    echo "  7) ❌ Exit"
+    echo "  5) 🤖 Launch OpenCode"
+    echo "  6) 🔐 Authentication helper (if paste doesn't work)"
+    echo "  7) 🐚 Drop to bash shell"
+    echo "  8) ❌ Exit"
     echo ""
 }
 
@@ -52,7 +54,7 @@ get_user_choice() {
         default="0"
     fi
 
-    printf "Enter your choice [0-7] (default: %s): " "$default" >&2
+    printf "Enter your choice [0-8] (default: %s): " "$default" >&2
     read -r choice
     
 
@@ -137,6 +139,16 @@ launch_auth_helper() {
     exec /opt/scripts/claude-auth-helper.sh
 }
 
+launch_opencode() {
+    echo "🤖 Starting OpenCode..."
+    if check_existing_session; then
+        tmux kill-session -t "$TMUX_SESSION_NAME" 2>/dev/null
+    fi
+
+    sleep 1
+    exec tmux new-session -s "$TMUX_SESSION_NAME" "opencode ${OPENCODE_ARGS}"
+}
+
 launch_bash_shell() {
     echo "🐚 Dropping to bash shell..."
     echo "Tip: Run 'tmux new-session -A -s claude \"claude\"' to start with persistence"
@@ -178,18 +190,21 @@ main() {
                 launch_claude_custom
                 ;;
             5)
-                launch_auth_helper
+                launch_opencode
                 ;;
             6)
-                launch_bash_shell
+                launch_auth_helper
                 ;;
             7)
+                launch_bash_shell
+                ;;
+            8)
                 exit_session_picker
                 ;;
             *)
                 echo ""
                 echo "❌ Invalid choice: '$choice'"
-                echo "Please select a number between 0-7"
+                echo "Please select a number between 0-8"
                 echo ""
                 printf "Press Enter to continue..." >&2
                 read -r

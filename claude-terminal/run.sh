@@ -27,11 +27,16 @@ init_environment() {
     # Persist /home/claude by symlinking it to /data/home
     # This makes /home/claude survive container restarts as /data is a mounted volume
     if [ ! -L /home/claude ]; then
-        # Preserve build-time files (Claude CLI, nvm) before destroying /home/claude
-        # These are backed up at /opt/claude-cli during docker build
+        # Preserve build-time files (Claude CLI, OpenCode CLI, nvm) before destroying /home/claude
+        # These are backed up at /opt/claude-cli and /opt/opencode-cli during docker build
         if [ -d /opt/claude-cli ] && [ ! -d "$data_home/.local/bin" ]; then
             cp -a /opt/claude-cli "$data_home/.local"
             bashio::log.info "  - Claude CLI copied from build to $data_home/.local"
+        fi
+        # Preserve OpenCode CLI from build
+        if [ -d /opt/opencode-cli ] && [ ! -d "$data_home/.opencode" ]; then
+            cp -a /opt/opencode-cli "$data_home/.opencode"
+            bashio::log.info "  - OpenCode CLI copied from build to $data_home/.opencode"
         fi
         # Preserve nvm installation from build
         if [ -d /home/claude/.nvm ] && [ ! -d "$data_home/.nvm" ]; then
@@ -56,6 +61,14 @@ init_environment() {
     if [ -f "$native_bin_dir/claude" ]; then
         ln -sf "$native_bin_dir/claude" /usr/local/bin/claude
         bashio::log.info "  - Claude binary linked: /usr/local/bin/claude -> $native_bin_dir/claude"
+    fi
+    # Ensure OpenCode binary is on PATH
+    if [ -f "$native_bin_dir/opencode" ]; then
+        ln -sf "$native_bin_dir/opencode" /usr/local/bin/opencode
+        bashio::log.info "  - OpenCode binary linked: /usr/local/bin/opencode -> $native_bin_dir/opencode"
+    elif [ -f "$data_home/.opencode/bin/opencode" ]; then
+        ln -sf "$data_home/.opencode/bin/opencode" /usr/local/bin/opencode
+        bashio::log.info "  - OpenCode binary linked: /usr/local/bin/opencode -> $data_home/.opencode/bin/opencode"
     fi
 
     # Set XDG and application environment variables
@@ -145,6 +158,20 @@ update_claude() {
         bashio::log.info "Claude Code updated successfully"
     else
         bashio::log.warning "Claude Code update failed, continuing with existing version"
+    fi
+}
+
+# Update OpenCode binary to the latest version
+update_opencode() {
+    bashio::log.info "Updating OpenCode to latest version..."
+    if gosu claude bash -c 'export PATH="$HOME/.local/bin:$PATH" && XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash' 2>&1; then
+        bashio::log.info "OpenCode updated successfully"
+        # Re-link to /usr/local/bin
+        if [ -f "/home/claude/.local/bin/opencode" ]; then
+            ln -sf /home/claude/.local/bin/opencode /usr/local/bin/opencode
+        fi
+    else
+        bashio::log.warning "OpenCode update failed, continuing with existing version"
     fi
 }
 
@@ -367,6 +394,61 @@ build_tab_config() {
         bashio::log.info "Configured ${count} claude tab(s)"
     fi
 
+    # Add configured OpenCode tabs
+    if bashio::config.has_value 'opencode_tabs'; then
+        local count
+        count=$(bashio::config 'opencode_tabs | length')
+
+        local i
+        for ((i = 0; i < count; i++)); do
+            local directory tab_args tab_prompt
+            directory=$(bashio::config "opencode_tabs[${i}].directory")
+            tab_args=$(bashio::config "opencode_tabs[${i}].args" '')
+            tab_prompt=$(bashio::config "opencode_tabs[${i}].prompt" '')
+
+            # Trim leading/trailing whitespace
+            directory=$(echo "$directory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            tab_args=$(echo "$tab_args" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            # Normalize em-dashes to double hyphens
+            tab_args=$(echo "$tab_args" | sed 's/—/--/g')
+
+            # Handle bashio "null" for unset optional values
+            if [ "$tab_prompt" = "null" ] || [ -z "$tab_prompt" ]; then
+                tab_prompt=""
+            fi
+            if [ "$tab_args" = "null" ] || [ -z "$tab_args" ]; then
+                tab_args=""
+            fi
+
+            # Validate directory exists
+            if [ ! -d "$directory" ]; then
+                bashio::log.warning "OpenCode tab directory does not exist, creating: ${directory}"
+                mkdir -p "$directory"
+                chown claude:claude "$directory"
+            fi
+
+            # Derive tab label from directory basename
+            local label
+            label=$(basename "$directory")
+
+            # Build args array
+            local args_json="[]"
+            if [ -n "$tab_args" ] && [ -n "$tab_prompt" ]; then
+                args_json=$(jq -n --arg a "$tab_args" --arg p "$tab_prompt" '$a | split(" ") | map(select(length > 0)) + [$p]')
+            elif [ -n "$tab_args" ]; then
+                args_json=$(jq -n --arg a "$tab_args" '$a | split(" ") | map(select(length > 0))')
+            elif [ -n "$tab_prompt" ]; then
+                args_json=$(jq -n --arg p "$tab_prompt" '[$p]')
+            fi
+
+            bashio::log.info "  OpenCode tab '${label}' in ${directory}"
+            tabs_json="${tabs_json},{\"label\":\"${label}\",\"command\":\"opencode\",\"args\":${args_json},\"cwd\":\"${directory}\",\"autoStart\":true,\"restart\":true,\"restartDelay\":10}"
+        done
+
+        bashio::log.info "Configured ${count} opencode tab(s)"
+    fi
+
     tabs_json="${tabs_json}]"
 
     export CLAUDE_TAB_CONFIG="$tabs_json"
@@ -429,6 +511,7 @@ main() {
     init_environment
     install_bun
     update_claude
+    update_opencode
     verify_node
     install_tools
     setup_scripts
