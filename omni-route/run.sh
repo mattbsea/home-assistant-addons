@@ -33,6 +33,9 @@ if [ -n "$DASHBOARD_KEY" ]; then
     export DASHBOARD_KEY="$DASHBOARD_KEY"
 fi
 
+# Set a predictable initial password for ingress auth
+export INITIAL_PASSWORD="${INITIAL_PASSWORD:-OmniRoute123!}"
+
 # --- Start OmniRoute in background (bootstrap mode - no auth for loopback) ---
 omniroute &
 OMNIRoute_PID=$!
@@ -57,37 +60,34 @@ fi
 bashio::log.info "Disabling dashboard login requirement for ingress..."
 
 # Try bare PATCH first (works in bootstrap mode with no password)
-PATCH_RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH http://localhost:${SERVER_PORT}/api/settings \
+PATCH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH http://localhost:${SERVER_PORT}/api/settings \
     -H "Content-Type: application/json" \
     -d '{"requireLogin": false}')
-PATCH_STATUS=$(echo "$PATCH_RESPONSE" | tail -1)
 
 if [ "$PATCH_STATUS" = "200" ]; then
     bashio::log.info "Dashboard login disabled (bootstrap mode)."
 else
-    # Password is set — authenticate first, then PATCH with currentPassword
-    # Use omniroute-reset-password to get the current password from the DB
-    CURRENT_PW=$(omniroute-reset-password 2>&1 | sed -n 's/.*New password: //p' | head -1)
-    if [ -z "$CURRENT_PW" ]; then
-        CURRENT_PW="OmniRoute123!"
-    fi
+    bashio::log.info "Bootstrap PATCH returned ${PATCH_STATUS}, trying authenticated mode..."
+
+    # Use INITIAL_PASSWORD env var or default
+    AUTH_PW="${INITIAL_PASSWORD:-OmniRoute123!}"
 
     # Login to get auth token cookie
-    LOGIN_RESPONSE=$(curl -s -c /tmp/omniroute_cookies -X POST http://localhost:${SERVER_PORT}/api/auth/login \
+    curl -s -c /tmp/or_cookies -X POST http://localhost:${SERVER_PORT}/api/auth/login \
         -H "Content-Type: application/json" \
-        -d "{\"email\":\"admin@localhost\",\"password\":\"${CURRENT_PW}\"}")
+        -d "{\"email\":\"admin@localhost\",\"password\":\"${AUTH_PW}\"}" > /dev/null 2>&1
 
     # PATCH with auth cookie and currentPassword
-    PATCH2=$(curl -s -b /tmp/omniroute_cookies -X PATCH http://localhost:${SERVER_PORT}/api/settings \
+    PATCH2=$(curl -s -b /tmp/or_cookies -o /dev/null -w "%{http_code}" -X PATCH http://localhost:${SERVER_PORT}/api/settings \
         -H "Content-Type: application/json" \
-        -d "{\"requireLogin\": false, \"currentPassword\": \"${CURRENT_PW}\"}")
+        -d "{\"requireLogin\": false, \"currentPassword\": \"${AUTH_PW}\"}")
 
-    if echo "$PATCH2" | grep -q '"requireLogin":false'; then
+    if [ "$PATCH2" = "200" ]; then
         bashio::log.info "Dashboard login disabled (authenticated mode)."
     else
-        bashio::log.warning "Could not disable dashboard login. Ingress may require manual configuration."
+        bashio::log.warning "Could not disable dashboard login (PATCH returned ${PATCH2}). Ingress may require manual configuration."
     fi
-    rm -f /tmp/omniroute_cookies
+    rm -f /tmp/or_cookies
 fi
 
 # --- Forward signals and wait for OmniRoute ---

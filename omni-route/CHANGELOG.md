@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Remove omniroute-reset-password dependency, use INITIAL_PASSWORD env var
+- Add debug logging for PATCH status codes
+
 ## 1.0.6
 
 - Fix BusyBox grep compatibility (use sed instead of grep -oP)
