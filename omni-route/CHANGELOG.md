@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4
+
+- Enable HTTP request logging (console + file)
+- Add log_level option (debug/info/warn/error)
+- Request logs retained 30 days, up to 200k rows
+
 ## 1.0.3
 
 - Fix ingress 404: disable dashboard login requirement after startup

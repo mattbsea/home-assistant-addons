@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 
 # --- Configuration from options ---
+LOG_LEVEL=$(bashio::config 'log_level')
 DASHBOARD_KEY=$(bashio::config 'dashboard_key')
 ENCRYPTION_KEY=$(bashio::config 'storage_encryption_key')
 
@@ -10,6 +11,19 @@ bashio::log.info "Starting OmniRoute..."
 # --- Build environment ---
 export STORAGE_DIR="/data"
 export SERVER_PORT=20128
+
+# --- Logging ---
+export APP_LOG_LEVEL="${LOG_LEVEL:-info}"
+export APP_LOG_FORMAT=text
+export APP_LOG_TO_FILE=true
+export APP_LOG_FILE_PATH="/data/logs/application/app.log"
+export APP_LOG_MAX_FILE_SIZE=50M
+export APP_LOG_RETENTION_DAYS=30
+export APP_LOG_MAX_FILES=20
+export CALL_LOG_RETENTION_DAYS=30
+export CALL_LOG_MAX_ENTRIES=50000
+export CALL_LOGS_TABLE_MAX_ROWS=200000
+export PROXY_LOGS_TABLE_MAX_ROWS=200000
 
 if [ -n "$ENCRYPTION_KEY" ]; then
     export STORAGE_ENCRYPTION_KEY="$ENCRYPTION_KEY"

@@ -1,6 +1,6 @@
 name: "OmniRoute"
 slug: "a44b0313_omni_route"
-version: "1.0.3"
+version: "1.0.4"
 description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
 url: "https://github.com/mattbsea/home-assistant-addons"
 init: false
@@ -31,10 +31,12 @@ map:
 
 # Options
 options:
+  log_level: "info"
   dashboard_key: ""
   storage_encryption_key: ""
 
 # Schema
 schema:
+  log_level: list(debug|info|warn|error)
   dashboard_key: str
   storage_encryption_key: str
