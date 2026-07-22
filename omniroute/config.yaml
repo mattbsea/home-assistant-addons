@@ -1,7 +1,7 @@
 ---
 name: "OmniRoute"
 description: "AI gateway — route any LLM through one OpenAI-compatible endpoint with smart routing, load balancing, and fallbacks"
-version: "1.0.8"
+version: "1.0.9"
 slug: "omniroute"
 init: false
 
