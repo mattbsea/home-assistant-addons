@@ -1,6 +1,6 @@
 name: "OmniRoute"
 slug: "a44b0313_omni_route"
-version: "1.0.7"
+version: "1.0.8"
 description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
 url: "https://github.com/mattbsea/home-assistant-addons"
 init: false
@@ -19,7 +19,7 @@ ingress_port: 20128
 ingress_stream: true
 panel_icon: mdi:route
 panel_title: "OmniRoute"
-webui: http://[HOST]:[PORT:20128]/
+webui: http://[HOST]:[PORT:20128]/dashboard
 
 # Ports
 ports:

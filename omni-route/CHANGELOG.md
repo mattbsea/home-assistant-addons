@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Fix ingress 404: point webui to /dashboard (bypasses OmniRoute's / → /dashboard redirect)
+
 ## 1.0.7
 
 - Remove omniroute-reset-password dependency, use INITIAL_PASSWORD env var
