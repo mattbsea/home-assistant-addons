@@ -3,6 +3,7 @@ slug: "a44b0313_omni_route"
 version: "1.0.0"
 description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
 url: "https://github.com/mattbsea/home-assistant-addons"
+init: false
 arch:
   - amd64
   - aarch64
