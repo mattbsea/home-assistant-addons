@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Fix ingress 404: authenticate before disabling requireLogin when password is set
+
 ## 1.0.4
 
 - Enable HTTP request logging (console + file)

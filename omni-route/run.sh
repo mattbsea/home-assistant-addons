@@ -53,14 +53,41 @@ if [ "$READY" = false ]; then
     bashio::log.warning "OmniRoute did not become ready within 30 seconds."
 fi
 
-# --- Disable dashboard login requirement (bootstrap mode allows loopback) ---
+# --- Disable dashboard login requirement for ingress ---
 bashio::log.info "Disabling dashboard login requirement for ingress..."
-if curl -sf -X PATCH http://localhost:${SERVER_PORT}/api/settings \
+
+# Try bare PATCH first (works in bootstrap mode with no password)
+PATCH_RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH http://localhost:${SERVER_PORT}/api/settings \
     -H "Content-Type: application/json" \
-    -d '{"requireLogin": false}' > /dev/null 2>&1; then
-    bashio::log.info "Dashboard login requirement disabled successfully."
+    -d '{"requireLogin": false}')
+PATCH_STATUS=$(echo "$PATCH_RESPONSE" | tail -1)
+
+if [ "$PATCH_STATUS" = "200" ]; then
+    bashio::log.info "Dashboard login disabled (bootstrap mode)."
 else
-    bashio::log.warning "Could not disable dashboard login. Ingress may require manual configuration."
+    # Password is set — authenticate first, then PATCH with currentPassword
+    # Use omniroute-reset-password to get the current password from the DB
+    CURRENT_PW=$(omniroute-reset-password 2>/dev/null | grep -oP 'New password: \K.*' || true)
+    if [ -z "$CURRENT_PW" ]; then
+        CURRENT_PW="OmniRoute123!"
+    fi
+
+    # Login to get auth token cookie
+    LOGIN_RESPONSE=$(curl -s -c /tmp/omniroute_cookies -X POST http://localhost:${SERVER_PORT}/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d "{\"email\":\"admin@localhost\",\"password\":\"${CURRENT_PW}\"}")
+
+    # PATCH with auth cookie and currentPassword
+    PATCH2=$(curl -s -b /tmp/omniroute_cookies -X PATCH http://localhost:${SERVER_PORT}/api/settings \
+        -H "Content-Type: application/json" \
+        -d "{\"requireLogin\": false, \"currentPassword\": \"${CURRENT_PW}\"}")
+
+    if echo "$PATCH2" | grep -q '"requireLogin":false'; then
+        bashio::log.info "Dashboard login disabled (authenticated mode)."
+    else
+        bashio::log.warning "Could not disable dashboard login. Ingress may require manual configuration."
+    fi
+    rm -f /tmp/omniroute_cookies
 fi
 
 # --- Forward signals and wait for OmniRoute ---
