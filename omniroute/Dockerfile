@@ -26,9 +26,9 @@ RUN groupadd --gid 1000 omniroute \
 RUN mkdir -p /data/omniroute && chown -R omniroute:omniroute /data/omniroute
 
 # Setup nginx directories and config
-RUN mkdir -p /etc/nginx/sites /etc/log/nginx /run/nginx \
-    && rm -f /etc/nginx/sites/default
-COPY nginx.conf /etc/nginx/sites/ingress.conf
+RUN mkdir -p /etc/nginx/sites-enabled /etc/log/nginx /run/nginx \
+    && rm -f /etc/nginx/sites-enabled/default
+COPY nginx.conf /etc/nginx/sites-enabled/ingress.conf
 
 # Copy startup script
 COPY run.sh /run.sh
