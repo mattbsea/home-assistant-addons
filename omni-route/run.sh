@@ -67,7 +67,7 @@ if [ "$PATCH_STATUS" = "200" ]; then
 else
     # Password is set — authenticate first, then PATCH with currentPassword
     # Use omniroute-reset-password to get the current password from the DB
-    CURRENT_PW=$(omniroute-reset-password 2>/dev/null | grep -oP 'New password: \K.*' || true)
+    CURRENT_PW=$(omniroute-reset-password 2>&1 | sed -n 's/.*New password: //p' | head -1)
     if [ -z "$CURRENT_PW" ]; then
         CURRENT_PW="OmniRoute123!"
     fi

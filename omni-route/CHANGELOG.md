@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- Fix BusyBox grep compatibility (use sed instead of grep -oP)
+
 ## 1.0.5
 
 - Fix ingress 404: authenticate before disabling requireLogin when password is set
