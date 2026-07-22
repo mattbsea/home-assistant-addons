@@ -70,6 +70,21 @@ Features:
 
 [Documentation](rustdesk-server/DOCS.md)
 
+### OmniRoute
+
+Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback. Pools documented free tiers from 90+ providers into ~1.6B free tokens/month. RTK+Caveman compression saves 15–95% tokens automatically.
+
+Features:
+- OpenAI-compatible API at `/v1` — works with Claude Code, Codex, Cursor, Cline, Copilot
+- 4-tier auto-fallback (Subscription → API → Cheap → Free) in milliseconds
+- Token compression (RTK + Caveman stacked, 15–95% savings)
+- Dashboard with live free-tier quota tracking
+- MCP server (104 tools) and A2A protocol support
+
+**Version:** 3.8.48
+
+[Documentation](omniroute/DOCS.md)
+
 ### RustDesk Web Client
 
 Browser-accessible RustDesk client — web-admin and web client, served from your Home Assistant

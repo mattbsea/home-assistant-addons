@@ -1,0 +1,39 @@
+name: "OmniRoute"
+slug: "a44b0313_omniroute"
+version: "1.0.0"
+description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
+url: "https://github.com/mattbsea/home-assistant-addons"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: application
+boot: auto
+hassio_api: true
+homeassistant_api: true
+
+# Ingress (dashboard via sidebar)
+ingress: true
+ingress_port: 20128
+ingress_stream: true
+panel_icon: mdi:route
+panel_title: "OmniRoute"
+webui: http://[HOST]:[PORT:20128]/
+
+# Ports
+ports:
+  "20128/tcp": 20128
+
+# Storage
+map:
+  - data:rw
+
+# Options
+options:
+  dashboard_key: ""
+  storage_encryption_key: ""
+
+# Schema
+schema:
+  dashboard_key: str
+  storage_encryption_key: str
