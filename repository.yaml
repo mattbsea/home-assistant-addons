@@ -1,3 +1,4 @@
 name: Home Assistant Add-ons
 url: https://github.com/mattbsea/home-assistant-addons
 maintainer: Matt Barclay <mbarclay>
+channel: main
