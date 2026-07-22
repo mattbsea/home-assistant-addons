@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.3
+
+- Fix ingress 404: disable dashboard login requirement after startup
+- Add curl for in-container API calls
+
 ## 1.0.2
 
 - Fix base image (use hassio-addons/base:21.0.0 instead of archived base-nodejs)

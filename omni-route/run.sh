@@ -19,5 +19,43 @@ if [ -n "$DASHBOARD_KEY" ]; then
     export DASHBOARD_KEY="$DASHBOARD_KEY"
 fi
 
-# --- Start OmniRoute ---
-exec omniroute
+# --- Start OmniRoute in background (bootstrap mode - no auth for loopback) ---
+omniroute &
+OMNIRoute_PID=$!
+
+# --- Wait for OmniRoute to be ready ---
+bashio::log.info "Waiting for OmniRoute to start..."
+READY=false
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:${SERVER_PORT}/login > /dev/null 2>&1; then
+        bashio::log.info "OmniRoute is ready."
+        READY=true
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" = false ]; then
+    bashio::log.warning "OmniRoute did not become ready within 30 seconds."
+fi
+
+# --- Disable dashboard login requirement (bootstrap mode allows loopback) ---
+bashio::log.info "Disabling dashboard login requirement for ingress..."
+if curl -sf -X PATCH http://localhost:${SERVER_PORT}/api/settings \
+    -H "Content-Type: application/json" \
+    -d '{"requireLogin": false}' > /dev/null 2>&1; then
+    bashio::log.info "Dashboard login requirement disabled successfully."
+else
+    bashio::log.warning "Could not disable dashboard login. Ingress may require manual configuration."
+fi
+
+# --- Forward signals and wait for OmniRoute ---
+cleanup() {
+    bashio::log.info "Shutting down OmniRoute..."
+    kill -TERM "$OMNIRoute_PID" 2>/dev/null
+    wait "$OMNIRoute_PID" 2>/dev/null
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
+wait "$OMNIRoute_PID"

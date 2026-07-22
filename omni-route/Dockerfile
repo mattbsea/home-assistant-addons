@@ -4,6 +4,7 @@ FROM ${BUILD_FROM}
 # Install OmniRoute globally
 RUN \
     apk add --no-cache \
+        curl \
         git \
         nodejs \
         npm \

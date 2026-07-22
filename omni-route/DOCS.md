@@ -13,7 +13,7 @@ Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallbac
 
 ## Ingress
 
-Access the OmniRoute dashboard from the Home Assistant sidebar after installation.
+Access the OmniRoute dashboard from the Home Assistant sidebar after installation. The dashboard login requirement is automatically disabled to allow seamless access through the Home Assistant ingress proxy.
 
 ## Ports
 
