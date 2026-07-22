@@ -5,6 +5,8 @@ FROM ${BUILD_FROM}
 RUN \
     apk add --no-cache \
         git \
+        nodejs \
+        npm \
     && npm install -g omniroute@3.8.48 \
     && apk del git
 
