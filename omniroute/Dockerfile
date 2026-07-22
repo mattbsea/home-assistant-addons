@@ -1,12 +1,13 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# Install system dependencies
+# Install system dependencies (including nginx for ingress proxy)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     curl \
     ca-certificates \
     gosu \
+    nginx-light \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 24 via NodeSource
@@ -23,6 +24,11 @@ RUN groupadd --gid 1000 omniroute \
 
 # Create data directory and set ownership
 RUN mkdir -p /data/omniroute && chown -R omniroute:omniroute /data/omniroute
+
+# Setup nginx directories and config
+RUN mkdir -p /etc/nginx/sites /etc/log/nginx /run/nginx \
+    && rm -f /etc/nginx/sites/default
+COPY nginx.conf /etc/nginx/sites/ingress.conf
 
 # Copy startup script
 COPY run.sh /run.sh

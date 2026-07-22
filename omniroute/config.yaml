@@ -1,7 +1,7 @@
 ---
 name: "OmniRoute"
 description: "AI gateway — route any LLM through one OpenAI-compatible endpoint with smart routing, load balancing, and fallbacks"
-version: "1.0.5"
+version: "1.0.7"
 slug: "omniroute"
 init: false
 
@@ -20,12 +20,6 @@ ingress: true
 ingress_port: 20128
 panel_icon: mdi:router-wireless
 panel_title: "OmniRoute"
-
-# Port configuration
-ports:
-  20128/tcp: 20128
-ports_description:
-  20128/tcp: "OmniRoute API and dashboard"
 
 # Add-on configuration options
 options:

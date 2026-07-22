@@ -51,16 +51,37 @@ run_setup() {
     fi
 }
 
-# Start the OmniRoute gateway
+# Start the OmniRoute gateway on internal port (nginx proxies 20128 → 20129)
 start_omniroute() {
     bashio::log.info "Starting OmniRoute gateway..."
 
     export HOST="0.0.0.0"
-    export PORT="20128"
+    export PORT="20129"
     export DATA_DIR="$DATA_DIR"
 
-    exec gosu omniroute omniroute
+    gosu omniroute omniroute &
+    OMNIRoute_PID=$!
+    bashio::log.info "OmniRoute started (PID: $OMNIRoute_PID)"
 }
+
+# Start nginx reverse proxy (listens on ingress port 20128)
+start_nginx() {
+    bashio::log.info "Starting nginx ingress proxy..."
+    nginx
+    bashio::log.info "nginx started on port 20128"
+}
+
+# Cleanup on exit
+cleanup() {
+    bashio::log.info "Shutting down..."
+    nginx -s stop 2>/dev/null || true
+    if [ -n "$OMNIRoute_PID" ]; then
+        kill "$OMNIRoute_PID" 2>/dev/null || true
+        wait "$OMNIRoute_PID" 2>/dev/null || true
+    fi
+    bashio::log.info "Shutdown complete"
+}
+trap cleanup SIGTERM SIGINT SIGHUP
 
 # Main execution
 main() {
@@ -68,6 +89,8 @@ main() {
     init_environment
     run_setup
     start_omniroute
+    start_nginx
+    wait "$OMNIRoute_PID"
 }
 
 main "$@"
