@@ -35,3 +35,4 @@ dist/
 Thumbs.db
 .claude/
 .worktrees/
+opencode.json
