@@ -1,6 +1,6 @@
 name: "OmniRoute"
 slug: "omni_route"
-version: "1.0.10"
+version: "1.0.11"
 description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
 url: "https://github.com/mattbsea/home-assistant-addons"
 init: false
@@ -13,12 +13,11 @@ boot: auto
 hassio_api: true
 homeassistant_api: true
 
-# Ingress (dashboard via sidebar)
-ingress: true
-ingress_port: 20128
-ingress_stream: true
-panel_icon: mdi:route
-panel_title: "OmniRoute"
+# No Ingress: OmniRoute (Next.js) doesn't support Home Assistant's
+# prefix-stripping Ingress proxy — its routing and auth checks break when
+# accessed through it. Access is via the exposed port directly (put a
+# reverse proxy like NGINX Proxy Manager in front of it if you want a
+# domain/TLS), authenticated with admin_password below.
 webui: http://[HOST]:[PORT:20128]/dashboard
 
 # Ports
@@ -32,11 +31,13 @@ map:
 # Options
 options:
   log_level: "info"
+  admin_password: ""
   dashboard_key: ""
   storage_encryption_key: ""
 
 # Schema
 schema:
   log_level: list(debug|info|warn|error)
+  admin_password: str
   dashboard_key: str
   storage_encryption_key: str

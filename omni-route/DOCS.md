@@ -9,6 +9,7 @@ Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallbac
 | Option | Description | Default |
 |--------|-------------|---------|
 | `log_level` | Logging verbosity: `debug`, `info`, `warn`, `error` | `info` |
+| `admin_password` | Dashboard login password. Leave blank to use the built-in default (`OmniRoute123!`) — change it from the dashboard after first login either way | `""` |
 | `dashboard_key` | Key to access the web dashboard | `""` |
 | `storage_encryption_key` | Encrypts API keys at rest (AES-256-GCM) | `""` |
 
@@ -27,9 +28,11 @@ All HTTP requests are logged to both the Home Assistant add-on logs (console) an
 
 Set `log_level: debug` in the add-on options for verbose request details including provider, model, tokens, and latency.
 
-## Ingress
+## Access
 
-Access the OmniRoute dashboard from the Home Assistant sidebar after installation. The dashboard login requirement is automatically disabled to allow seamless access through the Home Assistant ingress proxy.
+OmniRoute is **not** exposed through Home Assistant's Ingress sidebar — OmniRoute (Next.js) doesn't support Ingress's prefix-stripping proxy model, so routing and authentication break when accessed that way.
+
+Instead, reach the dashboard directly on the exposed port (`http://<home-assistant-ip>:20128/dashboard`), or put your own reverse proxy (e.g. NGINX Proxy Manager) in front of it for a domain name and TLS. The dashboard login is required — log in with the password from `admin_password` (or the built-in default `OmniRoute123!` if left blank), and change it from the dashboard afterward.
 
 ## Ports
 

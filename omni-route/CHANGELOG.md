@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.11
+
+- **Drop Home Assistant Ingress entirely.** OmniRoute (Next.js) doesn't
+  support Ingress's prefix-stripping proxy model — 1.0.9 and 1.0.10 tried
+  fixing this from the add-on side (basePath config, then response
+  rewriting) but the response-rewriting approach couldn't reach OmniRoute's
+  own client-side `fetch()` calls, which stay broken through Ingress
+  regardless. Removed `ingress-proxy.js`, the `http-proxy` dependency, and
+  `ingress`/`ingress_port`/`ingress_stream`/`panel_icon`/`panel_title` from
+  `config.yaml`. OmniRoute now just runs directly on its exposed port
+  (20128) with nothing in front of it — put your own reverse proxy (e.g.
+  NGINX Proxy Manager) there if you want a domain/TLS.
+- **Require dashboard login.** Since OmniRoute is no longer behind Home
+  Assistant's authenticated Ingress, `run.sh` no longer disables
+  `requireLogin` — it stays on (OmniRoute's default). Added an
+  `admin_password` option to set the login password on first boot; leave it
+  blank to use the built-in default (`OmniRoute123!`) and change it from the
+  dashboard after logging in.
+
 ## 1.0.10
 
 - Revert 1.0.9's `OMNIROUTE_BASE_PATH` approach: live testing against the
