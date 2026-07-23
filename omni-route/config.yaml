@@ -1,6 +1,6 @@
 name: "OmniRoute"
 slug: "omni_route"
-version: "1.0.9"
+version: "1.0.10"
 description: "Free AI gateway — 268+ providers, one OpenAI-compatible endpoint, auto-fallback"
 url: "https://github.com/mattbsea/home-assistant-addons"
 init: false

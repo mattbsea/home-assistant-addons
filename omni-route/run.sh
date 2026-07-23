@@ -18,29 +18,19 @@ export STORAGE_DIR="/data"
 # (`/` -> `/dashboard`) and asset URLs (`/_next/static/...`) escape the
 # Ingress-proxied path and 404 in the Home Assistant frontend.
 #
-# The fix: OmniRoute listens on an internal-only port (UPSTREAM_PORT) with
-# OMNIROUTE_BASE_PATH set to this add-on's stable Ingress entry path, so
-# Next.js's basePath support prefixes every redirect, asset URL, and link it
-# emits. ingress-proxy.js serves the real Ingress-facing port (INGRESS_PORT,
-# matching config.yaml's ingress_port/webui/ports) and re-adds that same
-# prefix to incoming requests before forwarding upstream — since Supervisor
-# already stripped it, and direct/LAN access never had it either. See
-# scripts/ingress-proxy.js for the detail.
+# OmniRoute's own OMNIROUTE_BASE_PATH ("basePath") support does not fix this:
+# tested live, setting it makes OmniRoute match routes and classify auth
+# against the *raw* prefixed path instead of the stripped one, so real pages
+# 404 as "unknown route" and auth endpoints 401. So OmniRoute runs
+# unconfigured, on an internal-only port (UPSTREAM_PORT), with plain bare
+# routing (confirmed working). ingress-proxy.js serves the real Ingress port
+# (INGRESS_PORT, matching config.yaml's ingress_port/webui/ports) and
+# rewrites root-absolute Location headers and `/_next/*` asset references in
+# HTML responses on the way OUT, using the X-Ingress-Path header Supervisor
+# sends. See scripts/ingress-proxy.js for what this can't fix (client-side
+# fetch calls OmniRoute's JS bundle constructs at runtime).
 INGRESS_PORT=20128
 UPSTREAM_PORT=20130
-
-# ingress_entry is a stable, persisted path (e.g. /api/hassio_ingress/<token>)
-# assigned to this add-on installation — not a per-session value — so it's
-# safe to bake into OMNIROUTE_BASE_PATH for the lifetime of the container.
-INGRESS_ENTRY=$(bashio::app.ingress_entry 2>/dev/null || true)
-
-if [ -n "$INGRESS_ENTRY" ]; then
-    bashio::log.info "Ingress entry is ${INGRESS_ENTRY}; configuring OmniRoute base path."
-    export OMNIROUTE_BASE_PATH="$INGRESS_ENTRY"
-else
-    bashio::log.warning "Could not determine Ingress entry path; sidebar dashboard access may 404."
-fi
-
 export PORT="$UPSTREAM_PORT"
 
 # --- Logging ---
@@ -72,13 +62,10 @@ omniroute &
 OMNIRoute_PID=$!
 
 # --- Wait for OmniRoute to be ready ---
-# All internal calls below target UPSTREAM_PORT directly (not through
-# ingress-proxy.js), so they must include INGRESS_ENTRY themselves whenever
-# OMNIROUTE_BASE_PATH is set — OmniRoute only serves routes under that prefix.
 bashio::log.info "Waiting for OmniRoute to start..."
 READY=false
-for i in $(seq 1 30); do
-    if curl -sf "http://localhost:${UPSTREAM_PORT}${INGRESS_ENTRY}/login" > /dev/null 2>&1; then
+for i in $(seq 1 60); do
+    if curl -sf "http://localhost:${UPSTREAM_PORT}/login" > /dev/null 2>&1; then
         bashio::log.info "OmniRoute is ready."
         READY=true
         break
@@ -87,14 +74,14 @@ for i in $(seq 1 30); do
 done
 
 if [ "$READY" = false ]; then
-    bashio::log.warning "OmniRoute did not become ready within 30 seconds."
+    bashio::log.warning "OmniRoute did not become ready within 60 seconds."
 fi
 
 # --- Disable dashboard login requirement for ingress ---
 bashio::log.info "Disabling dashboard login requirement for ingress..."
 
 # Try bare PATCH first (works in bootstrap mode with no password)
-PATCH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:${UPSTREAM_PORT}${INGRESS_ENTRY}/api/settings" \
+PATCH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:${UPSTREAM_PORT}/api/settings" \
     -H "Content-Type: application/json" \
     -d '{"requireLogin": false}')
 
@@ -107,12 +94,12 @@ else
     AUTH_PW="${INITIAL_PASSWORD:-OmniRoute123!}"
 
     # Login to get auth token cookie
-    curl -s -c /tmp/or_cookies -X POST "http://localhost:${UPSTREAM_PORT}${INGRESS_ENTRY}/api/auth/login" \
+    curl -s -c /tmp/or_cookies -X POST "http://localhost:${UPSTREAM_PORT}/api/auth/login" \
         -H "Content-Type: application/json" \
         -d "{\"email\":\"admin@localhost\",\"password\":\"${AUTH_PW}\"}" > /dev/null 2>&1
 
     # PATCH with auth cookie and currentPassword
-    PATCH2=$(curl -s -b /tmp/or_cookies -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:${UPSTREAM_PORT}${INGRESS_ENTRY}/api/settings" \
+    PATCH2=$(curl -s -b /tmp/or_cookies -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:${UPSTREAM_PORT}/api/settings" \
         -H "Content-Type: application/json" \
         -d "{\"requireLogin\": false, \"currentPassword\": \"${AUTH_PW}\"}")
 
@@ -130,7 +117,6 @@ fi
 bashio::log.info "Starting ingress proxy on port ${INGRESS_PORT}..."
 export INGRESS_LISTEN_PORT="$INGRESS_PORT"
 export INGRESS_UPSTREAM_PORT="$UPSTREAM_PORT"
-export INGRESS_ENTRY
 NODE_PATH="$(npm root -g)" node /opt/scripts/ingress-proxy.js &
 INGRESS_PROXY_PID=$!
 

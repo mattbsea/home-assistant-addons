@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.10
+
+- Revert 1.0.9's `OMNIROUTE_BASE_PATH` approach: live testing against the
+  actual add-on showed it makes OmniRoute match routes and classify auth
+  against the *raw*, prefixed request path instead of the basePath-stripped
+  one — `/dashboard` came back a 404 "unknown route" and `/api/auth/login`
+  401'd, even fully authenticated. OmniRoute now runs unconfigured again
+  (bare routing — verified working: `/dashboard` returns 200 HTML). Instead,
+  `ingress-proxy.js` rewrites the *response* on the way out: root-absolute
+  `Location` headers and `/_next/*`/favicon/manifest references in HTML
+  bodies get the real Ingress prefix (from Supervisor's `X-Ingress-Path`
+  header) added back, so the page and its assets load through the sidebar
+  panel. **Known limitation:** OmniRoute's client-side JS still makes
+  unprefixed `fetch('/api/...')` calls after the page hydrates — those can't
+  be fixed by rewriting server responses, so some interactive dashboard
+  features may still not work through the sidebar. The direct "Open Web UI"
+  button (bypasses Ingress entirely) is unaffected.
+- Bump the OmniRoute startup readiness timeout from 30s to 60s — observed
+  cold starts taking close to 30s on production hardware, which was racing
+  the login-disable step against a server that wasn't accepting requests yet.
+
 ## 1.0.9
 
 - **Fix doubled Supervisor slug (this is why the sidebar link 404'd, e.g.
