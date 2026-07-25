@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Fix: Remove invalid `--dir` flag from opencode serve command
+
 ## 1.0.0
 
 - Initial release

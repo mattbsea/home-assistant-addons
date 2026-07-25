@@ -28,7 +28,7 @@ bashio::log.info "Starting opencode serve on port 4096..."
 bashio::log.info "Workspace: ${WORKDIR}"
 bashio::log.info "Config: ${HOME}/.config/opencode/"
 
+cd "${WORKDIR}"
 exec opencode serve \
     --port 4096 \
-    --hostname 0.0.0.0 \
-    --dir "${WORKDIR}"
+    --hostname 0.0.0.0
