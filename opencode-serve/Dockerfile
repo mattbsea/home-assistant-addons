@@ -24,6 +24,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 RUN rm -f /etc/nginx/http.d/default.conf
 
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
+COPY ingress-patch.js /etc/nginx/ingress-patch.js.template
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 

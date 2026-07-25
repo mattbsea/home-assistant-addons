@@ -245,40 +245,9 @@ echo "Ingress entry: ${INGRESS_ENTRY}"
 # Generate the ingress patch script with the actual path baked in.
 # This script patches fetch() and EventSource to prepend the ingress
 # path to all API calls made by the SPA at runtime.
-cat > /tmp/ingress-patch.js << PATCHEOF
-(function() {
-  var INGRESS = "${INGRESS_ENTRY}";
-  if (!INGRESS) return;
-  var ORIGIN = location.origin;
-
-  function rewriteUrl(url) {
-    if (typeof url !== "string") return url;
-    // Absolute URL: origin + "/api/..." -> INGRESS + "/api/..."
-    if (url.indexOf(ORIGIN + "/api/") === 0)
-      return ORIGIN + INGRESS + url.slice(ORIGIN.length);
-    // Relative path starting with /api/ or /event
-    if (url.charAt(0) === "/" && (url.indexOf("/api/") === 0 || url.indexOf("/event") === 0))
-      return INGRESS + url;
-    return url;
-  }
-
-  // Patch fetch() to rewrite API paths
-  var origFetch = window.fetch;
-  window.fetch = function(url, opts) {
-    return origFetch.call(this, rewriteUrl(url), opts);
-  };
-
-  // Patch EventSource to rewrite SSE paths
-  var OrigEventSource = window.EventSource;
-  window.EventSource = function(url, opts) {
-    return new OrigEventSource(rewriteUrl(url), opts);
-  };
-  window.EventSource.prototype = OrigEventSource.prototype;
-  window.EventSource.CONNECTING = OrigEventSource.CONNECTING;
-  window.EventSource.OPEN = OrigEventSource.OPEN;
-  window.EventSource.CLOSED = OrigEventSource.CLOSED;
-})();
-PATCHEOF
+sed "s|__INGRESS_ENTRY__|${INGRESS_ENTRY}|g" \
+    /etc/nginx/ingress-patch.js.template \
+    > /tmp/ingress-patch.js
 
 echo "Ingress patch script generated"
 
