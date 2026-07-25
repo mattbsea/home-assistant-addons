@@ -1,7 +1,7 @@
 ---
 name: "OpenCode"
 description: "AI coding agent web interface powered by OpenCode"
-version: "1.0.2"
+version: "1.1.0"
 slug: "opencode_serve"
 init: false
 url: "https://github.com/anomalyco/opencode"
@@ -11,7 +11,7 @@ arch:
   - amd64
 
 ingress: true
-ingress_port: 4096
+ingress_port: 8099
 ingress_stream: true
 panel_icon: mdi:code-braces
 panel_title: "OpenCode"
@@ -28,6 +28,9 @@ startup: services
 boot: auto
 
 webui: http://[HOST]:[PORT:4096]/
+
+hassio_api: true
+homeassistant_api: true
 
 options:
   log_level: "info"

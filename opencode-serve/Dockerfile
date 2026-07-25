@@ -1,22 +1,20 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20
 FROM ${BUILD_FROM}
 
-ARG BUILD_ARCH
-
-# Install system packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
+    bash \
     curl \
-    ca-certificates \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
+    git \
+    jq \
+    nginx
 
-# Install OpenCode globally via npm (pinned version)
-RUN npm install -g opencode-ai@1.18.5
+RUN curl -fsSL https://opencode.ai/install | bash \
+    && mv /root/.opencode/bin/opencode /usr/local/bin/opencode \
+    && chmod +x /usr/local/bin/opencode
 
-# Create working directory
-RUN mkdir -p /data/workspace
+RUN rm -f /etc/nginx/http.d/default.conf
 
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
