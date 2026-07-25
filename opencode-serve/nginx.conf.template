@@ -47,11 +47,17 @@ server {
         # Vite chunk preload base path function
         sub_filter 'return"/"+e}' 'return"__INGRESS_ENTRY__/"+e}';
 
-        # API base URL — OpenCode checks localhost:4096 vs location.origin
-        sub_filter '"http://localhost:4096":location.origin' '"http://localhost:4096":location.origin+"__INGRESS_ENTRY__"';
-
         # Web Worker paths
         sub_filter '"/assets/worker' '"__INGRESS_ENTRY__/assets/worker';
+
+        # Inject ingress patch script into HTML head (before </head>)
+        sub_filter '</head>' '<script src="__INGRESS_ENTRY__/ingress-patch.js"></script></head>';
+
+        # Serve the ingress patch script
+        location = /ingress-patch.js {
+            alias /tmp/ingress-patch.js;
+            add_header Cache-Control "no-cache";
+        }
 
         # Strip CSP that blocks inline scripts
         proxy_hide_header Content-Security-Policy;

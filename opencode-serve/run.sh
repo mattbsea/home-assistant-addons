@@ -242,6 +242,44 @@ fi
 
 echo "Ingress entry: ${INGRESS_ENTRY}"
 
+# Generate the ingress patch script with the actual path baked in.
+# This script patches fetch() and EventSource to prepend the ingress
+# path to all API calls made by the SPA at runtime.
+cat > /tmp/ingress-patch.js << PATCHEOF
+(function() {
+  var INGRESS = "${INGRESS_ENTRY}";
+  if (!INGRESS) return;
+
+  // Patch fetch() to rewrite API paths
+  var origFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    if (typeof url === "string") {
+      if (url.startsWith("/api/")) {
+        url = INGRESS + url;
+      }
+    }
+    return origFetch.call(this, url, opts);
+  };
+
+  // Patch EventSource to rewrite SSE paths
+  var OrigEventSource = window.EventSource;
+  window.EventSource = function(url, opts) {
+    if (typeof url === "string") {
+      if (url.startsWith("/api/") || url.startsWith("/event")) {
+        url = INGRESS + url;
+      }
+    }
+    return new OrigEventSource(url, opts);
+  };
+  window.EventSource.prototype = OrigEventSource.prototype;
+  window.EventSource.CONNECTING = OrigEventSource.CONNECTING;
+  window.EventSource.OPEN = OrigEventSource.OPEN;
+  window.EventSource.CLOSED = OrigEventSource.CLOSED;
+})();
+PATCHEOF
+
+echo "Ingress patch script generated"
+
 sed "s|__INGRESS_ENTRY__|${INGRESS_ENTRY}|g" \
     /etc/nginx/nginx.conf.template \
     > /etc/nginx/http.d/opencode.conf
