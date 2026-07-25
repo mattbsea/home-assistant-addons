@@ -249,27 +249,29 @@ cat > /tmp/ingress-patch.js << PATCHEOF
 (function() {
   var INGRESS = "${INGRESS_ENTRY}";
   if (!INGRESS) return;
+  var ORIGIN = location.origin;
+
+  function rewriteUrl(url) {
+    if (typeof url !== "string") return url;
+    // Absolute URL: origin + "/api/..." -> INGRESS + "/api/..."
+    if (url.indexOf(ORIGIN + "/api/") === 0)
+      return ORIGIN + INGRESS + url.slice(ORIGIN.length);
+    // Relative path starting with /api/ or /event
+    if (url.charAt(0) === "/" && (url.indexOf("/api/") === 0 || url.indexOf("/event") === 0))
+      return INGRESS + url;
+    return url;
+  }
 
   // Patch fetch() to rewrite API paths
   var origFetch = window.fetch;
   window.fetch = function(url, opts) {
-    if (typeof url === "string") {
-      if (url.startsWith("/api/")) {
-        url = INGRESS + url;
-      }
-    }
-    return origFetch.call(this, url, opts);
+    return origFetch.call(this, rewriteUrl(url), opts);
   };
 
   // Patch EventSource to rewrite SSE paths
   var OrigEventSource = window.EventSource;
   window.EventSource = function(url, opts) {
-    if (typeof url === "string") {
-      if (url.startsWith("/api/") || url.startsWith("/event")) {
-        url = INGRESS + url;
-      }
-    }
-    return new OrigEventSource(url, opts);
+    return new OrigEventSource(rewriteUrl(url), opts);
   };
   window.EventSource.prototype = OrigEventSource.prototype;
   window.EventSource.CONNECTING = OrigEventSource.CONNECTING;
