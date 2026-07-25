@@ -6,7 +6,8 @@ RUN apk add --no-cache \
     bash \
     curl \
     git \
-    jq
+    jq \
+    openssh-client
 
 # Install GitHub CLI
 RUN apk add --no-cache -X https://dl-cdn.alpinelinux.org/alpine/edge/community \
