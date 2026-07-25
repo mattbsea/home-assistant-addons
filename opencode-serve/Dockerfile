@@ -8,6 +8,10 @@ RUN apk add --no-cache \
     git \
     jq
 
+# Install GitHub CLI
+RUN apk add --no-cache -X https://dl-cdn.alpinelinux.org/alpine/edge/community \
+    github-cli
+
 # Install OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install | bash \
     && mv /root/.opencode/bin/opencode /usr/local/bin/opencode \
