@@ -31,4 +31,5 @@ bashio::log.info "Config: ${HOME}/.config/opencode/"
 cd "${WORKDIR}"
 exec opencode serve \
     --port 4096 \
-    --hostname 0.0.0.0
+    --hostname 0.0.0.0 \
+    --log-level "${LOG_LEVEL^^}"

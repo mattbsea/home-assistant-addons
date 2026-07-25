@@ -1,7 +1,7 @@
 ---
 name: "OpenCode"
 description: "AI coding agent web interface powered by OpenCode"
-version: "1.0.1"
+version: "1.0.2"
 slug: "opencode_serve"
 init: false
 url: "https://github.com/anomalyco/opencode"
