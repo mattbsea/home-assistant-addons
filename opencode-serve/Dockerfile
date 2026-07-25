@@ -6,8 +6,7 @@ RUN apk add --no-cache \
     bash \
     curl \
     git \
-    jq \
-    nginx
+    jq
 
 # Install OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install | bash \
@@ -20,11 +19,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && mv /root/.local/bin/uvx /usr/local/bin/uvx \
     && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
-# Remove default nginx config
-RUN rm -f /etc/nginx/http.d/default.conf
-
-COPY nginx.conf.template /etc/nginx/nginx.conf.template
-COPY ingress-patch.js /etc/nginx/ingress-patch.js.template
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 

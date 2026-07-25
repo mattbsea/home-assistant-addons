@@ -31,12 +31,6 @@ GITHUB_TOKEN=$(jq -r '.github_token // ""' "$OPTIONS")
 
 # ---------------------------------------------------------------------------
 # 2. Set provider defaults & environment variables
-#
-# The api_key option is mapped to the correct environment variable based on
-# the selected provider. OpenCode reads these env vars automatically.
-#
-# For providers not listed here, set environment variables manually in the
-# container or extend this script.
 # ---------------------------------------------------------------------------
 case "$PROVIDER" in
   anthropic)
@@ -58,19 +52,6 @@ case "$PROVIDER" in
     PROVIDER_CONFIG='"google": {}'
     ;;
   ollama)
-    # -------------------------------------------------------------------------
-    # Ollama — local LLM inference via OpenAI-compatible API
-    #
-    # ollama_host:       URL of the Ollama server (required)
-    # ollama_keep_alive: How long Ollama keeps models loaded (e.g. "5m", "24h")
-    # model:            Ollama model name (e.g. "qwen3:8b", "llama3.2")
-    # small_model:      Fast model for simple tasks (defaults to same as model)
-    #
-    # Common ollama_host values:
-    #   - http://homeassistant:11434   (Ollama on same machine, host_network)
-    #   - http://192.168.x.x:11434    (Ollama on another machine)
-    #   - http://<addon-slug>:11434    (Ollama as HA add-on, internal port)
-    # -------------------------------------------------------------------------
     DEFAULT_MODEL="ollama/qwen3:8b"
     DEFAULT_SMALL="ollama/qwen3:8b"
 
@@ -80,23 +61,19 @@ case "$PROVIDER" in
         exit 1
     fi
 
-    # Strip trailing slash from host URL
     OLLAMA_HOST="${OLLAMA_HOST%/}"
     OLLAMA_BASE_URL="${OLLAMA_HOST}/v1"
 
-    # Build keep_alive parameter for model fetch options
     OLLAMA_FETCH_OPTS=""
     if [ -n "$OLLAMA_KEEP_ALIVE" ]; then
         OLLAMA_FETCH_OPTS=', "fetch": {"options": {"body": {"keep_alive": "'"${OLLAMA_KEEP_ALIVE}"'"}}}'
     fi
 
-    # Resolve model names (strip 'ollama/' prefix if user included it)
     RESOLVED_MODEL="${MODEL:-$DEFAULT_MODEL}"
     RESOLVED_MODEL="${RESOLVED_MODEL#ollama/}"
     RESOLVED_SMALL="${SMALL_MODEL:-$DEFAULT_SMALL}"
     RESOLVED_SMALL="${RESOLVED_SMALL#ollama/}"
 
-    # Build models map — include both model and small_model if different
     if [ "$RESOLVED_MODEL" = "$RESOLVED_SMALL" ]; then
         MODELS_MAP="\"${RESOLVED_MODEL}\": {\"name\": \"${RESOLVED_MODEL}\"${OLLAMA_FETCH_OPTS}}"
     else
@@ -105,7 +82,6 @@ case "$PROVIDER" in
 
     PROVIDER_CONFIG="\"ollama\": {\"npm\": \"@ai-sdk/openai-compatible\", \"name\": \"Ollama\", \"options\": {\"baseURL\": \"${OLLAMA_BASE_URL}\"}, \"models\": {${MODELS_MAP}}}"
 
-    # Override MODEL/SMALL_MODEL with ollama/ prefix for opencode.json
     MODEL="ollama/${RESOLVED_MODEL}"
     SMALL_MODEL="ollama/${RESOLVED_SMALL}"
 
@@ -130,12 +106,31 @@ echo "Model    : $MODEL"
 echo "Small    : $SMALL_MODEL"
 
 # ---------------------------------------------------------------------------
-# 3. Write OpenCode configuration
+# 3. Generate or load server password
 #
-# SUPERVISOR_TOKEN is injected automatically by the HA Supervisor into every
-# add-on container as an environment variable. It is a short-lived JWT that
-# rotates on each restart. We pass it to hass-mcp so the AI can authenticate
-# with the HA API without any manual token setup.
+# A random password is generated on first start and saved to /data so it
+# persists across container recreations. This password protects the
+# opencode serve web UI.
+# ---------------------------------------------------------------------------
+PASSWORD_FILE="/data/opencode-password"
+
+if [ -f "$PASSWORD_FILE" ]; then
+    PASSWORD=$(cat "$PASSWORD_FILE")
+    echo "Loaded existing password from ${PASSWORD_FILE}"
+else
+    PASSWORD=$(openssl rand -hex 16)
+    echo "$PASSWORD" > "$PASSWORD_FILE"
+    echo "Generated new password and saved to ${PASSWORD_FILE}"
+fi
+
+echo ""
+echo "============================================"
+echo "  OpenCode password: ${PASSWORD}"
+echo "============================================"
+echo ""
+
+# ---------------------------------------------------------------------------
+# 4. Write OpenCode configuration
 # ---------------------------------------------------------------------------
 mkdir -p /root/.config/opencode
 
@@ -184,7 +179,7 @@ OCEOF
 echo "OpenCode config written"
 
 # ---------------------------------------------------------------------------
-# 4. Initialize git in /config (HA config directory)
+# 5. Initialize git in /config (HA config directory)
 # ---------------------------------------------------------------------------
 cd /config
 
@@ -214,62 +209,16 @@ GIEOF
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Discover ingress entry and generate nginx config
+# 6. Start OpenCode server
 #
-# The ingress path is unique per installation. We query the Supervisor API
-# to get it, then substitute it into the nginx config template.
-# ---------------------------------------------------------------------------
-echo "Discovering ingress path..."
-
-INGRESS_ENTRY=""
-for i in $(seq 1 30); do
-    INGRESS_ENTRY=$(curl -s \
-        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-        http://supervisor/addons/self/info \
-        | jq -r '.data.ingress_entry // empty' 2>/dev/null)
-    if [ -n "$INGRESS_ENTRY" ]; then
-        break
-    fi
-    echo "  Waiting for Supervisor API... (attempt $i)"
-    sleep 2
-done
-
-if [ -z "$INGRESS_ENTRY" ]; then
-    echo "ERROR: Could not discover ingress entry from Supervisor API"
-    echo "Falling back to passthrough proxy (ingress rewriting disabled)"
-    INGRESS_ENTRY=""
-fi
-
-echo "Ingress entry: ${INGRESS_ENTRY}"
-
-# Generate the ingress patch script with the actual path baked in.
-# This script patches fetch() and EventSource to prepend the ingress
-# path to all API calls made by the SPA at runtime.
-sed "s|__INGRESS_ENTRY__|${INGRESS_ENTRY}|g" \
-    /etc/nginx/ingress-patch.js.template \
-    > /tmp/ingress-patch.js
-
-echo "Ingress patch script generated"
-
-sed "s|__INGRESS_ENTRY__|${INGRESS_ENTRY}|g" \
-    /etc/nginx/nginx.conf.template \
-    > /etc/nginx/http.d/opencode.conf
-
-echo "nginx config generated"
-
-# ---------------------------------------------------------------------------
-# 6. Start nginx + OpenCode
-#
-# XDG_STATE_HOME is set to /data/state so that OpenCode persists sessions,
-# conversation history, and other state across add-on restarts and HA reboots.
-# /data/ is the only directory that survives container recreation in HA add-ons.
+# Binds to 0.0.0.0 so it's accessible from outside the container on the
+# configured host port. XDG_STATE_HOME is set to /data/state so that
+# OpenCode persists sessions across container recreations.
 # ---------------------------------------------------------------------------
 export XDG_STATE_HOME="/data/state"
+export OPENCODE_SERVER_PASSWORD="$PASSWORD"
 mkdir -p "$XDG_STATE_HOME"
 
-nginx
-echo "nginx listening on port 8099 (ingress)"
-
-echo "Starting OpenCode server on 127.0.0.1:19876..."
+echo "Starting OpenCode server on 0.0.0.0:4096..."
 echo "Sessions persist at: ${XDG_STATE_HOME}/opencode/"
-exec opencode serve --hostname 127.0.0.1 --port 19876
+exec opencode serve --hostname 0.0.0.0 --port 4096
