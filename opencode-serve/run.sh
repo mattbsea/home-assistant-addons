@@ -22,6 +22,11 @@ fi
 echo "[init] Sourced ${S6_ENV_COUNT} environment variable(s) from s6"
 export SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-$HASSIO_TOKEN}"
 
+# Redirect $HOME into the persistent data volume so that OpenCode's default
+# paths (~/.config/opencode, ~/.local/share/opencode) survive container
+# recreations.
+export HOME="/data"
+
 if [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "[init] Supervisor token: present (${#SUPERVISOR_TOKEN} chars)"
 else
@@ -176,8 +181,8 @@ echo ""
 # ---------------------------------------------------------------------------
 # 4. Write OpenCode configuration
 # ---------------------------------------------------------------------------
-echo "[config] Writing OpenCode config to /root/.config/opencode/opencode.json..."
-mkdir -p /root/.config/opencode
+echo "[config] Writing OpenCode config to ${HOME}/.config/opencode/opencode.json..."
+mkdir -p "$HOME/.config/opencode"
 
 # Build optional GitHub MCP block
 GITHUB_MCP=""
@@ -199,7 +204,7 @@ else
     echo "[config] GitHub MCP: disabled (no token)"
 fi
 
-cat > /root/.config/opencode/opencode.json << OCEOF
+cat > "$HOME/.config/opencode/opencode.json" << OCEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "model": "${MODEL}",
@@ -223,7 +228,7 @@ cat > /root/.config/opencode/opencode.json << OCEOF
 }
 OCEOF
 
-echo "[config] OpenCode config written ($(wc -c < /root/.config/opencode/opencode.json) bytes)"
+echo "[config] OpenCode config written ($(wc -c < "$HOME/.config/opencode/opencode.json") bytes)"
 
 # ---------------------------------------------------------------------------
 # 5. Initialize git in /config (HA config directory)
@@ -268,9 +273,11 @@ fi
 export XDG_STATE_HOME="/data/state"
 export OPENCODE_SERVER_PASSWORD="$PASSWORD"
 mkdir -p "$XDG_STATE_HOME"
+mkdir -p "$HOME/.config/opencode"
 
 echo "[server] XDG_STATE_HOME  : ${XDG_STATE_HOME}"
-echo "[server] Sessions dir   : ${XDG_STATE_HOME}/opencode/"
+echo "[server] HOME            : ${HOME}"
+echo "[server] Sessions dir   : ${HOME}/.local/share/opencode/"
 echo "[server] Password file   : ${PASSWORD_FILE}"
 echo "[server] Listening on    : 0.0.0.0:4096"
 echo "[server] Starting opencode serve..."
