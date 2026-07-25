@@ -8,30 +8,48 @@ server {
         proxy_pass http://127.0.0.1:19876;
         proxy_http_version 1.1;
 
+        # WebSocket support (required for SSE + live updates)
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
+        # Decompress responses so sub_filter can rewrite them
         proxy_set_header Accept-Encoding "";
 
+        # Long timeouts for SSE streams and AI responses
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
 
+        # ------------------------------------------------------------------
+        # Path rewriting for HA ingress
+        #
+        # OpenCode's SPA uses absolute paths (/assets/..., /api/...).
+        # HA ingress serves the add-on under a subpath. These rules
+        # rewrite absolute references to the ingress-prefixed path.
+        #
+        # __INGRESS_ENTRY__ is replaced at runtime by run.sh with the
+        # actual ingress path discovered from the Supervisor API.
+        # ------------------------------------------------------------------
         sub_filter_once off;
-        sub_filter_types text/javascript application/javascript text/css;
+        sub_filter_types text/html text/javascript application/javascript text/css;
 
+        # HTML attribute rewrites (both quote styles)
         sub_filter 'href="/' 'href="__INGRESS_ENTRY__/';
         sub_filter 'src="/' 'src="__INGRESS_ENTRY__/';
         sub_filter "href='/" "href='__INGRESS_ENTRY__/";
         sub_filter "src='/" "src='__INGRESS_ENTRY__/";
 
+        # Vite chunk preload base path function
         sub_filter 'return"/"+e}' 'return"__INGRESS_ENTRY__/"+e}';
 
-        sub_filter '"http://localhost:19876":location.origin' '"http://localhost:19876":location.origin+"__INGRESS_ENTRY__"';
+        # API base URL — OpenCode checks localhost:4096 vs location.origin
+        sub_filter '"http://localhost:4096":location.origin' '"http://localhost:4096":location.origin+"__INGRESS_ENTRY__"';
 
+        # Web Worker paths
         sub_filter '"/assets/worker' '"__INGRESS_ENTRY__/assets/worker';
 
+        # Strip CSP that blocks inline scripts
         proxy_hide_header Content-Security-Policy;
     }
 }

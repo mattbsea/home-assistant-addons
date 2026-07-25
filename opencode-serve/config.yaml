@@ -1,38 +1,38 @@
----
-name: "OpenCode"
-description: "AI coding agent web interface powered by OpenCode"
-version: "1.1.1"
-slug: "opencode_serve"
-init: false
-url: "https://github.com/anomalyco/opencode"
-
+name: OpenCode
+version: "1.2.0"
+slug: opencode_serve
+description: OpenCode AI coding assistant for Home Assistant — accessible via sidebar with full HA entity access
+url: https://github.com/drakonizer/opencode-ha-addon
 arch:
-  - aarch64
   - amd64
-
+  - aarch64
+init: false
+startup: application
 ingress: true
 ingress_port: 8099
-ingress_stream: true
-panel_icon: mdi:code-braces
-panel_title: "OpenCode"
-
-ports:
-  4096/tcp: 4096
-ports_description:
-  4096/tcp: "OpenCode web interface (not required for ingress)"
-
-map:
-  - data:rw
-
-startup: services
-boot: auto
-
-webui: http://[HOST]:[PORT:4096]/
-
+panel_icon: mdi:robot-outline
+panel_title: OpenCode
+host_network: false
 hassio_api: true
 homeassistant_api: true
-
+map:
+  - config:rw
+  - ssl:ro
+  - addon_configs:rw
 options:
-  log_level: "info"
+  provider: "anthropic"
+  api_key: ""
+  model: ""
+  small_model: ""
+  ollama_host: ""
+  ollama_keep_alive: ""
+  github_token: ""
 schema:
-  log_level: list(debug|info|warn|error)
+  provider: str
+  api_key: "password?"
+  model: "str?"
+  small_model: "str?"
+  ollama_host: "str?"
+  ollama_keep_alive: "str?"
+  github_token: "password?"
+boot: auto
