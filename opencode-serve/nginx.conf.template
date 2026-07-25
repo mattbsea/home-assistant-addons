@@ -19,7 +19,7 @@ server {
         proxy_send_timeout 86400s;
 
         sub_filter_once off;
-        sub_filter_types text/html text/javascript application/javascript text/css;
+        sub_filter_types text/javascript application/javascript text/css;
 
         sub_filter 'href="/' 'href="__INGRESS_ENTRY__/';
         sub_filter 'src="/' 'src="__INGRESS_ENTRY__/';
