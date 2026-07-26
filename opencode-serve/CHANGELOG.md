@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.6
+
+- Add nodejs/npm to base image so npx (used by GitHub MCP server) works at runtime
+
+## 2.0.5
+
+- Only generate opencode config on first start (preserve user edits across restarts)
+
 ## 1.2.4
 
 - Fix: OpenCode's generated API client issues requests as `fetch(new Request(url, init))`. The
