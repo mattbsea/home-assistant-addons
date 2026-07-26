@@ -7,6 +7,8 @@ RUN apk add --no-cache \
     curl \
     git \
     jq \
+    nodejs \
+    npm \
     openssh-client
 
 # Install GitHub CLI
