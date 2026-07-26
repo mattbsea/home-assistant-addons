@@ -5,6 +5,7 @@ FROM ${BUILD_FROM}
 RUN apk add --no-cache \
     bash \
     curl \
+    docker-cli \
     git \
     jq \
     nodejs \
