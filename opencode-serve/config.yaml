@@ -1,5 +1,5 @@
 name: OpenCode
-version: "2.0.4"
+version: "2.0.5"
 slug: opencode_serve
 description: OpenCode AI coding assistant for Home Assistant — accessible on host port with full HA entity access
 url: https://github.com/drakonizer/opencode-ha-addon
@@ -14,6 +14,7 @@ homeassistant_api: true
 ports:
   "4096/tcp": 4096
 map:
+  - data:rw
   - config:rw
   - ssl:ro
   - addon_configs:rw

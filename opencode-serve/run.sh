@@ -179,32 +179,36 @@ echo "============================================"
 echo ""
 
 # ---------------------------------------------------------------------------
-# 4. Write OpenCode configuration
+# 4. Write OpenCode configuration (only on first start)
 # ---------------------------------------------------------------------------
-echo "[config] Writing OpenCode config to ${HOME}/.config/opencode/opencode.json..."
 mkdir -p "$HOME/.config/opencode"
 
-# Build optional GitHub MCP block
-GITHUB_MCP=""
-if [ -n "$GITHUB_TOKEN" ]; then
-    GITHUB_MCP=$(cat <<-GMCP
-    ,
-    "github": {
-      "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
-      "enabled": true,
-      "environment": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
-      }
-    }
-GMCP
-    )
-    echo "[config] GitHub MCP: enabled"
+if [ -f "$HOME/.config/opencode/opencode.json" ]; then
+    echo "[config] OpenCode config already exists — skipping generation"
 else
-    echo "[config] GitHub MCP: disabled (no token)"
-fi
+    echo "[config] Generating OpenCode config at ${HOME}/.config/opencode/opencode.json..."
 
-cat > "$HOME/.config/opencode/opencode.json" << OCEOF
+    # Build optional GitHub MCP block
+    GITHUB_MCP=""
+    if [ -n "$GITHUB_TOKEN" ]; then
+        GITHUB_MCP=$(cat <<-GMCP
+        ,
+        "github": {
+          "type": "local",
+          "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+          "enabled": true,
+          "environment": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+          }
+        }
+GMCP
+        )
+        echo "[config] GitHub MCP: enabled"
+    else
+        echo "[config] GitHub MCP: disabled (no token)"
+    fi
+
+    cat > "$HOME/.config/opencode/opencode.json" << OCEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "model": "${MODEL}",
@@ -228,7 +232,8 @@ cat > "$HOME/.config/opencode/opencode.json" << OCEOF
 }
 OCEOF
 
-echo "[config] OpenCode config written ($(wc -c < "$HOME/.config/opencode/opencode.json") bytes)"
+    echo "[config] OpenCode config written ($(wc -c < "$HOME/.config/opencode/opencode.json") bytes)"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Initialize git in /config (HA config directory)
