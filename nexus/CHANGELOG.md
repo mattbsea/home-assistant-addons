@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- Change default ports from 8081-8084 to 8086-8089 to avoid conflict with fleet-telemetry
+- Add `null` mapping for Docker proxy/group/extra ports (configure connectors in Nexus UI)
+
 ## 1.0.3
 
 - Fix build failure: Nexus 3.94.1 doesn't ship nexus.vmoptions — removed unnecessary `sed` line

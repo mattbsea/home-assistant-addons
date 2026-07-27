@@ -1,7 +1,7 @@
 ---
 name: "Nexus Repository"
 description: "Self-hosted universal artifact repository (Maven, npm, PyPI, Docker, etc.) — proxy caches for public registries and private hosted storage. Accessible via ingress for the web UI and direct ports for artifact upload/download from CI/CD tools like GitHub Actions."
-version: "1.0.3"
+version: "1.0.4"
 slug: "nexus_repository"
 init: false
 
@@ -15,22 +15,22 @@ startup: application
 boot: auto
 
 ingress: true
-ingress_port: 8081
+ingress_port: 8086
 ingress_stream: false
 panel_icon: mdi:package-variant-closed
 panel_title: "Nexus"
-webui: "http://[HOST]:[PORT:8081]/"
+webui: "http://[HOST]:[PORT:8086]/"
 
 ports:
-  8081/tcp: 8081
-  8082/tcp: 8082
-  8083/tcp: ~
-  8084/tcp: ~
+  8086/tcp: 8086
+  8087/tcp: ~
+  8088/tcp: ~
+  8089/tcp: ~
 ports_description:
-  8081/tcp: "Nexus web UI and REST API"
-  8082/tcp: "Docker hosted registry (configure connector in Nexus UI — Settings > Repositories > Create > docker hosted)"
-  8083/tcp: "Docker proxy registry (container-internal until assigned a connector port)"
-  8084/tcp: "Docker group registry (container-internal until assigned a connector port)"
+  8086/tcp: "Nexus web UI and REST API (also used by Docker hosted registry connector)"
+  8087/tcp: "Docker proxy registry (configure connector in Nexus UI)"
+  8088/tcp: "Docker group registry (configure connector in Nexus UI)"
+  8089/tcp: "Extra registry port (configure connector in Nexus UI)"
 
 map:
   - data:rw

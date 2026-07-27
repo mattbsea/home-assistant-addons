@@ -24,12 +24,12 @@ Nexus takes **2–3 minutes** to start on the first run (Java initialization + e
 | Method | URL |
 |--------|-----|
 | HA sidebar ingress | Click **Nexus** in the HA sidebar |
-| Direct (same LAN) | `http://<ha-host>:8081/` |
+| Direct (same LAN) | `http://<ha-host>:8086/` |
 
 ### REST API
 
 Used by CI/CD tools (GitHub Actions, etc.):
-`http://<ha-host>:8081/service/rest/v1/`
+`http://<ha-host>:8086/service/rest/v1/`
 
 See the [Nexus REST API docs](https://help.sonatype.com/en/rest-and-integration-api.html).
 
@@ -40,9 +40,10 @@ connectors that you configure in the Nexus UI:
 
 | Port | Purpose | Exposed |
 |------|---------|---------|
-| 8082 | Docker hosted (push/pull your images) | Yes |
-| 8083 | Docker proxy (cache Docker Hub) | Not by default |
-| 8084 | Docker group (combine hosted + proxy) | Not by default |
+| 8086 | Main UI/API + Docker hosted (push/pull) | Yes |
+| 8087 | Docker proxy (cache Docker Hub) | Container-internal |
+| 8088 | Docker group (combine hosted + proxy) | Container-internal |
+| 8089 | Extra registry port | Container-internal |
 
 ### Setup
 
@@ -51,9 +52,9 @@ connectors that you configure in the Nexus UI:
 3. Enable the **Docker Bearer Token Realm** under **Security → Realms**.
 4. From your CI/CD runner:
    ```bash
-   docker login <ha-host>:8082 -u admin -p <password>
-   docker build -t <ha-host>:8082/my-image:latest .
-   docker push <ha-host>:8082/my-image:latest
+   docker login <ha-host>:8086 -u admin -p <password>
+   docker build -t <ha-host>:8086/my-image:latest .
+   docker push <ha-host>:8086/my-image:latest
    ```
 
 For proxy repositories, create a **docker (proxy)** repository pointing at
@@ -67,13 +68,13 @@ Add a `docker/login-action` step in your workflow:
 - name: Log in to Nexus Docker registry
   uses: docker/login-action@v3
   with:
-    registry: ${{ vars.NEXUS_HOST }}:8082
+    registry: ${{ vars.NEXUS_HOST }}:8086
     username: ${{ secrets.NEXUS_USERNAME }}
     password: ${{ secrets.NEXUS_PASSWORD }}
 ```
 
 For Maven/npm/PyPI artifacts, configure the Nexus repository URL in your build tool (e.g.,
-`pom.xml`, `.npmrc`, `pip.conf`) pointing at `http://<ha-host>:8081/repository/<repo-name>/`.
+`pom.xml`, `.npmrc`, `pip.conf`) pointing at `http://<ha-host>:8086/repository/<repo-name>/`.
 
 ## Media mount
 
