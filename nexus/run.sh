@@ -14,4 +14,4 @@ export INSTALL4J_ADD_VM_PARAMS="${JAVA_MEM} -Djava.util.prefs.userRoot=/data/nex
 bashio::log.info "Starting Nexus Repository (NEXUS_DATA=${NEXUS_DATA})..."
 bashio::log.info "JVM options: ${INSTALL4J_ADD_VM_PARAMS}"
 
-exec gosu nexus /opt/sonatype/nexus/bin/nexus run
+exec sudo -E -u nexus /opt/sonatype/nexus/bin/nexus run

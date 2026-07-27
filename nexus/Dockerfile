@@ -16,7 +16,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         unzip \
-        gosu \
+        sudo \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 200 -r nexus \

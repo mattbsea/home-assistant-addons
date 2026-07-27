@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- Fix build failure: replaced `gosu` with `sudo` (gosu is not a Debian package)
+- Use `sudo -E -u nexus` for privilege drop (preserves env vars)
+
 ## 1.0.0
 
 - Initial release
