@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Fix build failure: add default ARG values so build works without HA builder passing build.yaml args
+- Add `InvalidDefaultArgInFrom` hadolint exception
+
 ## 1.0.1
 
 - Fix build failure: replaced `gosu` with `sudo` (gosu is not a Debian package)
