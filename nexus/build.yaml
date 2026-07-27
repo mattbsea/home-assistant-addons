@@ -1,0 +1,13 @@
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+
+labels:
+  org.opencontainers.image.title: "Home Assistant Add-on: Nexus Repository"
+  org.opencontainers.image.description: "Self-hosted Sonatype Nexus Repository — universal artifact repository (Maven, npm, PyPI, Docker, etc.)"
+  org.opencontainers.image.source: "https://github.com/sonatype/nexus-public"
+  org.opencontainers.image.licenses: "Apache-2.0"
+
+args:
+  NEXUS_VERSION: "3.94.1-06"
+  NEXUS_SHA256: "8d80b7c00217a1cdbf4bb39da72830a0bb2b93c7de3a27ade4695f6f7b6c0a59"

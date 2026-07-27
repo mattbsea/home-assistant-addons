@@ -1,0 +1,42 @@
+---
+name: "Nexus Repository"
+description: "Self-hosted universal artifact repository (Maven, npm, PyPI, Docker, etc.) — proxy caches for public registries and private hosted storage. Accessible via ingress for the web UI and direct ports for artifact upload/download from CI/CD tools like GitHub Actions."
+version: "1.0.0"
+slug: "nexus_repository"
+init: false
+
+arch:
+  - amd64
+  - aarch64
+
+url: "https://github.com/sonatype/nexus-public"
+
+startup: application
+boot: auto
+
+ingress: true
+ingress_port: 8081
+ingress_stream: false
+panel_icon: mdi:package-variant-closed
+panel_title: "Nexus"
+webui: "http://[HOST]:[PORT:8081]/"
+
+ports:
+  8081/tcp: 8081
+  8082/tcp: 8082
+  8083/tcp: ~
+  8084/tcp: ~
+ports_description:
+  8081/tcp: "Nexus web UI and REST API"
+  8082/tcp: "Docker hosted registry (configure connector in Nexus UI — Settings > Repositories > Create > docker hosted)"
+  8083/tcp: "Docker proxy registry (container-internal until assigned a connector port)"
+  8084/tcp: "Docker group registry (container-internal until assigned a connector port)"
+
+map:
+  - data:rw
+  - media:rw
+
+options:
+  java_mem: "-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g"
+schema:
+  java_mem: str
