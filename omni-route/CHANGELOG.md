@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.12
+
+- **Fix data directory: use `DATA_DIR` instead of `STORAGE_DIR`.** OmniRoute
+  reads `DATA_DIR` (defaults to `~/.omniroute`), not `STORAGE_DIR`. The
+  previous env var was silently ignored, causing all persistent state
+  (database, provider configs, API keys) to be lost on container restart.
+  Changed `export STORAGE_DIR="/data"` to `export DATA_DIR="/data"` so data
+  is written to the persistent `/data` volume mapped by `config.yaml`.
+
 ## 1.0.11
 
 - **Drop Home Assistant Ingress entirely.** OmniRoute (Next.js) doesn't

@@ -15,7 +15,7 @@ bashio::log.info "Starting OmniRoute..."
 # directly on its exposed port; put a reverse proxy (e.g. NGINX Proxy
 # Manager) in front of it if you want a domain/TLS. Login stays required —
 # do NOT disable it here.
-export STORAGE_DIR="/data"
+export DATA_DIR="/data"
 export PORT=20128
 
 # --- Logging ---
