@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.8
+
+- Mount media directory (media:rw) so add-on can access media files
+
+## 2.0.7
+
+- Add docker-cli and docker_api for protection mode disabled
+
 ## 2.0.6
 
 - Add nodejs/npm to base image so npx (used by GitHub MCP server) works at runtime
