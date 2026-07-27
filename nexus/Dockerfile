@@ -30,7 +30,6 @@ RUN curl -fsSL \
     && rm /tmp/nexus.zip \
     && mv "/opt/sonatype/nexus-${NEXUS_VERSION}" ${NEXUS_HOME} \
     && chown -R nexus:nexus /opt/sonatype \
-    && sed -i '/^-Xms/d;/^-Xmx/d;/^-XX:MaxDirectMemorySize/d' ${NEXUS_HOME}/bin/nexus.vmoptions \
     && chmod a+x ${NEXUS_HOME}/bin/nexus
 
 COPY run.sh /run.sh

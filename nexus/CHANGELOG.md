@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.3
+
+- Fix build failure: Nexus 3.94.1 doesn't ship nexus.vmoptions — removed unnecessary `sed` line
+- JVM settings are controlled entirely via INSTALL4J_ADD_VM_PARAMS at runtime
+
 ## 1.0.2
 
 - Fix build failure: add default ARG values so build works without HA builder passing build.yaml args
