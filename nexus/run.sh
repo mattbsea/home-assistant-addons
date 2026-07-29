@@ -9,7 +9,7 @@ chown -R 200:200 /data/nexus-data
 chmod 755 /media 2>/dev/null || true
 
 export NEXUS_DATA=/data/nexus-data
-export INSTALL4J_ADD_VM_PARAMS="${JAVA_MEM} -Djava.util.prefs.userRoot=/data/nexus-data/javaprefs"
+export INSTALL4J_ADD_VM_PARAMS="${JAVA_MEM} -Dapplication-port=8086 -Djava.util.prefs.userRoot=/data/nexus-data/javaprefs"
 
 bashio::log.info "Starting Nexus Repository (NEXUS_DATA=${NEXUS_DATA})..."
 bashio::log.info "JVM options: ${INSTALL4J_ADD_VM_PARAMS}"

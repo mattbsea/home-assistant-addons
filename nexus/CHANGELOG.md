@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Fix 502 Bad Gateway on ingress: configure Nexus to listen on port 8086 (matching `ingress_port`) instead of default 8081
+
 ## 1.0.7
 
 - Fix build failure (again): install `gpg` before using it to add the Adoptium apt repo
