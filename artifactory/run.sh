@@ -41,6 +41,13 @@ su - postgres -c "psql -c \"CREATE DATABASE access OWNER artifactory;\" 2>/dev/n
 cat > /data/artifactory/var/etc/system.yaml <<EOF
 artifactory:
   port: 8091
+  database:
+    type: postgresql
+    driver: org.postgresql.Driver
+    entity: access
+    url: jdbc:postgresql://localhost:5432/access
+    user: artifactory
+    password: artifactory
   tomcat:
     maintenanceConnector:
       port: 8092
@@ -52,15 +59,10 @@ security:
   join:
     access:
       autoConfigure: true
+      url: http://localhost:8040
 shared:
   node:
     id: "$(hostname)"
-  database:
-    host: "localhost"
-    port: "5432"
-    name: "access"
-    user: "artifactory"
-    password: "artifactory"
 EOF
 
 chown 185:185 /data/artifactory/var/etc/system.yaml
