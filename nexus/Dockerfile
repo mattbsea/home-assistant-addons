@@ -12,7 +12,7 @@ ENV NEXUS_HOME=/opt/sonatype/nexus \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        openjdk-17-jre-headless \
+        openjdk-21-jre-headless \
         ca-certificates \
         curl \
         unzip \

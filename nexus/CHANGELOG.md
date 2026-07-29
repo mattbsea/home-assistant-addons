@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Fix crash on startup: Nexus 3.94.1 requires Java 21 — upgraded from `openjdk-17-jre-headless` to `openjdk-21-jre-headless`
+
 ## 1.0.4
 
 - Change default ports from 8081-8084 to 8086-8089 to avoid conflict with fleet-telemetry
