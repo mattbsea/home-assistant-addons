@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Fixed startup crash: removed `run` argument from `artifactory.sh` (script failed to match the action in the OSS version; no-argument default runs in foreground)
+
 ## 1.0.2
 
 - Fixed image build failure: added `mkdir -p /opt/jfrog` before tarball extraction

@@ -29,4 +29,4 @@ export ARTIFACTORY_JAVA_OPTIONS="${JAVA_MEM}"
 bashio::log.info "Starting Artifactory Repository (JFROG_HOME=${JFROG_HOME})..."
 bashio::log.info "JVM options: ${ARTIFACTORY_JAVA_OPTIONS}"
 
-exec sudo -E -u artifactory "${JFROG_HOME}/app/bin/artifactory.sh" run
+exec sudo -E -u artifactory "${JFROG_HOME}/app/bin/artifactory.sh"
