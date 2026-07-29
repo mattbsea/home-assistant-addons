@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Fixed image build failure: added `mkdir -p /opt/jfrog` before tarball extraction
+
 ## 1.0.1
 
 - Fixed startup command: `artifactory.sh foreground` → `artifactory.sh run`

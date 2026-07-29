@@ -21,7 +21,7 @@ RUN apt-get update \
 RUN groupadd --gid 185 -r artifactory \
     && useradd --uid 185 -r artifactory -g artifactory -s /bin/false -d ${JFROG_HOME} -c 'JFrog Artifactory user'
 
-RUN mkdir -p /tmp/artifactory \
+RUN mkdir -p /opt/jfrog /tmp/artifactory \
     && curl -fsSL \
         "https://releases.jfrog.io/artifactory/bintray-artifactory/org/artifactory/oss/jfrog-artifactory-oss/${ARTIFACTORY_VERSION}/jfrog-artifactory-oss-${ARTIFACTORY_VERSION}-linux.tar.gz" \
         -o /tmp/artifactory/artifactory.tar.gz \
