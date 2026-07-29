@@ -1,7 +1,7 @@
 ---
 name: "Nexus Repository"
 description: "Self-hosted universal artifact repository (Maven, npm, PyPI, Docker, etc.) — proxy caches for public registries and private hosted storage. Accessible via ingress for the web UI and direct ports for artifact upload/download from CI/CD tools like GitHub Actions."
-version: "1.0.6"
+version: "1.0.7"
 slug: "nexus_repository"
 init: false
 

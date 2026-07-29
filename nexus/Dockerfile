@@ -10,17 +10,20 @@ ENV FT_ADDON_VERSION=${BUILD_VERSION}
 ENV NEXUS_HOME=/opt/sonatype/nexus \
     SONATYPE_WORK=/opt/sonatype/sonatype-work
 
-RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gpg \
+        sudo \
+        unzip \
+    && curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" \
         > /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         temurin-21-jre \
-        ca-certificates \
-        curl \
-        unzip \
-        sudo \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 200 -r nexus \

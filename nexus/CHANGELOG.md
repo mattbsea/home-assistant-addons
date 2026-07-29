@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7
+
+- Fix build failure (again): install `gpg` before using it to add the Adoptium apt repo
+
 ## 1.0.6
 
 - Fix build failure: openjdk-21-jre-headless not available in Debian Bookworm, switch to Eclipse Temurin 21 JRE from Adoptium apt repo
