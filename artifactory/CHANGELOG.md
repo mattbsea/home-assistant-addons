@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.7
+
+- Added PostgreSQL support for Artifactory OSS (derby database is not allowed in 7.x)
+- Updated system.yaml to configure PostgreSQL database connection parameters
+- Added PostgreSQL installation to Dockerfile
+- Added PostgreSQL startup script to run.sh
+
 ## 1.0.3
 
 - Fixed startup crash: removed `run` argument from `artifactory.sh` (script failed to match the action in the OSS version; no-argument default runs in foreground)

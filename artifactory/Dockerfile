@@ -16,6 +16,8 @@ RUN apt-get update \
         curl \
         sudo \
         tar \
+        postgresql \
+        postgresql-common \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 185 -r artifactory \
