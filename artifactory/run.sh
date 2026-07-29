@@ -16,9 +16,20 @@ ln -sf /data/artifactory/var "${JFROG_HOME}/var"
 cat > /data/artifactory/var/etc/system.yaml <<EOF
 artifactory:
   port: 8091
+  tomcat:
+    maintenanceConnector:
+      port: 8092
 router:
   entrypoints:
+    internalPort: 8046
     externalPort: 8090
+security:
+  join:
+    access:
+      autoConfigure: true
+shared:
+  node:
+    id: "$(hostname)"
 EOF
 
 chown 185:185 /data/artifactory/var/etc/system.yaml
