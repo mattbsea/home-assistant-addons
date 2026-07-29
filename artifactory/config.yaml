@@ -1,0 +1,40 @@
+---
+name: "Artifactory Repository"
+description: "Self-hosted JFrog Artifactory OSS — universal artifact repository manager for Maven, npm, PyPI, Docker, Conan, Helm, and more. Use as a proxy cache for public registries and private hosted storage for your CI/CD pipeline."
+version: "1.0.1"
+slug: "artifactory_repository"
+init: false
+
+arch:
+  - amd64
+  - aarch64
+
+url: "https://jfrog.com/community/download-artifactory-oss/"
+
+startup: application
+boot: auto
+
+ingress: true
+ingress_port: 8090
+ingress_stream: false
+panel_icon: mdi:package-variant-closed
+panel_title: "Artifactory"
+webui: "http://[HOST]:[PORT:8090]/"
+
+ports:
+  8090/tcp: 8090
+  8091/tcp: ~
+  8092/tcp: ~
+ports_description:
+  8090/tcp: "Artifactory web UI and REST API (via Router) — default access"
+  8091/tcp: "Artifactory service port (direct API access for CI/CD tools)"
+  8092/tcp: "Extra connector port (configure in Artifactory UI, e.g. Docker registry)"
+
+map:
+  - data:rw
+  - media:rw
+
+options:
+  java_mem: "-Xms2g -Xmx2g"
+schema:
+  java_mem: str
