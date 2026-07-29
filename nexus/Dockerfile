@@ -10,9 +10,13 @@ ENV FT_ADDON_VERSION=${BUILD_VERSION}
 ENV NEXUS_HOME=/opt/sonatype/nexus \
     SONATYPE_WORK=/opt/sonatype/sonatype-work
 
-RUN apt-get update \
+RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" \
+        > /etc/apt/sources.list.d/adoptium.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
-        openjdk-21-jre-headless \
+        temurin-21-jre \
         ca-certificates \
         curl \
         unzip \

@@ -2,7 +2,7 @@
 
 ## 1.0.5
 
-- Fix crash on startup: Nexus 3.94.1 requires Java 21 — upgraded from `openjdk-17-jre-headless` to `openjdk-21-jre-headless`
+- Fix build failure: Nexus 3.94.1 requires Java 21, but `openjdk-21-jre-headless` isn't in Debian Bookworm. Switch to Eclipse Temurin 21 JRE from Adoptium's apt repository.
 
 ## 1.0.4
 
