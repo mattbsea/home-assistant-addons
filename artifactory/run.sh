@@ -7,11 +7,13 @@ JFROG_HOME=/opt/jfrog/artifactory
 mkdir -p /data/artifactory/var/etc /data/artifactory/var/data /data/artifactory/var/log
 chown -R 185:185 /data/artifactory
 
-if [ -L "${JFROG_HOME}/var" ] || [ ! -d "${JFROG_HOME}/var" ]; then
-  rm -rf "${JFROG_HOME:?}/var"
-fi
-
-ln -sf /data/artifactory/var "${JFROG_HOME}/var"
+# Unconditional rm+relink: JFrog's tarball ships var/ as a real directory,
+# so `ln -sf` (target already a real dir) nests the link inside as var/var
+# instead of replacing var — leaving JFROG_HOME/var pointing at the stale
+# bundled dir instead of our persistent /data/artifactory/var (orphaning
+# the master key generated below).
+rm -rf "${JFROG_HOME:?}/var"
+ln -s /data/artifactory/var "${JFROG_HOME}/var"
 
 # Clean up stale PID files and Derby database from previous container runs
 find "${JFROG_HOME}/app" -name "*.pid" -delete 2>/dev/null || true

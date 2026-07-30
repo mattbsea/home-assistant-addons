@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.16
+
+- Fix master key never found by the router service (`jfrou` FATAL "file does not exist: .../var/etc/security/master.key"), which cascaded into permanent Access/frontend "connection refused" retry loops. Root cause: `JFROG_HOME/var` ships as a real directory inside JFrog's own distribution tarball, so `ln -sf /data/artifactory/var "${JFROG_HOME}/var"` silently nested the symlink inside it as `var/var` instead of replacing `var` — leaving the router reading the stale bundled directory instead of our persistent one holding the generated master key. Now unconditionally `rm -rf` and recreate the symlink on every start.
+
 ## 1.0.15
 
 - Remove `security.join` section from system.yaml (single-node OSS doesn't need cluster/join config; was causing Access service ping retries)
