@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.13
+
+- Added `procps` package (provides `ps` command required by Artifactory startup scripts)
+- Clean stale PID files from previous container runs before starting services
+
+## 1.0.12
+
+- Start Access service before Artifactory so master key is initialized first
+- Wait loop until Access responds on port 8040 before starting Artifactory/Router
+
+## 1.0.11
+
+- Fixed PostgreSQL binary discovery: use `ls -d` to expand glob path
+- Fixed postgres user shell: changed from `/bin/false` to `/bin/bash` for `su` compatibility
+- Embedded master key directly in system.yaml
+- Added PostgreSQL startup error handling with retry loop
+
+## 1.0.10
+
+- Added master key generation (`openssl rand -hex 32`) for Artifactory 7.x topology service
+- Export `ARTIFACTORY_SECURITY_MASTER_KEY_FILE` environment variable
+
+## 1.0.9
+
+- Upgraded DB user to `SUPERUSER` for Access service schema creation
+- Added PostgreSQL startup logging and status checks
+
+## 1.0.8
+
+- Fixed PostgreSQL container startup: use `pg_ctl` instead of `service` (no systemd)
+- Create postgres user if it doesn't exist at runtime
+
 ## 1.0.7
 
 - Added PostgreSQL support for Artifactory OSS (derby database is not allowed in 7.x)
