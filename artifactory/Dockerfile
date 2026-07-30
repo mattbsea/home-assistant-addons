@@ -15,6 +15,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         openssl \
+        procps \
         sudo \
         tar \
         postgresql \
