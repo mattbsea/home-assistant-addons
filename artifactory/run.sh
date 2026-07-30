@@ -13,8 +13,10 @@ fi
 
 ln -sf /data/artifactory/var "${JFROG_HOME}/var"
 
-# Clean up stale PID files from previous container runs
+# Clean up stale PID files and Derby database from previous container runs
 find "${JFROG_HOME}/app" -name "*.pid" -delete 2>/dev/null || true
+rm -rf /data/artifactory/var/data/jfbus/derby
+rm -rf /data/artifactory/var/data/derby
 
 # Generate master key if not exists (required for Artifactory 7.x topology service)
 MASTER_KEY_FILE="/data/artifactory/var/etc/security/master.key"
@@ -85,13 +87,6 @@ MASTER_KEY=$(cat "$MASTER_KEY_FILE")
 cat > /data/artifactory/var/etc/system.yaml <<EOF
 artifactory:
   port: 8091
-  database:
-    type: postgresql
-    driver: org.postgresql.Driver
-    entity: access
-    url: jdbc:postgresql://localhost:5432/access?sslmode=disable
-    user: artifactory
-    password: artifactory
   tomcat:
     maintenanceConnector:
       port: 8092
@@ -105,6 +100,12 @@ security:
       autoConfigure: true
       url: http://localhost:8040
 shared:
+  database:
+    type: postgresql
+    driver: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/access?sslmode=disable
+    username: artifactory
+    password: artifactory
   node:
     id: "$(hostname)"
   security:
