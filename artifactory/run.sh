@@ -94,11 +94,6 @@ router:
   entrypoints:
     internalPort: 8046
     externalPort: 8090
-security:
-  join:
-    access:
-      autoConfigure: true
-      url: http://localhost:8040
 shared:
   database:
     type: postgresql
