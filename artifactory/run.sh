@@ -30,32 +30,55 @@ bashio::log.info "Starting PostgreSQL..."
 mkdir -p /data/artifactory/postgres
 if ! id postgres >/dev/null 2>&1; then
   groupadd --gid 999 -r postgres
-  useradd --uid 999 -r postgres -g postgres -s /bin/false -d /var/lib/postgresql -c 'PostgreSQL user'
+  useradd --uid 999 -r postgres -g postgres -s /bin/bash -d /var/lib/postgresql -c 'PostgreSQL user'
 fi
 chown -R postgres:postgres /data/artifactory/postgres
 chmod 700 /data/artifactory/postgres
 
-PG_BIN="/usr/lib/postgresql/*/bin"
+PG_BIN=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | head -1)
 PG_DATA="/data/artifactory/postgres"
+PG_LOG="${PG_DATA}/pg.log"
+
+if [ -z "$PG_BIN" ]; then
+  bashio::log.error "PostgreSQL binaries not found in /usr/lib/postgresql/*/bin"
+  bashio::log.info "Available: $(ls /usr/lib/postgresql/ 2>/dev/null || echo 'none')"
+  exit 1
+fi
+
+bashio::log.info "PostgreSQL binaries: ${PG_BIN}"
 
 if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
+  bashio::log.info "Initializing PostgreSQL database..."
   su - postgres -c "${PG_BIN}/initdb -D ${PG_DATA} --auth-local=trust --auth-host=md5 -U postgres"
   echo "host all all 0.0.0.0/0 md5" >> "${PG_DATA}/pg_hba.conf"
   echo "listen_addresses = 'localhost'" >> "${PG_DATA}/postgresql.conf"
 fi
 
-su - postgres -c "${PG_BIN}/pg_ctl -D ${PG_DATA} -l ${PG_DATA}/logfile start"
-while ! su - postgres -c "${PG_BIN}/pg_isready -d postgres" >/dev/null 2>&1; do
-  bashio::log.info "Waiting for PostgreSQL to start..."
-  sleep 1
+su - postgres -c "${PG_BIN}/pg_ctl -D ${PG_DATA} -l ${PG_LOG} start"
+sleep 3
+for i in 1 2 3 4 5; do
+  if ! su - postgres -c "${PG_BIN}/pg_isready -d postgres" >/dev/null 2>&1; then
+    bashio::log.info "Waiting for PostgreSQL to start... (attempt ${i}/5)"
+    sleep 2
+  else
+    bashio::log.info "PostgreSQL is ready"
+    break
+  fi
 done
-bashio::log.info "PostgreSQL is ready"
+if ! su - postgres -c "${PG_BIN}/pg_isready -d postgres" >/dev/null 2>&1; then
+  bashio::log.error "PostgreSQL failed to start. Log:"
+  cat "${PG_LOG}" 2>/dev/null || echo "No log file"
+  exit 1
+fi
 
 # Create database and user
-su - postgres -c "psql -c \"CREATE USER artifactory WITH PASSWORD 'artifactory' SUPERUSER;\" 2>/dev/null || true"
-su - postgres -c "psql -c \"CREATE DATABASE access OWNER artifactory;\"" 2>/dev/null || true
+su - postgres <<'PGEOF'
+psql -c "CREATE USER artifactory WITH PASSWORD 'artifactory' SUPERUSER;" 2>/dev/null
+psql -c "CREATE DATABASE access OWNER artifactory;" 2>/dev/null
+PGEOF
 
 # Write system.yaml with database configuration
+MASTER_KEY=$(cat "$MASTER_KEY_FILE")
 cat > /data/artifactory/var/etc/system.yaml <<EOF
 artifactory:
   port: 8091
@@ -63,7 +86,7 @@ artifactory:
     type: postgresql
     driver: org.postgresql.Driver
     entity: access
-    url: jdbc:postgresql://localhost:5432/access
+    url: jdbc:postgresql://localhost:5432/access?sslmode=disable
     user: artifactory
     password: artifactory
   tomcat:
@@ -81,6 +104,8 @@ security:
 shared:
   node:
     id: "$(hostname)"
+  security:
+    masterKey: ${MASTER_KEY}
 EOF
 
 chown 185:185 /data/artifactory/var/etc/system.yaml
