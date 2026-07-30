@@ -1,7 +1,7 @@
 ---
 name: "Artifactory Repository"
 description: "Self-hosted JFrog Artifactory OSS — universal artifact repository manager for Maven, npm, PyPI, Docker, Conan, Helm, and more. Use as a proxy cache for public registries and private hosted storage for your CI/CD pipeline."
-version: "1.0.16"
+version: "1.0.17"
 slug: "artifactory_repository"
 init: false
 

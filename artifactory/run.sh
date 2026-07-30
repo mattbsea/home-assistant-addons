@@ -96,6 +96,8 @@ router:
   entrypoints:
     internalPort: 8046
     externalPort: 8090
+jfconnect:
+  enabled: false
 shared:
   database:
     type: postgresql

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.17
+
+- Fix login page hanging/spinning forever. Root cause: JFrog ships the JFConnect microservice enabled by default even in OSS builds (known upstream bug, jfrog/charts#1806, jfrog/charts#2233), but OSS doesn't implement its entitlements endpoint, so the frontend's "first-time entitlement fetch" 404s and retries forever, blocking the UI from ever finishing initialization. Add `jfconnect.enabled: false` to the generated system.yaml.
+
 ## 1.0.16
 
 - Fix master key never found by the router service (`jfrou` FATAL "file does not exist: .../var/etc/security/master.key"), which cascaded into permanent Access/frontend "connection refused" retry loops. Root cause: `JFROG_HOME/var` ships as a real directory inside JFrog's own distribution tarball, so `ln -sf /data/artifactory/var "${JFROG_HOME}/var"` silently nested the symlink inside it as `var/var` instead of replacing `var` — leaving the router reading the stale bundled directory instead of our persistent one holding the generated master key. Now unconditionally `rm -rf` and recreate the symlink on every start.
