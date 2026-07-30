@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.15
+
+- Remove `security.join` section from system.yaml (single-node OSS doesn't need cluster/join config; was causing Access service ping retries)
+
 ## 1.0.14
 
 - Use `shared.database` (instead of `artifactory.database`) so all services (jfbus, event, metadata) use PostgreSQL
