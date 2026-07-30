@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.14
+
+- Use `shared.database` (instead of `artifactory.database`) so all services (jfbus, event, metadata) use PostgreSQL
+- Remove stale Derby databases from persistent `/data` volume on startup to force PostgreSQL switch
+- Use `username`/`password` keys (correct schema for `shared.database` section)
+
 ## 1.0.13
 
 - Added `procps` package (provides `ps` command required by Artifactory startup scripts)
