@@ -117,11 +117,24 @@ export ARTIFACTORY_SECURITY_MASTER_KEY_FILE="$MASTER_KEY_FILE"
 bashio::log.info "Starting Artifactory Repository (JFROG_HOME=${JFROG_HOME})..."
 bashio::log.info "JVM options: ${ARTIFACTORY_JAVA_OPTIONS}"
 
-# Start Access service first (it needs to be running before Router health checks)
-bashio::log.info "Starting Access service..."
-if [ -x "${JFROG_HOME}/app/access/bin/access.sh" ]; then
-  su - artifactory -c "${JFROG_HOME}/app/access/bin/access.sh start"
+export JFROG_HOME
+export ARTIFACTORY_JAVA_OPTIONS="${JAVA_MEM}"
+export ARTIFACTORY_SECURITY_MASTER_KEY_FILE="$MASTER_KEY_FILE"
+export JFROG_ENV_FILE=""
+
+# Start services individually: Access first (handles master key), then everything else
+ACCESS_SCRIPT="${JFROG_HOME}/app/access/bin/access.sh"
+if [ -x "$ACCESS_SCRIPT" ]; then
+  bashio::log.info "Starting Access service..."
+  su - artifactory -c "$ACCESS_SCRIPT start"
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    if curl -sf http://localhost:8040/access/api/v1/system/ping >/dev/null 2>&1; then
+      bashio::log.info "Access service is ready"
+      break
+    fi
+    sleep 5
+  done
 fi
 
-# Start Artifactory (runs in foreground)
+bashio::log.info "Starting Artifactory and Router services..."
 exec sudo -E -u artifactory "${JFROG_HOME}/app/bin/artifactory.sh"
