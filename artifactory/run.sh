@@ -32,6 +32,25 @@ else
 fi
 chown -R 185:185 /data/artifactory/var/etc/security
 
+# Point the filestore at /media/USBDisk (only on first boot -- never overwrite
+# a binarystore.xml the user has since customized, e.g. via a UI/API change).
+BINARYSTORE_FILE="/data/artifactory/var/etc/artifactory/binarystore.xml"
+if [ ! -f "$BINARYSTORE_FILE" ]; then
+  bashio::log.info "Configuring filestore at /media/USBDisk/artifactory-data..."
+  mkdir -p /media/USBDisk/artifactory-data
+  chown -R 185:185 /media/USBDisk/artifactory-data
+  mkdir -p "$(dirname "$BINARYSTORE_FILE")"
+  cat > "$BINARYSTORE_FILE" <<'EOF'
+<config version="v1">
+    <chain template="file-system"/>
+    <provider id="file-system" type="file-system">
+        <baseDataDir>/media/USBDisk/artifactory-data</baseDataDir>
+    </provider>
+</config>
+EOF
+  chown 185:185 "$BINARYSTORE_FILE"
+fi
+
 # Start PostgreSQL
 bashio::log.info "Starting PostgreSQL..."
 mkdir -p /data/artifactory/postgres

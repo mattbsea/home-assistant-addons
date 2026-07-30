@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.18
+
+- Point the filestore at `/media/USBDisk/artifactory-data` by default via a generated `binarystore.xml` (only written on first boot, never overwrites later changes). The OSS UI has no Filestore admin page (Enterprise/Pro-only) even though the underlying file-system provider works in OSS, so this can otherwise only be set by hand-editing the XML — documented in DOCS.md.
+
 ## 1.0.17
 
 - Fix login page hanging/spinning forever. Root cause: JFrog ships the JFConnect microservice enabled by default even in OSS builds (known upstream bug, jfrog/charts#1806, jfrog/charts#2233), but OSS doesn't implement its entitlements endpoint, so the frontend's "first-time entitlement fetch" 404s and retries forever, blocking the UI from ever finishing initialization. Add `jfconnect.enabled: false` to the generated system.yaml.

@@ -90,15 +90,29 @@ For Docker, add a `docker/login-action` step:
     password: ${{ secrets.ARTIFACTORY_PASSWORD }}
 ```
 
-## Media mount
+## Media mount / filestore location
 
-The `/media` directory from Home Assistant is mounted into the add-on. You can use it as an
-Artifactory binarystore/filestore target for large artifacts.
+The `/media` directory from Home Assistant is mounted into the add-on. By default the add-on
+points the filestore at `/media/USBDisk/artifactory-data` on first boot (see `binarystore.xml`
+below) so artifacts land on bulk storage rather than the add-on's own `/data` volume.
 
-To configure:
-1. In Artifactory, go to **Administration → Artifactory → Filestore**.
-2. Change the filestore type to **File System**.
-3. Set the directory to `/media/artifactory-data`.
+**The Filestore admin page (Administration → Artifactory → Filestore) is Enterprise/Pro-only —
+it does not exist in the OSS UI**, even though the underlying file-system binary provider works
+fine in OSS. To change the filestore location, edit
+`/data/artifactory/var/etc/artifactory/binarystore.xml` directly:
+
+```xml
+<config version="v1">
+    <chain template="file-system"/>
+    <provider id="file-system" type="file-system">
+        <baseDataDir>/media/USBDisk/artifactory-data</baseDataDir>
+    </provider>
+</config>
+```
+
+Then restart the add-on. This file is only generated once (on first boot, if it doesn't already
+exist) — the add-on won't overwrite your changes on later restarts. Changing the path after
+artifacts already exist requires moving the data yourself; Artifactory doesn't migrate it.
 
 ## Configuration
 
