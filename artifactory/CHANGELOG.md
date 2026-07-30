@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.19
+
+- Fix filestore provisioning being silently skipped: the "only write binarystore.xml if it doesn't already exist" guard from 1.0.18 never fired, because Artifactory itself auto-writes its own default `binarystore.xml` on first boot, before our config ever ran. Track provisioning with a dedicated sentinel file instead of checking for `binarystore.xml`'s existence.
+
 ## 1.0.18
 
 - Point the filestore at `/media/USBDisk/artifactory-data` by default via a generated `binarystore.xml` (only written on first boot, never overwrites later changes). The OSS UI has no Filestore admin page (Enterprise/Pro-only) even though the underlying file-system provider works in OSS, so this can otherwise only be set by hand-editing the XML — documented in DOCS.md.

@@ -32,10 +32,15 @@ else
 fi
 chown -R 185:185 /data/artifactory/var/etc/security
 
-# Point the filestore at /media/USBDisk (only on first boot -- never overwrite
-# a binarystore.xml the user has since customized, e.g. via a UI/API change).
+# Point the filestore at /media/USBDisk (only once -- tracked via a sentinel
+# rather than "file doesn't exist" because Artifactory itself auto-writes a
+# default binarystore.xml on its own first boot, which would otherwise make
+# this look already-configured and skip provisioning. The sentinel also
+# means we never overwrite it again after this, e.g. if the user later
+# customizes it by hand.
 BINARYSTORE_FILE="/data/artifactory/var/etc/artifactory/binarystore.xml"
-if [ ! -f "$BINARYSTORE_FILE" ]; then
+BINARYSTORE_PROVISIONED="/data/artifactory/var/etc/artifactory/.hass-binarystore-provisioned"
+if [ ! -f "$BINARYSTORE_PROVISIONED" ]; then
   bashio::log.info "Configuring filestore at /media/USBDisk/artifactory-data..."
   mkdir -p /media/USBDisk/artifactory-data
   chown -R 185:185 /media/USBDisk/artifactory-data
@@ -49,6 +54,8 @@ if [ ! -f "$BINARYSTORE_FILE" ]; then
 </config>
 EOF
   chown 185:185 "$BINARYSTORE_FILE"
+  touch "$BINARYSTORE_PROVISIONED"
+  chown 185:185 "$BINARYSTORE_PROVISIONED"
 fi
 
 # Start PostgreSQL
