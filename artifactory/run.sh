@@ -17,12 +17,16 @@ ln -sf /data/artifactory/var "${JFROG_HOME}/var"
 MASTER_KEY_FILE="/data/artifactory/var/etc/security/master.key"
 mkdir -p "$(dirname "$MASTER_KEY_FILE")"
 if [ ! -f "$MASTER_KEY_FILE" ]; then
+  bashio::log.info "Generating Artifactory master key..."
   openssl rand -hex 32 > "$MASTER_KEY_FILE"
   chmod 400 "$MASTER_KEY_FILE"
+else
+  bashio::log.info "Using existing Artifactory master key"
 fi
 chown -R 185:185 /data/artifactory/var/etc/security
 
 # Start PostgreSQL
+bashio::log.info "Starting PostgreSQL..."
 mkdir -p /data/artifactory/postgres
 if ! id postgres >/dev/null 2>&1; then
   groupadd --gid 999 -r postgres
@@ -42,11 +46,16 @@ fi
 
 su - postgres -c "${PG_BIN}/pg_ctl -D ${PG_DATA} -l ${PG_DATA}/logfile start"
 while ! su - postgres -c "${PG_BIN}/pg_isready -d postgres" >/dev/null 2>&1; do
+  bashio::log.info "Waiting for PostgreSQL to start..."
   sleep 1
 done
-su - postgres -c "psql -c \"CREATE USER artifactory WITH PASSWORD 'artifactory';\" 2>/dev/null || true"
-su - postgres -c "psql -c \"CREATE DATABASE access OWNER artifactory;\" 2>/dev/null || true"
+bashio::log.info "PostgreSQL is ready"
 
+# Create database and user
+su - postgres -c "psql -c \"CREATE USER artifactory WITH PASSWORD 'artifactory' SUPERUSER;\" 2>/dev/null || true"
+su - postgres -c "psql -c \"CREATE DATABASE access OWNER artifactory;\"" 2>/dev/null || true
+
+# Write system.yaml with database configuration
 cat > /data/artifactory/var/etc/system.yaml <<EOF
 artifactory:
   port: 8091
@@ -72,16 +81,22 @@ security:
 shared:
   node:
     id: "$(hostname)"
-  security:
-    masterKey: "$(cat /data/artifactory/var/etc/security/master.key)"
 EOF
 
 chown 185:185 /data/artifactory/var/etc/system.yaml
 
 export JFROG_HOME
 export ARTIFACTORY_JAVA_OPTIONS="${JAVA_MEM}"
+export ARTIFACTORY_SECURITY_MASTER_KEY_FILE="$MASTER_KEY_FILE"
 
 bashio::log.info "Starting Artifactory Repository (JFROG_HOME=${JFROG_HOME})..."
 bashio::log.info "JVM options: ${ARTIFACTORY_JAVA_OPTIONS}"
 
+# Start Access service first (it needs to be running before Router health checks)
+bashio::log.info "Starting Access service..."
+if [ -x "${JFROG_HOME}/app/access/bin/access.sh" ]; then
+  su - artifactory -c "${JFROG_HOME}/app/access/bin/access.sh start"
+fi
+
+# Start Artifactory (runs in foreground)
 exec sudo -E -u artifactory "${JFROG_HOME}/app/bin/artifactory.sh"
