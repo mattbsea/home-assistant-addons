@@ -13,6 +13,15 @@ fi
 
 ln -sf /data/artifactory/var "${JFROG_HOME}/var"
 
+# Generate master key if not exists (required for Artifactory 7.x topology service)
+MASTER_KEY_FILE="/data/artifactory/var/etc/security/master.key"
+mkdir -p "$(dirname "$MASTER_KEY_FILE")"
+if [ ! -f "$MASTER_KEY_FILE" ]; then
+  openssl rand -hex 32 > "$MASTER_KEY_FILE"
+  chmod 400 "$MASTER_KEY_FILE"
+fi
+chown -R 185:185 /data/artifactory/var/etc/security
+
 # Start PostgreSQL
 mkdir -p /data/artifactory/postgres
 if ! id postgres >/dev/null 2>&1; then
@@ -63,6 +72,8 @@ security:
 shared:
   node:
     id: "$(hostname)"
+  security:
+    masterKey: "$(cat /data/artifactory/var/etc/security/master.key)"
 EOF
 
 chown 185:185 /data/artifactory/var/etc/system.yaml
