@@ -1,3 +1,9 @@
+## 0.1.7 - 2026-08-20
+
+### Fixed
+
+- Fixed `ReferenceError: crypto is not defined` crashing MCP session initialization. Debian bookworm's apt `nodejs` package is Node 18, which only exposes the global Web Crypto `crypto` object behind an experimental flag; supergateway's bundled `@modelcontextprotocol/sdk` references it directly. Install Node.js 22.x from NodeSource instead of the distro package.
+
 ## 0.1.6 - 2026-08-20
 
 ### Fixed

@@ -4,12 +4,21 @@ FROM ${BUILD_FROM}
 ARG BUILD_ARCH
 ARG PORTAINER_MCP_VERSION
 
-# Install Node.js for supergateway
+# Install Node.js for supergateway.
+#
+# Debian bookworm's apt "nodejs" package is Node 18, which only exposes the
+# global Web Crypto `crypto` object behind the --experimental-global-webcrypto
+# flag. supergateway's bundled @modelcontextprotocol/sdk (webStandardStreamableHttp.js)
+# references that global directly without importing it, so on plain Node 18
+# every session init crashed with "ReferenceError: crypto is not defined".
+# Node 19+ exposes it unflagged, so install a current LTS from NodeSource
+# instead of the distro package.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    nodejs \
-    npm \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install supergateway globally (pinned: --stateful/--sessionTimeout behavior
