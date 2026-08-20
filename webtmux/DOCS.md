@@ -18,6 +18,11 @@ starting in `/home/<username>`. Reopening the panel, or opening it in a second b
 re-attaches to the same session rather than starting a new one — exactly like reconnecting to
 tmux over SSH.
 
+Configured `windows` (see Configuration) each get their own tmux window in that same session,
+switchable via webtmux's window-tabs sidebar. They're only created once, when the session itself
+is first built (i.e. on add-on start/restart) — closing one, or a command inside one exiting,
+doesn't recreate it until the next restart.
+
 There's no separate login: access is gated entirely by Home Assistant's own ingress
 authentication, so anyone who can open the add-on's panel gets an interactive shell.
 
@@ -33,6 +38,18 @@ no such requirement once built.
 | Option | Default | Description |
 |---|---|---|
 | `username` | `webtmux` | The non-root user the terminal runs as. Changing this creates a new user/home on next restart; the old home directory is left behind under `/data/home` (harmless). |
+| `windows` | *(empty)* | A list of extra tmux windows to open automatically, each with its own `command` (required), `directory` (optional, defaults to the user's home), and `name` (optional, defaults to the directory's basename). A window whose command exits stays open showing its final output instead of closing. |
+
+Example `windows`:
+
+```yaml
+windows:
+  - name: "ha-logs"
+    directory: "/config"
+    command: "sudo tail -f home-assistant.log"
+  - directory: "/data/home/webtmux/myproject"
+    command: "npm run dev"
+```
 
 ## Data persistence
 

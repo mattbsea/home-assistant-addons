@@ -32,26 +32,62 @@ chown -R "${USERNAME}:${USERNAME}" "/data/home/${USERNAME}"
 echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"
 chmod 0440 "/etc/sudoers.d/${USERNAME}"
 
+export HOME="/home/${USERNAME}"
+cd "${HOME}" || exit 1
+
+run_as_user() {
+    setpriv --reuid="${USERNAME}" --regid="${USERNAME}" --init-groups -- "$@"
+}
+
+# The tmux session is pre-built here, as the target user, rather than left to webtmux's own
+# internal tmux controller (pkg/tmux/controller.go). That controller does its own
+# `tmux has-session` / `tmux new-session -d -s main` the moment the server starts — before any
+# client connects, with no working-directory or extra-window option of its own — so it's the
+# wrong place to hang per-window setup off of; building the whole session upfront and letting
+# webtmux's own new-session below just attach to it (see the -A flag) sidesteps that entirely.
+if ! run_as_user tmux has-session -t main 2>/dev/null; then
+    run_as_user tmux new-session -d -s main -c "${HOME}"
+    # A window whose command finishes or crashes stays visible (showing its output) instead of
+    # vanishing — matters for one-shot commands, not just long-running ones like dev servers.
+    run_as_user tmux set-option -t main remain-on-exit on
+
+    if bashio::config.has_value 'windows'; then
+        count=$(bashio::config 'windows | length')
+        for ((i = 0; i < count; i++)); do
+            win_name=$(bashio::config "windows[${i}].name" '')
+            win_dir=$(bashio::config "windows[${i}].directory" '')
+            win_cmd=$(bashio::config "windows[${i}].command" '')
+
+            # Handle bashio "null" for unset optional values
+            if [ "${win_dir}" = "null" ] || [ -z "${win_dir}" ]; then
+                win_dir="${HOME}"
+            fi
+
+            # Only chown a directory we just created — never re-own something that already
+            # existed (e.g. pointing a window at /config shouldn't quietly change who owns it).
+            if [ ! -d "${win_dir}" ]; then
+                mkdir -p "${win_dir}" && chown "${USERNAME}:${USERNAME}" "${win_dir}"
+            fi
+
+            if [ "${win_name}" = "null" ] || [ -z "${win_name}" ]; then
+                win_name="$(basename "${win_dir}")"
+            fi
+
+            bashio::log.info "Window '${win_name}': ${win_cmd} (in ${win_dir})"
+            run_as_user tmux new-window -t main -n "${win_name}" -c "${win_dir}" "${win_cmd}"
+        done
+    fi
+fi
+
 # -w: permit-write (required for interactive input, not just read-only viewing).
 # --no-auth: webtmux's own HTTP Basic Auth is redundant behind Home Assistant's ingress login,
 # and its browser popup doesn't play well inside the ingress iframe. No host port is published
 # in config.yaml, so ingress is the only way in.
 # setpriv --reuid/--regid/--init-groups: drop from root to the configured user before exec'ing
 # webtmux, so both it and the tmux/shell it spawns run unprivileged.
-# tmux new-session -A -s main -c /home/<username>: attach to (or create) a single persistent
-# session named "main", starting in the user's home directory. Reconnecting/reopening the
-# ingress tab re-attaches to the same session; the tmux server itself doesn't survive a container
-# restart, which is inherent to tmux, not something this add-on can work around.
-#
-# The `cd` below matters beyond just this exec'd command: webtmux's own internal tmux controller
-# (pkg/tmux/controller.go) runs `tmux has-session`/`tmux new-session -d -s main` itself at server
-# startup — before any client connects and before the `-c` below ever runs — with no -c of its
-# own, so it inherits whatever directory the webtmux *process* was started from. That first
-# new-session call is what actually creates "main" and fixes its default-path; by the time our
-# `-c` runs, -A just attaches to the already-existing session and -c is silently ignored. Without
-# this cd, that session ends up defaulting to wherever the container's initial cwd was (`/`),
-# regardless of -c here.
-export HOME="/home/${USERNAME}"
-cd "${HOME}" || exit 1
+# tmux new-session -A -s main -c /home/<username>: attach to the session built above.
+# Reconnecting/reopening the ingress tab re-attaches to the same session; the tmux server itself
+# doesn't survive a container restart, which is inherent to tmux, not something this add-on can
+# work around.
 exec setpriv --reuid="${USERNAME}" --regid="${USERNAME}" --init-groups -- \
     /usr/local/bin/webtmux -w -p 8080 -a 0.0.0.0 --no-auth tmux new-session -A -s main -c "/home/${USERNAME}"

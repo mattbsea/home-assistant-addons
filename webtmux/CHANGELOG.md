@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+- New `windows` option: a list of commands to launch automatically, each in its own tmux window
+  and (optionally) its own working directory. `run.sh` now builds the whole `main` tmux session
+  itself, as the target user, before webtmux ever starts (previously left to webtmux's own
+  internal tmux controller, which has no room for extra windows or a startup command — see 1.1.1).
+  A window whose command exits stays open (`remain-on-exit`) so its final output is still visible.
+
 ## 1.1.1
 
 ### Fixed
