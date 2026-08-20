@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1
+
+### Fixed
+- The terminal was opening in `/` instead of `/home/<username>`. webtmux's own internal tmux
+  controller creates the `main` session itself at server startup (before any client connects,
+  with no working-directory option of its own) — that's what actually set the session's
+  default-path, not the `-c` flag on the per-connection command line, which only takes effect
+  when a session doesn't already exist. `run.sh` now `cd`s into `/home/<username>` before
+  exec'ing webtmux, so its own process cwd (and therefore the session it creates) is correct.
+
 ## 1.1.0
 
 ### Changed

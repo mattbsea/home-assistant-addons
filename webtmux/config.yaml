@@ -1,7 +1,7 @@
 ---
 name: "WebTmux"
 description: "Browser-based tmux terminal with visual pane layout, served over ingress"
-version: "1.1.0"
+version: "1.1.1"
 slug: "webtmux"
 init: false
 
