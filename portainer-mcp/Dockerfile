@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install supergateway globally
-RUN npm install -g supergateway
+# Install supergateway globally (pinned: --stateful/--sessionTimeout behavior
+# relied upon by run.sh was verified against this version)
+RUN npm install -g supergateway@3.4.3
 
 # Map HA arch to portainer-mcp release arch
 RUN case "${BUILD_ARCH}" in \

@@ -1,3 +1,9 @@
+## 0.1.6 - 2026-08-20
+
+### Fixed
+
+- Fixed a severe memory leak: supergateway's stateless streamableHttp mode spawned a new `portainer-mcp` child process per MCP request and relied on the HTTP transport closing to reap it, which MCP clients don't reliably trigger. Over time this accumulated 1,500+ orphaned processes and several GB of RAM, contributing to host-wide memory exhaustion. Switched to `--stateful` mode with a 30-minute `--sessionTimeout`, so exactly one child process is spawned per MCP session and idle sessions are automatically cleaned up.
+
 ## 0.1.1 - 2026-03-13
 
 ### Fixed

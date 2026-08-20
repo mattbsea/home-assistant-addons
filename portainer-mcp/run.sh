@@ -63,10 +63,22 @@ bashio::log.info "MCP path:     /${SECRET_PATH}/mcp"
 bashio::log.info "Health check: /health"
 
 # Start supergateway wrapping portainer-mcp
-# Using streamableHttp transport (stateless, handles reconnections gracefully)
+#
+# --stateful + --sessionTimeout: supergateway's *stateless* streamableHttp mode
+# (the previous default here) spawns a brand-new portainer-mcp child process for
+# every single MCP request and only kills it when the HTTP transport reports
+# onclose/onerror. In practice MCP HTTP clients keep their stream open far
+# longer than one logical request (or never send an explicit session
+# termination), so those child processes were never reaped — they piled up
+# (1,500+ zombie processes, several GB of RAM) until the container was
+# restarted. Stateful mode spawns exactly one child per Mcp-Session-Id and
+# reaps it after the session has been idle for --sessionTimeout ms, even if
+# the client disappears without closing anything.
 exec supergateway \
     --stdio "/usr/local/bin/portainer-mcp -server ${PORTAINER_HOST} -token ${PORTAINER_TOKEN_ESCAPED} -tools /data/tools.yaml -disable-version-check" \
     --outputTransport streamableHttp \
+    --stateful \
+    --sessionTimeout 1800000 \
     --port 9584 \
     --streamableHttpPath "/${SECRET_PATH}/mcp" \
     --healthEndpoint "/health"
