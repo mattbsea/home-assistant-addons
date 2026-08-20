@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.20
+
+### 🐛 Fixed
+- **claude-mem's observation agent was silently stuck on a dead OpenRouter model.** 2.0.19
+  pinned `CLAUDE_MEM_PROVIDER=openrouter` (with a free-tier `xiaomi/mimo-v2-flash:free` model)
+  as a hardcoded Docker `ENV`, so it always took precedence over whatever the user or
+  `settings.json` configured for claude-mem's provider — including a subsequent same-machine
+  fix that changed `settings.json` to `claude`/`claude-haiku-4-5-20251001`, which never actually
+  took effect because Docker `ENV` beats a runtime settings file on every container start. Once
+  OpenRouter deprecated that free model, every observation call 404'd and memory silently stopped
+  saving. Removed the hardcoded `ENV` block entirely so claude-mem falls back to its own default
+  (`claude` provider, `claude-haiku-4-5-20251001`), which is what was actually wanted. (`Dockerfile`)
+
 ## 2.0.17
 
 ### 🐛 Fixed
