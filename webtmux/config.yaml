@@ -1,0 +1,38 @@
+---
+name: "WebTmux"
+description: "Browser-based tmux terminal with visual pane layout, served over ingress"
+version: "1.0.0"
+slug: "webtmux"
+init: false
+
+# Supported architectures. armv7 deliberately excluded for now: this add-on builds webtmux from
+# source (see Dockerfile) rather than downloading a prebuilt binary, and an arm32 Go cross-build
+# under Home Assistant's QEMU-based builder is untested here — add it back once verified.
+arch:
+  - aarch64
+  - amd64
+
+# External resources
+url: "https://github.com/chrismccord/webtmux"
+
+# Web interface configuration — ingress only, no published port. webtmux's own HTTP Basic Auth
+# is disabled (see run.sh); access control is HA's ingress login instead, same trust model as
+# the Claude Terminal add-on.
+ingress: true
+ingress_port: 8080
+ingress_stream: true
+panel_icon: mdi:console
+panel_title: "WebTmux"
+
+# Service startup configuration
+startup: services
+
+# Volume mappings — full Home Assistant filesystem access from the shell, plus a persistent
+# home directory (shell history, dotfiles) under /data.
+map:
+  - data:rw
+  - config:rw
+  - share:rw
+  - addons:rw
+  - backup:rw
+  - media:rw
