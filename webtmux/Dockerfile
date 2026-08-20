@@ -19,9 +19,12 @@ RUN CGO_ENABLED=0 make build
 FROM ${BUILD_FROM}
 
 # tmux: webtmux execs `tmux` as its wrapped command (see run.sh) — it doesn't bundle it.
+# sudo: the terminal runs as a non-root user (see run.sh); sudo is its escape hatch onto the
+# root-owned HA volumes (/config, /share, /addons, /backup, /media are all root:root 755).
+# setpriv and useradd are already present in this base image (util-linux / passwd packages).
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tmux \
+    && apt-get install -y --no-install-recommends tmux sudo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/webtmux /usr/local/bin/webtmux

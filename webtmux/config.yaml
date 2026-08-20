@@ -1,7 +1,7 @@
 ---
 name: "WebTmux"
 description: "Browser-based tmux terminal with visual pane layout, served over ingress"
-version: "1.0.0"
+version: "1.1.0"
 slug: "webtmux"
 init: false
 
@@ -36,3 +36,9 @@ map:
   - addons:rw
   - backup:rw
   - media:rw
+
+# Add-on configuration options
+options:
+  username: "webtmux"
+schema:
+  username: str

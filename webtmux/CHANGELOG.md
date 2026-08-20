@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+### Changed
+- The terminal now runs as a non-root user instead of root, with passwordless `sudo` available
+  for anything that needs root (writing into `/config` and the other root-owned HA volumes).
+  New `username` option (default `webtmux`) controls the account name; its persistent home lives
+  under `/data/home/<username>`, symlinked to `/home/<username>`.
+- The tmux session's default working directory changed from `/config` to `/home/<username>`.
+
 ## 1.0.0
 
 ### Added
