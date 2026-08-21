@@ -368,6 +368,24 @@
             atBottom = (buf.viewportY >= buf.baseY);
         });
 
+        // Shift+Enter: Claude Code's own `/terminal-setup` can't configure this here — it only
+        // knows how to write keybindings into specific terminal apps' own config (iTerm2, Kitty,
+        // VS Code, etc.), none of which describe this bespoke browser terminal, and TERM_PROGRAM
+        // is never set for it either, so its detection falls back to a generic tmux/screen
+        // warning even though we're in neither. Reproduce what that setup would have achieved —
+        // insert a newline without submitting — using the workaround Claude Code already
+        // supports natively regardless of terminal: backslash + return. attachCustomKeyEventHandler
+        // runs before xterm.js's own key handling, and returning false skips it entirely, so this
+        // replaces the plain \r Enter would otherwise send instead of adding to it.
+        terminal.attachCustomKeyEventHandler(function(e) {
+            if (e.type === 'keydown' && e.key === 'Enter' && e.shiftKey
+                && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                send({ type: 'input', tabId: tabId, data: '\\\r' });
+                return false;
+            }
+            return true;
+        });
+
         // Handle input
         terminal.onData(function(data) {
             send({ type: 'input', tabId: tabId, data: data });

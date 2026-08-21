@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.21
+
+### ✨ New Features
+- **Shift+Enter now inserts a newline without submitting.** Claude Code's own `/terminal-setup`
+  can't configure this here — it only knows how to write keybindings into specific terminal
+  apps' own config (iTerm2, Kitty, VS Code, etc.), none of which describe this bespoke browser
+  terminal, and `TERM_PROGRAM` is never set for it either, so its detection falls back to a
+  generic "exit tmux/screen" warning even though this add-on uses neither. `public/index.html`
+  now intercepts Shift+Enter client-side via `attachCustomKeyEventHandler` and sends the
+  backslash-plus-return sequence Claude Code already supports natively, reproducing what
+  `/terminal-setup` would have achieved without needing it.
+
 ## 2.0.20
 
 ### 🐛 Fixed
