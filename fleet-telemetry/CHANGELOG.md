@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.34
+
+### Fixed — dashboard showed a stale speed reading on a parked car
+- `state.py`'s `LIVE_ONLY` contract retains `VehicleSpeed` at its last driving value after park —
+  Tesla signals park via a final `Gear=ShiftStateP` record, never a final `VehicleSpeed=0`, so the
+  store is expected to keep the raw last reading and have consumers gate it on `Gear`. The TeslaMate
+  shim already does this (`shim_data.py`: `speed: ... if driving else 0`), but the dashboard's Drive
+  card read `VehicleSpeed` unconditionally, so a car parked right after rolling to a stop at a few mph
+  showed that speed indefinitely instead of "parked / idle".
+- The Drive card now only reads `VehicleSpeed` when `Gear` is `D`/`R`/`N`, matching the shim's
+  driving gate. (`dashboard.html`)
+
 ## 1.0.33
 
 ### Fixed — dashboard tire pressure warnings rendered as garbage

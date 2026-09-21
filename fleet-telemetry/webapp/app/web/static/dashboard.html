@@ -174,7 +174,12 @@ function buildCards(v){
  cards+=mcard("Charging",chInner);
 
  // Drive
- const speed=N('VehicleSpeed');const g=raw('Gear');const gear=(g==null||g==="<invalid>")?null:gearName(g);
+ // VehicleSpeed is retained in the store at its last driving value even after park (state.py's
+ // LIVE_ONLY contract: park is signalled by Gear alone, not by a final VehicleSpeed=0). Gate the
+ // readout on Gear the same way the TeslaMate shim does, or a parked car shows a stale speed.
+ const g=raw('Gear');const gear=(g==null||g==="<invalid>")?null:gearName(g);
+ const driving=gear==="D"||gear==="R"||gear==="N";
+ const speed=driving?N('VehicleSpeed'):null;
  cards+=card("Drive",
    `<div class="big">${speed==null?'<span style="font-size:16px;color:var(--mut)">parked / idle</span>':fmt(speed,0)+'<span class="unit">mph</span>'}</div>`
    +((v.speed_history&&v.speed_history.length>1)?spark(v.speed_history,"var(--accent)"):"")
