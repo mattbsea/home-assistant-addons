@@ -230,6 +230,21 @@ def test_park_gear_invalid_does_not_zero_speed():
     assert store.snapshot(VIN)["VehicleSpeed"] == 37
 
 
+def test_park_zeros_vehicle_speed_in_same_record():
+    """Gear=ShiftStateP and a trailing non-zero VehicleSpeed can arrive in ONE record (the vehicle's
+    final coast-to-stop reading bundled with the park signal). The zero-check runs after the whole
+    per-field loop and reads Gear straight from the record, so it must win regardless of whether Gear
+    or VehicleSpeed appears first in dict iteration order."""
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=37))
+    store.ingest(_data(Gear="ShiftStateP", VehicleSpeed=2))     # Gear before VehicleSpeed
+    assert store.snapshot(VIN)["VehicleSpeed"] == 0
+
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=37))
+    store.ingest(_data(VehicleSpeed=2, Gear="ShiftStateP"))     # VehicleSpeed before Gear
+    assert store.snapshot(VIN)["VehicleSpeed"] == 0
+
+
 def test_sleep_recheck_due_after_interval():
     """A confirmed asleep/offline state must be RE-confirmed periodically: the car won't stream to
     clear it, and Tesla's /products can change offline<->asleep<->online while it's silent. Due only
