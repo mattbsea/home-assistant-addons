@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.36
+
+### Added — size-based rotation for the persistent JSONL logs
+- `telemetry-log.jsonl` and `fleet-log.jsonl` on the `/data` volume were strictly append-only with no
+  cap: confirmed live at 589 MiB / 1.29M lines for telemetry-log alone after ~97 days, growing ~6.4
+  MB/day unbounded. Disk headroom is currently ample (192 GB free), but "grows forever" was never the
+  intent — it just hadn't been built yet.
+- `reclog.RecordLog` now rotates once a file reaches 500 MiB: the current file is gzip-compressed
+  alongside itself with a UTC timestamp suffix (`telemetry-log.jsonl.20260921T210500Z.gz`) and a fresh
+  file is opened at the original path. Archives are never auto-deleted — that stays an operator
+  decision, same as before. Rotation is best-effort: if archiving fails (e.g. disk full), the next
+  write just reopens and keeps appending to the same oversized file rather than losing data.
+- In-memory size tracking (not a `stat()` per write) keeps the hot path cheap; the check only touches
+  disk on the rare rotation itself. (`reclog.py`)
+
 ## 1.0.35
 
 ### Fixed — VehicleSpeed now zeroed at the source on park, not just gated in the dashboard
