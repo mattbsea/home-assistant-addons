@@ -202,11 +202,31 @@ def test_invalid_gear_does_not_clobber_last_park_gear():
 
 
 def test_invalid_speed_does_not_clobber_last_value():
-    """VehicleSpeed '<invalid>' likewise keeps the last value (it's driving-gated downstream, so a
-    retained parked value is never emitted)."""
+    """VehicleSpeed '<invalid>' likewise keeps the last value; a subsequent Gear=P record (see
+    test_park_zeros_vehicle_speed below) is what actually clears it, not the '<invalid>' sentinel."""
     store = state.Store()
     store.ingest(_data(VehicleSpeed=37))
     store.ingest(_data(VehicleSpeed="<invalid>"))
+    assert store.snapshot(VIN)["VehicleSpeed"] == 37
+
+
+def test_park_zeros_vehicle_speed():
+    """Tesla signals park via a final Gear=ShiftStateP record, never a final VehicleSpeed=0 — so the
+    SSOT must zero VehicleSpeed itself the moment park is observed, or the last driving speed (e.g.
+    a few mph right as the car coasted to a stop) sits in the store forever and leaks to every
+    consumer (dashboard, TeslaMate shim, /api/state)."""
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=37))
+    assert store.snapshot(VIN)["VehicleSpeed"] == 37
+    store.ingest(_data(Gear="ShiftStateP"))
+    assert store.snapshot(VIN)["VehicleSpeed"] == 0
+
+
+def test_park_gear_invalid_does_not_zero_speed():
+    """A Gear='<invalid>' record (no reading) must not be mistaken for park."""
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=37))
+    store.ingest(_data(Gear="<invalid>"))
     assert store.snapshot(VIN)["VehicleSpeed"] == 37
 
 

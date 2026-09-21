@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.35
+
+### Fixed — VehicleSpeed now zeroed at the source on park, not just gated in the dashboard
+- v1.0.34 only patched the dashboard's *display* of a parked car's stale speed. The root cause is in
+  the SSOT itself: Tesla signals park via a final `Gear=ShiftStateP` record and never sends a final
+  `VehicleSpeed=0`, so `state.py` kept the last raw driving speed in the field map forever, and every
+  consumer had to know to gate on `Gear` itself.
+- `Store.ingest()` now zeroes `VehicleSpeed` in the field map the moment it observes `Gear=P`, so
+  `/api/state`, the TeslaMate shim, and any future sink all see `0` directly — no per-consumer
+  gating required. (`state.py`)
+- The TeslaMate shim's own `Gear`-gating (`shim_data.py`) is now redundant but harmless (belt and
+  suspenders); left as-is.
+
 ## 1.0.34
 
 ### Fixed — dashboard showed a stale speed reading on a parked car

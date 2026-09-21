@@ -121,10 +121,9 @@ class Store:
                 if k in fields.META_BASE:
                     continue
                 # An "<invalid>" sentinel means "no reading": it must NEVER clobber a known-good value
-                # (seed or prior telemetry) — including Gear/VehicleSpeed. Park is signalled by an
-                # explicit ShiftStateP (always sent before any '<invalid>'), so retaining the last real
-                # gear is both correct and avoids a redundant clear; speed is driving-gated downstream
-                # so a retained parked value is never emitted.
+                # (seed or prior telemetry) — including Gear. Park is signalled by an explicit
+                # ShiftStateP (always sent before any '<invalid>'), so retaining the last real gear is
+                # both correct and avoids a redundant clear.
                 if val in ("<invalid>", "invalid"):
                     continue
                 v["fields"][k] = {"value": val, "created_at": created, "received_at": now, "source": "telemetry"}
@@ -134,6 +133,16 @@ class Store:
                     v["history"]["soc"].append((now, n))
                 elif k == "VehicleSpeed" and n is not None:
                     v["history"]["speed"].append((now, n))
+            # Tesla signals park via a final Gear=ShiftStateP record, never a final VehicleSpeed=0 —
+            # the last driving speed (e.g. a few mph right as the car coasted to a stop) would
+            # otherwise sit in the store forever. Zero VehicleSpeed here, at the SSOT, the moment park
+            # is observed, so every consumer (dashboard, TeslaMate shim, /api/state, future sinks)
+            # sees 0 without needing its own Gear-gating logic.
+            if fields.strip_state(data.get("Gear")) == "P":
+                v["fields"]["VehicleSpeed"] = {"value": 0, "created_at": created, "received_at": now,
+                                                "source": "telemetry"}
+                changed["VehicleSpeed"] = 0
+                v["history"]["speed"].append((now, 0))
             charge_started = self._track_charge_baseline(v)
             # Connectivity vs liveness. A real telemetry record means the car is streaming = awake.
             # A CONNECTED frame is also a wake signal; a DISCONNECTED frame starts a sleep check.
