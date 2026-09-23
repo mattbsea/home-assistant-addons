@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.37
+
+### Added — eight new Tesla telemetry fields (proto 260–267) on the roster and dashboard
+- Requested from the car: `GpsAccuracyMeters`, `GradeEstimatePercent` (Drive), `NominalFullPackEnergyKwh`,
+  `BrickSocMinPercent`, `LifetimeEnergyChargedKwh` (Battery), `MaxSpeedToReachDestinationMph`
+  (Navigation), `SoftwareUpdateAvailable`, `SoftwareUpdateInProgress` (Software). Noisy numeric ones
+  use `minimum_delta` + `resend_interval_seconds` so they stay quiet while parked. The roster hash
+  changes, so autosend re-pushes `fleet_telemetry_config` once on boot.
+- Dashboard rows: Battery → full pack (nominal), lowest brick SoC, lifetime charged; Drive → grade,
+  GPS accuracy (m/ft); Navigation → max speed to arrive; Vehicle → update available / in progress
+  (the staged-version "Update" row also reports "installing" from `SoftwareUpdateInProgress`).
+- Tesla gates these fields on firmware 2026.32+ (device client 1.3.0). On older firmware the rows
+  stay hidden until the car starts emitting values.
+
+### Changed — fleet-telemetry binary built from source (upstream commit 8fbaa100)
+- No tagged release (latest v0.9.4) contains the 260–269 Field enum entries yet, and the logger names
+  fields via `protos.Field_name`, so an older binary would log every new field under an empty key.
+  The Dockerfile now builds the binary the same way upstream's Dockerfile does (static libsodium +
+  libzmq, CGO). This also includes v0.9.1–v0.9.4 (VIN-spoofing fix for connectivity records, Redis
+  datastore, RFC3339Nano log timestamps — the add-on doesn't parse the log `time` field). The first
+  build on the HA host takes several minutes longer.
+
 ## 1.0.36
 
 ### Added — size-based rotation for the persistent JSONL logs

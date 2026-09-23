@@ -318,6 +318,16 @@ TELEMETRY_FIELDS = {
     "RouteLastUpdated":                      {"interval_seconds": 30},
     "RouteTrafficMinutesDelay":              {"interval_seconds": 30},
     "ExpectedEnergyPercentAtTripArrival":    {"interval_seconds": 30},
+    "MaxSpeedToReachDestinationMph":         {"interval_seconds": 30},
+    # Fields 260-267 — firmware 2026.32+ (device client 1.3.0). Until the car emits them the dashboard
+    # rows stay hidden. If Fleet API rejects the config ("Unknown field"), autosend's send is inert.
+    "GpsAccuracyMeters":         {"interval_seconds": 10, "minimum_delta": 1, "resend_interval_seconds": 600},
+    "GradeEstimatePercent":      {"interval_seconds": 10, "minimum_delta": 0.5, "resend_interval_seconds": 600},
+    "LifetimeEnergyChargedKwh":  {"interval_seconds": 60, "minimum_delta": 0.1},
+    "BrickSocMinPercent":        {"interval_seconds": 300, "minimum_delta": 0.5, "resend_interval_seconds": 1800},
+    "NominalFullPackEnergyKwh":  {"interval_seconds": 3600},
+    "SoftwareUpdateAvailable":   {"interval_seconds": 300},
+    "SoftwareUpdateInProgress":  {"interval_seconds": 60},
 }
 
 
@@ -325,14 +335,17 @@ DEFAULT_ROSTER = TELEMETRY_FIELDS   # the curated set IS the default ("TeslaMate
 
 # Field -> UI group, for the editor. Every curated field is grouped; anything else falls under "Other".
 FIELD_GROUPS = {
-    **{k: "Drive & Location" for k in ("VehicleSpeed", "Location", "GpsHeading", "Gear", "Odometer")},
+    **{k: "Drive & Location" for k in (
+        "VehicleSpeed", "Location", "GpsHeading", "Gear", "Odometer", "GpsAccuracyMeters",
+        "GradeEstimatePercent")},
     **{k: "Battery & Charging" for k in (
         "Soc", "BatteryLevel", "EnergyRemaining", "RatedRange", "EstBatteryRange", "IdealBatteryRange",
         "PackVoltage", "PackCurrent", "DetailedChargeState", "ACChargingPower", "DCChargingPower",
         "ACChargingEnergyIn", "DCChargingEnergyIn", "ChargeAmps", "ChargerVoltage", "ChargeRateMilePerHour",
         "ChargerPhases", "ChargeLimitSoc", "TimeToFullCharge", "ChargingCableType", "FastChargerPresent",
         "FastChargerType", "ChargeCurrentRequest", "ChargeCurrentRequestMax", "ChargePortDoorOpen",
-        "ChargePortLatch", "BatteryHeaterOn", "NotEnoughPowerToHeat")},
+        "ChargePortLatch", "BatteryHeaterOn", "NotEnoughPowerToHeat", "LifetimeEnergyChargedKwh",
+        "BrickSocMinPercent", "NominalFullPackEnergyKwh")},
     **{k: "Climate" for k in (
         "InsideTemp", "OutsideTemp", "HvacACEnabled", "HvacPower", "HvacFanStatus",
         "HvacLeftTemperatureRequest", "HvacRightTemperatureRequest", "ClimateKeeperMode",
@@ -344,10 +357,11 @@ FIELD_GROUPS = {
         "TpmsHardWarnings", "TpmsSoftWarnings")},
     **{k: "Software" for k in (
         "Version", "SoftwareUpdateVersion", "SoftwareUpdateInstallationPercentComplete",
-        "SoftwareUpdateDownloadPercentComplete")},
+        "SoftwareUpdateDownloadPercentComplete", "SoftwareUpdateAvailable", "SoftwareUpdateInProgress")},
     **{k: "Navigation" for k in (
         "DestinationName", "DestinationLocation", "MilesToArrival", "MinutesToArrival",
-        "RouteLastUpdated", "RouteTrafficMinutesDelay", "ExpectedEnergyPercentAtTripArrival")},
+        "RouteLastUpdated", "RouteTrafficMinutesDelay", "ExpectedEnergyPercentAtTripArrival",
+        "MaxSpeedToReachDestinationMph")},
     **{k: "Geofence" for k in ("LocatedAtHome", "LocatedAtWork", "LocatedAtFavorite")},
 }
 
@@ -405,7 +419,9 @@ ALL_FIELDS = (
     "MediaNowPlayingElapsed", "MediaNowPlayingArtist", "MediaNowPlayingTitle", "MediaNowPlayingAlbum",
     "MediaNowPlayingStation", "MediaAudioVolumeIncrement", "MediaAudioVolumeMax", "SunroofInstalled",
     "SeatVentEnabled", "RearDefrostEnabled", "ChargeRateMilePerHour", "MilesSinceReset",
-    "SelfDrivingMilesSinceReset",
+    "SelfDrivingMilesSinceReset", "GpsAccuracyMeters", "LifetimeEnergyChargedKwh", "BrickSocMinPercent",
+    "NominalFullPackEnergyKwh", "GradeEstimatePercent", "MaxSpeedToReachDestinationMph",
+    "SoftwareUpdateAvailable", "SoftwareUpdateInProgress",
 )
 
 
