@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.2
+
+### Fixed
+- "Add project → New directory" did nothing on a fresh install: its parent-directory picker only
+  lists existing workspaces (its search is confined to the daemon's home, which holds only
+  dotfiles), so it was empty. On first start the add-on now registers `workspace_dir`
+  (`/share/paseo`) as a "Home Assistant" workspace, which then appears as the parent to create
+  new project directories in. Typing an absolute path (e.g. `/share/other`) in the picker also
+  offers it as a parent.
+
 ## 1.1.1
 
 ### Changed

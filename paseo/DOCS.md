@@ -98,7 +98,9 @@ Logins survive restarts and add-on updates.
 
 - `/data/home` — Paseo state (`.paseo`), agent logins and config (`.claude`, `.codex`,
   `.config/opencode`) and caches. Included in add-on backups; treat backups as sensitive.
-- `/share/paseo` — default workspace for your repositories.
+- `/share/paseo` — default workspace for your repositories. On first start it is registered as a
+  "Home Assistant" workspace, so **Add project → New directory** offers it as the parent folder.
+  To use another parent, type its absolute path (e.g. `/share/code`) in that picker.
 
 ## Security notes
 
