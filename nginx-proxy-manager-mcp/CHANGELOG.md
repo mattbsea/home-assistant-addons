@@ -1,3 +1,11 @@
+## 0.2.5 - 2026-09-24
+
+### Fixed
+
+- Server crashed on start after a rebuild (`ModuleNotFoundError: mcp.server.fastmcp`):
+  the unpinned `mcp` dependency resolved to 2.x, which renamed `FastMCP`. Pinned
+  `mcp[cli]>=1.27.0,<2`.
+
 ## 0.2.4 - 2026-09-24
 
 ### Fixed
