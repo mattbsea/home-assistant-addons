@@ -101,6 +101,20 @@ ingress — see [Documentation](rustdesk-web/DOCS.md) for the NGINX Proxy Manage
 
 [Documentation](rustdesk-web/DOCS.md)
 
+### Paseo
+
+[Paseo](https://paseo.sh) daemon and web UI — run and supervise Claude Code, Codex and OpenCode
+agents from the Home Assistant sidebar, any browser, or the Paseo iPhone/Android app.
+
+Features:
+- Official Paseo daemon with the bundled web UI, plus the `claude`, `codex` and `opencode` CLIs
+- Password protected by default: a random password is generated on first start and saved to the
+  add-on's Configuration tab
+- Sidebar panel that opens the web UI through your HTTPS reverse proxy
+- Agent logins, Paseo state and workspaces persist across restarts and updates
+
+[Documentation](paseo/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:

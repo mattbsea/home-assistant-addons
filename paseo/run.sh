@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# No bashio on the upstream Paseo (Debian) base image -- read options.json with jq and call the
+# Supervisor API with curl. Runs as root to prepare /data and the workspace, then hands off to
+# upstream's paseo-docker-entrypoint, which drops to the non-root `paseo` user via gosu.
+set -eu
+
+OPTIONS_FILE="/data/options.json"
+FALLBACK_PASSWORD_FILE="/data/.generated-password"
+
+opt() {
+    jq -r "$1" "${OPTIONS_FILE}"
+}
+
+log() {
+    echo "[paseo-addon] $*"
+}
+
+# --- Password --------------------------------------------------------------------------------
+# An empty option means "generate one": create it once, then persist it back into the add-on's
+# own options so the user can read it under Settings -> Add-ons -> Paseo -> Configuration.
+PASSWORD="$(opt '.password // ""')"
+if [ -z "${PASSWORD}" ]; then
+    if [ -s "${FALLBACK_PASSWORD_FILE}" ]; then
+        PASSWORD="$(cat "${FALLBACK_PASSWORD_FILE}")"
+    else
+        PASSWORD="$(node -e "process.stdout.write(require('crypto').randomBytes(18).toString('base64url'))")"
+    fi
+    # /addons/self/options replaces the whole options object, so send every key back. The body
+    # goes over stdin so the password never appears in a process list.
+    if jq --arg p "${PASSWORD}" '{options: (. + {password: $p})}' "${OPTIONS_FILE}" \
+        | curl -fsS -o /dev/null -X POST \
+            -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" \
+            -H "Content-Type: application/json" \
+            --data-binary @- \
+            http://supervisor/addons/self/options; then
+        rm -f "${FALLBACK_PASSWORD_FILE}"
+        log "Generated a password and saved it to the add-on configuration (password option)."
+    else
+        # Keep the same password across restarts until the write-back succeeds.
+        (umask 077 && printf '%s' "${PASSWORD}" > "${FALLBACK_PASSWORD_FILE}")
+        log "ERROR: could not save the generated password to the add-on options; kept it in ${FALLBACK_PASSWORD_FILE}."
+    fi
+fi
+export PASEO_PASSWORD="${PASSWORD}"
+# Agents and Paseo terminals inherit this environment; don't hand them the Supervisor API.
+unset SUPERVISOR_TOKEN
+
+# --- Persistent home -------------------------------------------------------------------------
+# Everything the daemon and the agent CLIs keep (Paseo state, Claude/Codex/OpenCode logins,
+# config, caches) lives under /data so it survives restarts and updates.
+export HOME=/data/home
+export PASEO_HOME="${HOME}/.paseo"
+export CLAUDE_CONFIG_DIR="${HOME}/.claude"
+export CODEX_HOME="${HOME}/.codex"
+export XDG_CONFIG_HOME="${HOME}/.config"
+export XDG_DATA_HOME="${HOME}/.local/share"
+export XDG_STATE_HOME="${HOME}/.local/state"
+export XDG_CACHE_HOME="${HOME}/.cache"
+for dir in "${HOME}" "${PASEO_HOME}" "${CLAUDE_CONFIG_DIR}" "${CODEX_HOME}" \
+    "${XDG_CONFIG_HOME}" "${XDG_DATA_HOME}" "${XDG_STATE_HOME}" "${XDG_CACHE_HOME}"; do
+    mkdir -p "${dir}"
+done
+chown -R paseo:paseo "${HOME}"
+
+WORKSPACE_DIR="$(opt '.workspace_dir // "/share/paseo"')"
+mkdir -p "${WORKSPACE_DIR}"
+if [ "$(stat -c '%u' "${WORKSPACE_DIR}")" = "0" ]; then
+    chown paseo:paseo "${WORKSPACE_DIR}"
+fi
+
+# --- Daemon network settings -----------------------------------------------------------------
+export PASEO_LISTEN="0.0.0.0:6767"
+export PASEO_WEB_UI_ENABLED=true
+export PASEO_RELAY_ENABLED=false
+PASEO_HOSTNAMES="$(opt '(.hostnames // []) | join(",")')"
+PASEO_TRUSTED_PROXIES="$(opt '(.trusted_proxies // ["loopback"]) | join(",")')"
+export PASEO_HOSTNAMES PASEO_TRUSTED_PROXIES
+
+# --- Agent credentials (optional; interactive logins from a Paseo terminal also work) ---------
+CLAUDE_CODE_OAUTH_TOKEN="$(opt '.claude_code_oauth_token // ""')"
+ANTHROPIC_API_KEY="$(opt '.anthropic_api_key // ""')"
+OPENAI_API_KEY="$(opt '.openai_api_key // ""')"
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then export CLAUDE_CODE_OAUTH_TOKEN; else unset CLAUDE_CODE_OAUTH_TOKEN; fi
+if [ -n "${ANTHROPIC_API_KEY}" ]; then export ANTHROPIC_API_KEY; else unset ANTHROPIC_API_KEY; fi
+if [ -n "${OPENAI_API_KEY}" ]; then
+    export OPENAI_API_KEY
+    # Codex ignores OPENAI_API_KEY unless it has been logged in with it. Re-login whenever the
+    # option changes (tracked by hash so the key itself isn't stored twice).
+    KEY_HASH_FILE="/data/.openai-key.sha256"
+    KEY_HASH="$(printenv OPENAI_API_KEY | sha256sum | cut -d' ' -f1)"
+    if [ ! -s "${CODEX_HOME}/auth.json" ] || [ "$(cat "${KEY_HASH_FILE}" 2>/dev/null)" != "${KEY_HASH}" ]; then
+        if printenv OPENAI_API_KEY | gosu paseo codex login --with-api-key >/dev/null 2>&1; then
+            printf '%s' "${KEY_HASH}" > "${KEY_HASH_FILE}"
+        else
+            log "WARNING: codex login --with-api-key failed; log in from a Paseo terminal instead."
+        fi
+    fi
+else
+    unset OPENAI_API_KEY
+fi
+
+# --- Sidebar (ingress) wrapper ---------------------------------------------------------------
+PASEO_EXTERNAL_URL="$(opt '.external_url // ""')"
+export PASEO_EXTERNAL_URL
+(
+    while :; do
+        gosu paseo node /opt/paseo-ingress/server.js || log "sidebar panel exited ($?); restarting"
+        sleep 2
+    done
+) &
+
+log "Starting Paseo daemon on ${PASEO_LISTEN} (hostnames: ${PASEO_HOSTNAMES:-default}, workspace: ${WORKSPACE_DIR})"
+cd "${WORKSPACE_DIR}"
+exec /usr/local/bin/paseo-docker-entrypoint
