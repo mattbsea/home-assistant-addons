@@ -82,6 +82,24 @@ persistent storage, so each agent needs to be logged in once:
 
 Logins survive restarts and add-on updates.
 
+## Extra tools
+
+The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js and the three agent CLIs.
+Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
+it for `git push`); the login persists.
+
+Anything else you install **into your home directory** from a Paseo terminal survives restarts
+and add-on updates, and is on `PATH` for terminals and agents:
+
+| Install with | Lands in |
+| --- | --- |
+| `curl … \| sh` installers, `uv tool install`, `pipx install` | `~/.local/bin` |
+| `cargo install` (e.g. `cargo install --git https://github.com/rtk-ai/rtk`) | `~/.cargo/bin` |
+| `npm install -g` | `~/.npm-global/bin` |
+
+`apt-get install` is not available (agents and terminals run as the non-root `paseo` user, and
+system packages would be reset by the next update).
+
 ## Options
 
 | Option | Default | Description |

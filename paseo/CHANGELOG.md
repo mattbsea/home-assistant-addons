@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+- GitHub CLI (`gh`) from GitHub's apt repository; its login persists under `/data/home/.config/gh`.
+- Tools you install yourself from a Paseo terminal now persist and are on `PATH` for terminals,
+  agents and login shells: `~/.local/bin` (curl installers, `uv tool`, `pipx`), `~/.cargo/bin`
+  (`cargo install`) and `~/.npm-global/bin` (`npm i -g`, via `NPM_CONFIG_PREFIX`).
+
 ## 1.1.4
 
 ### Changed

@@ -11,6 +11,23 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends jq ripgrep; \
     rm -rf /var/lib/apt/lists/*
 
+# GitHub CLI from GitHub's official apt repository. Its login (`gh auth login`) is stored under
+# $XDG_CONFIG_HOME/gh = /data/home/.config/gh, so it persists.
+RUN set -eux; \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg; \
+    chmod a+r /usr/share/keyrings/githubcli-archive-keyring.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends gh; \
+    rm -rf /var/lib/apt/lists/*; \
+    gh --version
+
+# User-installed tools live in the persistent home (see run.sh); put their bin dirs on PATH for
+# login shells too (Paseo's provider checks use `sh -lc`, which resets PATH from /etc/profile).
+COPY profile.d/paseo-addon.sh /etc/profile.d/paseo-addon.sh
+
 # Agent CLIs Paseo drives. Same set as upstream's docker/Dockerfile.agents.example, pinned so a
 # rebuild on the HA host is reproducible; bump these (and the add-on version) to upgrade.
 ARG CLAUDE_CODE_VERSION=2.1.281
