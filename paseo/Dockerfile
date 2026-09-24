@@ -30,6 +30,21 @@ COPY run.sh /run.sh
 COPY ingress/ /opt/paseo-ingress/
 RUN chmod a+x /run.sh
 
+# Make the bundled web UI configure itself for this daemon: add the setup page next to the app
+# and a small redirect to it (only when the browser has no saved hosts) at the top of <head>.
+# The daemon still injects its own connection hint before </head> at request time.
+COPY web/ /tmp/paseo-web/
+RUN set -eux; \
+    web_ui="$(npm root -g)/@getpaseo/server/dist/server/web-ui"; \
+    test -f "${web_ui}/index.html"; \
+    cp /tmp/paseo-web/paseo-setup.html "${web_ui}/paseo-setup.html"; \
+    rm -f "${web_ui}/paseo-setup.html.gz" "${web_ui}/paseo-setup.html.br" \
+          "${web_ui}/index.html.gz" "${web_ui}/index.html.br"; \
+    snippet="$(tr -d '\n' < /tmp/paseo-web/index-redirect.html)"; \
+    SNIPPET="${snippet}" node -e 'const fs=require("fs");const f=process.argv[1];const h=fs.readFileSync(f,"utf8");if(!/<head>/i.test(h))process.exit(1);fs.writeFileSync(f,h.replace(/<head>/i,m=>m+process.env.SNIPPET));' "${web_ui}/index.html"; \
+    grep -q 'paseo-addon-setup-skip' "${web_ui}/index.html"; \
+    rm -rf /tmp/paseo-web
+
 # Replace upstream's entrypoint: run.sh needs root to prepare /data and /share, then execs
 # upstream's paseo-docker-entrypoint, which drops to the `paseo` user via gosu.
 ENTRYPOINT ["/usr/bin/tini", "--"]

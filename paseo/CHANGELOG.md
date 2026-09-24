@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+- The web UI now configures itself for this add-on's daemon out of the box. Paseo's web app
+  only auto-connects to the daemon that served it when no password is set, so a fresh install
+  showed an empty "add host" screen. The image now ships `/paseo-setup.html`, which saves the
+  same-origin daemon (endpoint, TLS, password) into the app's saved hosts and loads the app:
+  - the sidebar panel opens it with the password (in the URL fragment), so it connects with no
+    typing at all;
+  - any browser with no saved hosts that opens the web UI is redirected to it and only has to
+    enter the password (or pick "Skip").
+
 ## 1.0.1
 
 ### Fixed

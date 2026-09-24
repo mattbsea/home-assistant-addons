@@ -3,6 +3,9 @@
 // Paseo's web app uses absolute paths and has no base-path support, so it cannot run under
 // HA's /api/hassio_ingress/<token>/ prefix. Instead this panel frames the daemon's public HTTPS
 // URL (PASEO_EXTERNAL_URL, e.g. https://paseo.mbarclay.org), where the web UI runs at the root.
+// It opens the add-on's /paseo-setup.html with the daemon password in the URL fragment, which
+// saves the connection in that browser and loads the app already connected. This page is only
+// reachable through HA ingress (authenticated HA admins), who can read the password anyway.
 "use strict";
 
 const http = require("node:http");
@@ -25,6 +28,15 @@ function externalUrl() {
   }
 }
 
+function setupUrl(url) {
+  const password = process.env.PASEO_PASSWORD || "";
+  const target = new URL("paseo-setup.html", url);
+  if (password) {
+    target.hash = new URLSearchParams({ password }).toString();
+  }
+  return target.toString();
+}
+
 function page(url) {
   if (!url) {
     return `<!doctype html><html><head><meta charset="utf-8"><title>Paseo</title></head>
@@ -33,7 +45,7 @@ function page(url) {
 Paseo daemon (for example <code>https://paseo.example.com</code>) and restart the add-on.</p>
 </body></html>`;
   }
-  const safe = escapeHtml(url);
+  const safe = escapeHtml(setupUrl(url));
   return `<!doctype html>
 <html>
 <head>

@@ -1,0 +1,140 @@
+<!doctype html>
+<!--
+  Home Assistant add-on: configure this browser's Paseo web app for the daemon that serves it.
+
+  Paseo's web app only auto-connects to the daemon that served it when that daemon needs no
+  password (its injected __PASEO_INITIAL_DAEMON_CONNECTION__ hint carries no credentials and
+  can't express a proxy's default port). This page adds the same-origin daemon, with the
+  password, to the app's saved host list (localStorage "@paseo:daemon-registry") and then loads
+  the app. The HA sidebar panel opens it as /paseo-setup.html#password=... ; opened without a
+  fragment it asks for the password. Copied into the daemon's web-ui dist dir by the Dockerfile.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Paseo setup</title>
+<style>
+  :root { color-scheme: dark light; }
+  html, body { margin: 0; height: 100%; background: #181b1a; color: #e7e9e8;
+               font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 360px; margin: 0 auto; padding: 18vh 16px 0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 0 0 16px; color: #a3a8a6; }
+  code { color: #e7e9e8; }
+  label { display: block; font-size: 13px; margin-bottom: 6px; color: #a3a8a6; }
+  input { box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 8px;
+          border: 1px solid #3a3f3d; background: #222625; color: inherit; font: inherit; }
+  button { margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px;
+           background: #e7e9e8; color: #181b1a; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .error { color: #f28b82; min-height: 1.4em; margin-top: 10px; font-size: 13px; }
+  a { color: #a3a8a6; font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Paseo</h1>
+  <p id="status">Connecting to <code id="endpoint"></code>…</p>
+  <form id="form" hidden>
+    <label for="password">Password (Home Assistant → Settings → Add-ons → Paseo → Configuration)</label>
+    <input id="password" type="password" autocomplete="current-password" required autofocus>
+    <button id="submit" type="submit">Connect</button>
+    <div class="error" id="error"></div>
+    <p style="margin-top:16px"><a href="/" id="skip">Skip — I'll add hosts myself</a></p>
+  </form>
+</main>
+<script>
+(function () {
+  "use strict";
+  var REGISTRY_KEY = "@paseo:daemon-registry";
+  var SKIP_KEY = "paseo-addon-setup-skip";
+  var useTls = location.protocol === "https:";
+  var port = location.port || (useTls ? "443" : "80");
+  var endpoint = location.hostname + ":" + port;
+  var connectionId = "direct:" + endpoint;
+
+  var $ = function (id) { return document.getElementById(id); };
+  $("endpoint").textContent = endpoint;
+
+  function readRegistry() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(REGISTRY_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveHost(serverId, password) {
+    var now = new Date().toISOString();
+    var hosts = readRegistry().filter(function (host) {
+      if (!host || host.serverId === serverId) return false;
+      var connections = Array.isArray(host.connections) ? host.connections : [];
+      return !connections.some(function (c) { return c && c.type === "directTcp" && c.endpoint === endpoint; });
+    });
+    hosts.push({
+      serverId: serverId,
+      label: "Home Assistant",
+      lifecycle: {},
+      connections: [{ id: connectionId, type: "directTcp", endpoint: endpoint, useTls: useTls, password: password }],
+      preferredConnectionId: connectionId,
+      createdAt: now,
+      updatedAt: now
+    });
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(hosts));
+  }
+
+  function showForm(message) {
+    $("status").textContent = "Enter the Paseo password to connect this browser to " + endpoint + ".";
+    $("form").hidden = false;
+    $("error").textContent = message || "";
+    $("submit").disabled = false;
+    $("password").focus();
+  }
+
+  function connect(password) {
+    // /api/status requires the password and returns the daemon's serverId, which the app's
+    // host registry is keyed by -- so this both validates the password and fetches the id.
+    return fetch("/api/status", { headers: { Authorization: "Bearer " + password }, cache: "no-store" })
+      .then(function (res) {
+        if (res.status === 401 || res.status === 403) throw new Error("Incorrect password.");
+        if (!res.ok) throw new Error("The Paseo server returned HTTP " + res.status + ".");
+        return res.json();
+      })
+      .then(function (info) {
+        if (!info || typeof info.serverId !== "string" || !info.serverId) {
+          throw new Error("Unexpected response from the Paseo server.");
+        }
+        saveHost(info.serverId, password);
+        try { sessionStorage.removeItem(SKIP_KEY); } catch (e) { /* ignore */ }
+        location.replace("/");
+      });
+  }
+
+  $("form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    $("submit").disabled = true;
+    $("error").textContent = "";
+    connect($("password").value.trim()).catch(function (err) { showForm(err.message); });
+  });
+
+  $("skip").addEventListener("click", function () {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch (e) { /* ignore */ }
+  });
+
+  // Password handed over in the fragment (never sent to the server); drop it from the URL/history.
+  var fragment = new URLSearchParams(location.hash.slice(1));
+  var handedOver = fragment.get("password");
+  if (location.hash) history.replaceState(null, "", location.pathname);
+  if (handedOver) {
+    connect(handedOver).catch(function (err) { showForm(err.message); });
+  } else {
+    showForm("");
+  }
+})();
+</script>
+</body>
+</html>

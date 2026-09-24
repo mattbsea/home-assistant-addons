@@ -19,6 +19,13 @@ The Paseo web app uses absolute paths and can't be served under Home Assistant's
 prefix, so the sidebar panel is a small page that frames `external_url`. The web UI therefore
 needs to be reachable over HTTPS through a reverse proxy (below).
 
+The web UI comes pre-configured for this add-on's daemon:
+
+- **Sidebar** — opens connected, no password prompt (the panel is only reachable by logged-in
+  Home Assistant admins and hands the password to the web UI in the URL fragment).
+- **Browser** (`https://paseo.example.com`) — a browser with no saved hosts is sent to a short
+  setup page with the server filled in; enter the password once and it is remembered.
+
 ## Password
 
 Leave `password` empty on install. On first start the add-on generates a random password and
