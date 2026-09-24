@@ -42,7 +42,7 @@ RUN set -eux; \
           "${web_ui}/index.html.gz" "${web_ui}/index.html.br"; \
     snippet="$(tr -d '\n' < /tmp/paseo-web/index-redirect.html)"; \
     SNIPPET="${snippet}" node -e 'const fs=require("fs");const f=process.argv[1];const h=fs.readFileSync(f,"utf8");if(!/<head>/i.test(h))process.exit(1);fs.writeFileSync(f,h.replace(/<head>/i,m=>m+process.env.SNIPPET));' "${web_ui}/index.html"; \
-    grep -q 'paseo-addon-setup-skip' "${web_ui}/index.html"; \
+    grep -q 'paseo-setup.html' "${web_ui}/index.html"; \
     rm -rf /tmp/paseo-web
 
 # Replace upstream's entrypoint: run.sh needs root to prepare /data and /share, then execs

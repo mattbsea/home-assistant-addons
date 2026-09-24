@@ -24,7 +24,8 @@ The web UI comes pre-configured for this add-on's daemon:
 - **Sidebar** — opens connected, no password prompt (the panel is only reachable by logged-in
   Home Assistant admins and hands the password to the web UI in the URL fragment).
 - **Browser** (`https://paseo.example.com`) — a browser with no saved hosts is sent to a short
-  setup page with the server filled in; enter the password once and it is remembered.
+  setup page with the server filled in; enter the password once and it is remembered. To re-enter it (e.g. after changing the
+  password), open `https://paseo.example.com/paseo-setup.html`.
 
 ## Password
 

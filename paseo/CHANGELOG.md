@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+### Changed
+- Removed the setup page's "Skip" link: once skipped there was no way back to the password
+  prompt. A browser with no saved hosts now always gets the prompt, and the page can be
+  reopened any time at `/paseo-setup.html`.
+
 ## 1.1.0
 
 ### Added

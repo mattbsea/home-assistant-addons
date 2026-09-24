@@ -7,7 +7,7 @@
   can't express a proxy's default port). This page adds the same-origin daemon, with the
   password, to the app's saved host list (localStorage "@paseo:daemon-registry") and then loads
   the app. The HA sidebar panel opens it as /paseo-setup.html#password=... ; opened without a
-  fragment it asks for the password. Copied into the daemon's web-ui dist dir by the Dockerfile.
+  fragment it asks for the password; it can always be reopened at /paseo-setup.html. Copied into the daemon's web-ui dist dir by the Dockerfile.
 -->
 <html lang="en">
 <head>
@@ -30,7 +30,6 @@
            background: #e7e9e8; color: #181b1a; font: inherit; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .6; cursor: default; }
   .error { color: #f28b82; min-height: 1.4em; margin-top: 10px; font-size: 13px; }
-  a { color: #a3a8a6; font-size: 13px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -43,14 +42,12 @@
     <input id="password" type="password" autocomplete="current-password" required autofocus>
     <button id="submit" type="submit">Connect</button>
     <div class="error" id="error"></div>
-    <p style="margin-top:16px"><a href="/" id="skip">Skip — I'll add hosts myself</a></p>
   </form>
 </main>
 <script>
 (function () {
   "use strict";
   var REGISTRY_KEY = "@paseo:daemon-registry";
-  var SKIP_KEY = "paseo-addon-setup-skip";
   var useTls = location.protocol === "https:";
   var port = location.port || (useTls ? "443" : "80");
   var endpoint = location.hostname + ":" + port;
@@ -109,7 +106,6 @@
           throw new Error("Unexpected response from the Paseo server.");
         }
         saveHost(info.serverId, password);
-        try { sessionStorage.removeItem(SKIP_KEY); } catch (e) { /* ignore */ }
         location.replace("/");
       });
   }
@@ -119,10 +115,6 @@
     $("submit").disabled = true;
     $("error").textContent = "";
     connect($("password").value.trim()).catch(function (err) { showForm(err.message); });
-  });
-
-  $("skip").addEventListener("click", function () {
-    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch (e) { /* ignore */ }
   });
 
   // Password handed over in the fragment (never sent to the server); drop it from the URL/history.
