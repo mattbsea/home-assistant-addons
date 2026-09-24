@@ -1,3 +1,13 @@
+## 0.2.4 - 2026-09-24
+
+### Fixed
+
+- `create_certificate` always failed with `400 Bad Request` on current Nginx Proxy
+  Manager: its certificate schema no longer accepts `letsencrypt_agree` /
+  `letsencrypt_email` in `meta` (`additionalProperties: false`). The payload now sends
+  only `dns_challenge` (plus DNS provider fields), and the `letsencrypt_email`
+  parameter was removed.
+
 ## 0.2.3 - 2026-04-12
 
 ### Fixed

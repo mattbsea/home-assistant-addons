@@ -559,17 +559,19 @@ async def get_certificate(cert_id: int) -> str:
 async def create_certificate(
     domain_names: list[str],
     provider: str = "letsencrypt",
-    letsencrypt_email: str = "",
     dns_challenge: bool = False,
     dns_provider: str = "",
     dns_provider_credentials: str = "",
 ) -> str:
     """Create/request a new SSL certificate.
 
+    Current NPM rejects `letsencrypt_email`/`letsencrypt_agree` in `meta`
+    (schema has additionalProperties: false); the Let's Encrypt account email
+    is NPM's own setting.
+
     Args:
         domain_names: List of domain names for the certificate
         provider: Certificate provider ("letsencrypt" or "other")
-        letsencrypt_email: Email for Let's Encrypt notifications
         dns_challenge: Use DNS challenge instead of HTTP
         dns_provider: DNS provider for DNS challenge (e.g. "cloudflare")
         dns_provider_credentials: Credentials for DNS provider
@@ -577,11 +579,7 @@ async def create_certificate(
     payload: dict = {
         "domain_names": domain_names,
         "provider": provider,
-        "meta": {
-            "letsencrypt_agree": True,
-            "letsencrypt_email": letsencrypt_email,
-            "dns_challenge": dns_challenge,
-        },
+        "meta": {"dns_challenge": dns_challenge},
     }
     if dns_challenge and dns_provider:
         payload["meta"]["dns_provider"] = dns_provider
