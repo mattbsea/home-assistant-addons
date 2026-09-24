@@ -24,6 +24,12 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     gh --version
 
+# uv/uvx for Python tooling (`uv tool install` -> ~/.local/bin; uv-managed Pythons go to
+# ~/.local/share/uv, so both persist).
+RUN set -eux; \
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh; \
+    uv --version
+
 # User-installed tools live in the persistent home (see run.sh); put their bin dirs on PATH for
 # login shells too (Paseo's provider checks use `sh -lc`, which resets PATH from /etc/profile).
 COPY profile.d/paseo-addon.sh /etc/profile.d/paseo-addon.sh

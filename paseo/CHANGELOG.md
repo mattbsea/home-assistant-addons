@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+### Added
+- `uv`/`uvx` in the image; `uv tool install` tools and uv-managed Pythons persist in the home
+  directory.
+
+### Fixed
+- DOCS: rtk installs with its curl script (to `~/.local/bin`); `cargo install` needs Rust from
+  rustup first. Dropped the `pipx` mention (not installed).
+
 ## 1.2.0
 
 ### Added

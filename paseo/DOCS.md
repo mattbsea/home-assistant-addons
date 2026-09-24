@@ -84,7 +84,8 @@ Logins survive restarts and add-on updates.
 
 ## Extra tools
 
-The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js and the three agent CLIs.
+The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js, `uv`/`uvx` (Python via
+`uv python install`) and the three agent CLIs.
 Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
 it for `git push`); the login persists.
 
@@ -93,8 +94,8 @@ and add-on updates, and is on `PATH` for terminals and agents:
 
 | Install with | Lands in |
 | --- | --- |
-| `curl … \| sh` installers, `uv tool install`, `pipx install` | `~/.local/bin` |
-| `cargo install` (e.g. `cargo install --git https://github.com/rtk-ai/rtk`) | `~/.cargo/bin` |
+| `curl … \| sh` installers (e.g. rtk: `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh \| sh`), `uv tool install` | `~/.local/bin` |
+| `cargo install` (install Rust first with rustup: `curl https://sh.rustup.rs -sSf \| sh`; it also lives in the home directory) | `~/.cargo/bin` |
 | `npm install -g` | `~/.npm-global/bin` |
 
 `apt-get install` is not available (agents and terminals run as the non-root `paseo` user, and
