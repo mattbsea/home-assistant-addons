@@ -1,3 +1,12 @@
+## 0.2.6 - 2026-09-24
+
+### Fixed
+
+- Every tool failed with "Cannot send a request, as the client has been closed" after
+  the first MCP session ended: FastMCP runs `lifespan` per streamable-HTTP session, and
+  its teardown closed the process-wide httpx client. The client is now recreated on
+  demand when closed.
+
 ## 0.2.5 - 2026-09-24
 
 ### Fixed

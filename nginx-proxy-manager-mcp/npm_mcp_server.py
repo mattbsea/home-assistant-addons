@@ -27,7 +27,16 @@ class NpmClient:
         self.password = password
         self.token: str | None = None
         self.token_expires: float = 0
-        self._http = httpx.AsyncClient(base_url=self.base_url, timeout=30)
+        self._client: httpx.AsyncClient | None = None
+
+    @property
+    def _http(self) -> httpx.AsyncClient:
+        # FastMCP runs `lifespan` per streamable-HTTP session, so a finished session
+        # closes this client under every later one ("client has been closed").
+        # Recreate it on demand instead of holding one for the process lifetime.
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=30)
+        return self._client
 
     async def authenticate(self):
         """Obtain a JWT token from the NPM API."""
@@ -72,7 +81,8 @@ class NpmClient:
         return await self._request("DELETE", path, **kwargs)
 
     async def aclose(self):
-        await self._http.aclose()
+        if self._client is not None:
+            await self._client.aclose()
 
 
 # ---------------------------------------------------------------------------
