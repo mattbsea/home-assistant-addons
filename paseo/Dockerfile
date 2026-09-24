@@ -30,6 +30,11 @@ RUN set -eux; \
     curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh; \
     uv --version
 
+# gosu sets HOME from /etc/passwd when it drops to `paseo`, which would override run.sh's
+# HOME=/data/home with the image's ephemeral /home/paseo (so `~`, ~/.gitconfig, ~/.ssh and
+# installers writing to ~/.local/bin would be lost on update). Point the account at /data/home.
+RUN usermod --home /data/home paseo && test "$(getent passwd paseo | cut -d: -f6)" = /data/home
+
 # User-installed tools live in the persistent home (see run.sh); put their bin dirs on PATH for
 # login shells too (Paseo's provider checks use `sh -lc`, which resets PATH from /etc/profile).
 COPY profile.d/paseo-addon.sh /etc/profile.d/paseo-addon.sh

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2
+
+### Fixed
+- The daemon, terminals and agents ran with `HOME=/home/paseo` (gosu resets `HOME` from
+  `/etc/passwd`), an ephemeral directory: `~`, `~/.gitconfig`, `~/.ssh` and tools installed to
+  `~/.local/bin` were lost on update. The `paseo` account's home is now `/data/home`.
+
 ## 1.2.1
 
 ### Added
