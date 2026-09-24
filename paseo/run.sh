@@ -49,6 +49,8 @@ unset SUPERVISOR_TOKEN
 # Everything the daemon and the agent CLIs keep (Paseo state, Claude/Codex/OpenCode logins,
 # config, caches) lives under /data so it survives restarts and updates.
 export HOME=/data/home
+# gosu doesn't set SHELL, so the daemon (and Paseo terminals) would fall back to dash.
+export SHELL=/bin/bash
 export PASEO_HOME="${HOME}/.paseo"
 export CLAUDE_CONFIG_DIR="${HOME}/.claude"
 export CODEX_HOME="${HOME}/.codex"

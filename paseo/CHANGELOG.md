@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+- Paseo terminals and agent shells ran under `/bin/sh` (dash) because `SHELL` was unset;
+  it is now `/bin/bash`.
+
 ## 1.0.0
 
 ### Added
