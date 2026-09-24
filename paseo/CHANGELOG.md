@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.3
+
+### Fixed
+- A browser configured before a reinstall (or a password change) kept a stale saved server it
+  could neither use nor fix, because the setup redirect only fired when no hosts were saved.
+  The web UI now checks the saved connection for its own address on load: if there is none, the
+  daemon rejects its password, or the server id changed, it goes to the password page, which
+  replaces the stale entry.
+
 ## 1.1.2
 
 ### Fixed

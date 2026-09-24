@@ -1,1 +1,36 @@
-<script>/* HA add-on: send an unconfigured browser to /paseo-setup.html (see paseo-setup.html) */(function(){try{var r=JSON.parse(localStorage.getItem("@paseo:daemon-registry")||"[]");if(!Array.isArray(r)||r.length===0)location.replace("/paseo-setup.html");}catch(e){}})();</script>
+<script>
+/* HA add-on: make sure this browser has a working saved connection to the daemon that serves
+   this page, otherwise send it to /paseo-setup.html (see paseo-setup.html).
+   - no saved host for this address                 -> setup (no request needed)
+   - saved password rejected / different serverId   -> setup (e.g. after a reinstall)
+   Network errors leave the app alone. Newlines are stripped at build time: block comments and
+   explicit semicolons only. */
+(function () {
+  try {
+    var useTls = location.protocol === "https:";
+    var endpoint = location.hostname + ":" + (location.port || (useTls ? "443" : "80"));
+    var hosts = JSON.parse(localStorage.getItem("@paseo:daemon-registry") || "[]");
+    if (!Array.isArray(hosts)) hosts = [];
+    var saved = null;
+    for (var i = 0; i < hosts.length && !saved; i++) {
+      var conns = (hosts[i] && Array.isArray(hosts[i].connections)) ? hosts[i].connections : [];
+      for (var j = 0; j < conns.length; j++) {
+        if (conns[j] && conns[j].type === "directTcp" && conns[j].endpoint === endpoint) {
+          saved = { serverId: hosts[i].serverId, password: conns[j].password || "" };
+          break;
+        }
+      }
+    }
+    if (!saved) { location.replace("/paseo-setup.html"); return; }
+    fetch("/api/status", { headers: { Authorization: "Bearer " + saved.password }, cache: "no-store" })
+      .then(function (res) {
+        if (res.status === 401 || res.status === 403) { location.replace("/paseo-setup.html?stale=1"); return null; }
+        return res.ok ? res.json() : null;
+      })
+      .then(function (info) {
+        if (info && info.serverId && info.serverId !== saved.serverId) location.replace("/paseo-setup.html?stale=1");
+      })
+      .catch(function () {});
+  } catch (e) {}
+})();
+</script>

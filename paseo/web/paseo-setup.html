@@ -120,11 +120,14 @@
   // Password handed over in the fragment (never sent to the server); drop it from the URL/history.
   var fragment = new URLSearchParams(location.hash.slice(1));
   var handedOver = fragment.get("password");
-  if (location.hash) history.replaceState(null, "", location.pathname);
+  // index.html sends ?stale=1 when the saved connection's password was rejected or the server
+  // changed (e.g. the add-on was reinstalled); saving below replaces that stale entry.
+  var stale = new URLSearchParams(location.search).get("stale") === "1";
+  if (location.hash || location.search) history.replaceState(null, "", location.pathname);
   if (handedOver) {
     connect(handedOver).catch(function (err) { showForm(err.message); });
   } else {
-    showForm("");
+    showForm(stale ? "The saved connection no longer works (the add-on was reinstalled or its password changed). Enter the current password." : "");
   }
 })();
 </script>
