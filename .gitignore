@@ -36,3 +36,6 @@ Thumbs.db
 .claude/
 .worktrees/
 opencode.json
+
+# oh-my-claudecode session state (created in whatever dir a hook runs from)
+.omc/
