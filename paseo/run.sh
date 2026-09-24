@@ -114,27 +114,27 @@ export PASEO_EXTERNAL_URL
 # --- Default workspace -----------------------------------------------------------------------
 # The web UI's "Add project -> New directory" parent picker only lists existing workspaces'
 # project roots (its directory search is confined to $HOME, where there's nothing to find), so
-# on a fresh install it is empty and nothing can be created. Register workspace_dir as a
-# "Home Assistant" workspace once the daemon is up. Done once (marker), so archiving it sticks.
-SEED_MARKER="/data/.workspace-seeded"
-if [ ! -e "${SEED_MARKER}" ]; then
-    (
-        for _ in $(seq 1 90); do
-            curl -fs -o /dev/null http://127.0.0.1:6767/api/health && break
-            sleep 2
-        done
-        paseo_cli() { gosu paseo paseo --host 127.0.0.1:6767 "$@"; }
-        if paseo_cli workspace ls --json 2>/dev/null \
-                | jq -e --arg p "${WORKSPACE_DIR}" 'any(.[]; .cwd == $p)' >/dev/null \
-            || paseo_cli workspace create --isolation local --path "${WORKSPACE_DIR}" \
-                --title "Home Assistant" --json >/dev/null 2>&1; then
-            touch "${SEED_MARKER}"
-            log "Registered ${WORKSPACE_DIR} as the default \"Home Assistant\" workspace."
+# whenever the daemon has no workspaces (fresh install, or all projects removed) it is empty and
+# nothing can be created. In that case register workspace_dir as a "Home Assistant" workspace
+# once the daemon is up. Left alone as soon as any workspace exists.
+rm -f /data/.workspace-seeded  # 1.1.2's create-once marker; no longer used
+(
+    for _ in $(seq 1 90); do
+        curl -fs -o /dev/null http://127.0.0.1:6767/api/health && break
+        sleep 2
+    done
+    paseo_cli() { gosu paseo paseo --host 127.0.0.1:6767 "$@"; }
+    if ! WORKSPACES="$(paseo_cli workspace ls --json 2>/dev/null)"; then
+        log "WARNING: could not list workspaces; skipping default workspace check."
+    elif [ "$(printf '%s' "${WORKSPACES}" | jq 'length')" = "0" ]; then
+        if paseo_cli workspace create --isolation local --path "${WORKSPACE_DIR}" \
+            --title "Home Assistant" --json >/dev/null 2>&1; then
+            log "No workspaces yet: registered ${WORKSPACE_DIR} as the \"Home Assistant\" workspace."
         else
             log "WARNING: could not register ${WORKSPACE_DIR} as a workspace; will retry next start."
         fi
-    ) &
-fi
+    fi
+) &
 
 log "Starting Paseo daemon on ${PASEO_LISTEN} (hostnames: ${PASEO_HOSTNAMES:-default}, workspace: ${WORKSPACE_DIR})"
 cd "${WORKSPACE_DIR}"

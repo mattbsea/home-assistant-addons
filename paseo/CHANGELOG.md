@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.4
+
+### Changed
+- The default "Home Assistant" workspace (`workspace_dir`) is now registered on every start when
+  the daemon has no workspaces at all, instead of only once. Removing every project previously
+  left "Add project → New directory" with an empty parent picker again.
+
 ## 1.1.3
 
 ### Fixed
