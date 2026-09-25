@@ -60,13 +60,13 @@ export XDG_STATE_HOME="${HOME}/.local/state"
 export XDG_CACHE_HOME="${HOME}/.cache"
 # Tools installed from a Paseo terminal persist when they land in the home directory: curl
 # installers / uv tool / pipx -> ~/.local/bin, cargo install -> ~/.cargo/bin, and npm i -g ->
-# ~/.npm-global (the image's global npm dir is root-owned and rebuilt on every update).
-# Same list as /etc/profile.d/paseo-addon.sh, which covers login shells.
+# ~/.npm-global (the image's global npm dir is root-owned and rebuilt on every update), and
+# bun add -g -> ~/.bun/bin. Same list as /etc/profile.d/paseo-addon.sh, which covers login shells.
 export NPM_CONFIG_PREFIX="${HOME}/.npm-global"
-export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${NPM_CONFIG_PREFIX}/bin:${PATH}"
+export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.bun/bin:${NPM_CONFIG_PREFIX}/bin:${PATH}"
 for dir in "${HOME}" "${PASEO_HOME}" "${CLAUDE_CONFIG_DIR}" "${CODEX_HOME}" \
     "${XDG_CONFIG_HOME}" "${XDG_DATA_HOME}" "${XDG_STATE_HOME}" "${XDG_CACHE_HOME}" \
-    "${HOME}/.local/bin" "${HOME}/.cargo/bin" "${NPM_CONFIG_PREFIX}/bin"; do
+    "${HOME}/.local/bin" "${HOME}/.cargo/bin" "${HOME}/.bun/bin" "${NPM_CONFIG_PREFIX}/bin"; do
     mkdir -p "${dir}"
 done
 chown -R paseo:paseo "${HOME}"

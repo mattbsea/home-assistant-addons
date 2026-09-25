@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+### Added
+- Bun (`bun`/`bunx`) in the image; `bun add -g` packages land in `~/.bun/bin`, which persists and
+  is on `PATH` for terminals, agents and login shells.
+- Python 3 (Debian's `python3` with `venv` and `pip`; `python` points to it).
+
+### Changed
+- Claude Code, Codex and OpenCode are no longer pinned: each build installs their latest versions
+  (as it does for uv and Bun). Updating the add-on rebuilds these layers.
+
 ## 1.2.2
 
 ### Fixed

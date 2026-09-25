@@ -8,7 +8,8 @@ USER root
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends jq ripgrep; \
+    apt-get install -y --no-install-recommends jq ripgrep unzip \
+      python3 python3-venv python3-pip python-is-python3; \
     rm -rf /var/lib/apt/lists/*
 
 # GitHub CLI from GitHub's official apt repository. Its login (`gh auth login`) is stored under
@@ -24,11 +25,24 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     gh --version
 
+# uv, Bun and the agent CLIs below install their latest release. Supervisor passes the add-on
+# version as BUILD_VERSION; declaring it here invalidates the build cache from this point on, so
+# every add-on update fetches fresh versions instead of reusing cached layers.
+ARG BUILD_VERSION
+
 # uv/uvx for Python tooling (`uv tool install` -> ~/.local/bin; uv-managed Pythons go to
 # ~/.local/share/uv, so both persist).
 RUN set -eux; \
     curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh; \
     uv --version
+
+# Bun + bunx (the installer needs unzip). `bun add -g` installs to ~/.bun (bin: ~/.bun/bin), so
+# globally added packages persist.
+RUN set -eux; \
+    curl -fsSL https://bun.sh/install | env BUN_INSTALL=/usr/local bash; \
+    ln -sf bun /usr/local/bin/bunx; \
+    bun --version; \
+    command -v bunx
 
 # gosu sets HOME from /etc/passwd when it drops to `paseo`, which would override run.sh's
 # HOME=/data/home with the image's ephemeral /home/paseo (so `~`, ~/.gitconfig, ~/.ssh and
@@ -39,16 +53,13 @@ RUN usermod --home /data/home paseo && test "$(getent passwd paseo | cut -d: -f6
 # login shells too (Paseo's provider checks use `sh -lc`, which resets PATH from /etc/profile).
 COPY profile.d/paseo-addon.sh /etc/profile.d/paseo-addon.sh
 
-# Agent CLIs Paseo drives. Same set as upstream's docker/Dockerfile.agents.example, pinned so a
-# rebuild on the HA host is reproducible; bump these (and the add-on version) to upgrade.
-ARG CLAUDE_CODE_VERSION=2.1.281
-ARG CODEX_VERSION=0.156.1
-ARG OPENCODE_VERSION=1.18.32
+# Agent CLIs Paseo drives (same set as upstream's docker/Dockerfile.agents.example), at their
+# latest versions when the image is built.
 RUN set -eux; \
     npm install -g \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-      "@openai/codex@${CODEX_VERSION}" \
-      "opencode-ai@${OPENCODE_VERSION}"; \
+      "@anthropic-ai/claude-code@latest" \
+      "@openai/codex@latest" \
+      "opencode-ai@latest"; \
     npm cache clean --force; \
     claude --version; \
     codex --version; \

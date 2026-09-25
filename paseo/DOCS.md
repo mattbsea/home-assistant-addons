@@ -84,8 +84,11 @@ Logins survive restarts and add-on updates.
 
 ## Extra tools
 
-The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js, `uv`/`uvx` (Python via
-`uv python install`) and the three agent CLIs.
+The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js, Bun (`bun`/`bunx`),
+Python 3 (`python`/`python3`, with `venv` and `pip`), `uv`/`uvx` (other Python versions via
+`uv python install`) and the three agent CLIs. The system Python is externally managed, so
+`pip install` only works inside a virtualenv (`python -m venv .venv` or `uv venv`); for CLI
+tools use `uv tool install`.
 Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
 it for `git push`); the login persists.
 
@@ -97,6 +100,7 @@ and add-on updates, and is on `PATH` for terminals and agents:
 | `curl … \| sh` installers (e.g. rtk: `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh \| sh`), `uv tool install` | `~/.local/bin` |
 | `cargo install` (install Rust first with rustup: `curl https://sh.rustup.rs -sSf \| sh`; it also lives in the home directory) | `~/.cargo/bin` |
 | `npm install -g` | `~/.npm-global/bin` |
+| `bun add -g` | `~/.bun/bin` |
 
 `apt-get install` is not available (agents and terminals run as the non-root `paseo` user, and
 system packages would be reset by the next update).
