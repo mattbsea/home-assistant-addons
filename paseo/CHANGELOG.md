@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+- `env_vars` option: set extra environment variables (name/value pairs) from the add-on's
+  Configuration tab; the daemon, agents and terminals inherit them.
+- `yq`, `tree`, `wget`, `nano`, `vim` and `build-essential` (`gcc`, `g++`, `make`), matching the
+  Claude Terminal add-on's tools.
+- The OpenSSH client (`ssh`, `scp`, `ssh-keygen`) is installed explicitly instead of relying on
+  the base image; keys and config in `~/.ssh` persist. No SSH server is included.
+
 ## 1.3.0
 
 ### Added

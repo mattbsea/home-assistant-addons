@@ -9,7 +9,8 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends jq ripgrep unzip \
-      python3 python3-venv python3-pip python-is-python3; \
+      python3 python3-venv python3-pip python-is-python3 openssh-client \
+      wget nano vim tree build-essential; \
     rm -rf /var/lib/apt/lists/*
 
 # GitHub CLI from GitHub's official apt repository. Its login (`gh auth login`) is stored under
@@ -35,6 +36,13 @@ ARG BUILD_VERSION
 RUN set -eux; \
     curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh; \
     uv --version
+
+# yq (mikefarah's Go version; Debian's `yq` package is an unrelated jq wrapper).
+RUN set -eux; \
+    curl -fsSL -o /usr/local/bin/yq \
+      "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)"; \
+    chmod a+x /usr/local/bin/yq; \
+    yq --version
 
 # Bun + bunx (the installer needs unzip). `bun add -g` installs to ~/.bun (bin: ~/.bun/bin), so
 # globally added packages persist.

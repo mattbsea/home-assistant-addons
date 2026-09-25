@@ -108,6 +108,29 @@ else
     unset OPENAI_API_KEY
 fi
 
+# --- User environment variables (env_vars option) ---------------------------------------------
+# Exported to the daemon, so every agent and Paseo terminal inherits them. Applied after the
+# add-on's own settings, so they can override those too, except for the few the add-on depends on.
+RESERVED_ENV="HOME SHELL PATH PASEO_HOME PASEO_LISTEN PASEO_PASSWORD SUPERVISOR_TOKEN"
+ENV_COUNT="$(opt '(.env_vars // []) | length')"
+for i in $(seq 0 $((ENV_COUNT - 1))); do
+    name="$(jq -r --argjson i "${i}" '.env_vars[$i].name // ""' "${OPTIONS_FILE}")"
+    if ! [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        log "WARNING: env_vars entry $((i + 1)) has an invalid name '${name}'; skipped."
+        continue
+    fi
+    case " ${RESERVED_ENV} " in
+        *" ${name} "*)
+            log "WARNING: env_vars entry ${name} is managed by the add-on; skipped."
+            continue
+            ;;
+    esac
+    value="$(jq -r --argjson i "${i}" '.env_vars[$i].value // ""' "${OPTIONS_FILE}")"
+    export "${name}=${value}"
+    log "Set environment variable ${name} from env_vars."
+done
+unset RESERVED_ENV ENV_COUNT i name value
+
 # --- Sidebar (ingress) wrapper ---------------------------------------------------------------
 PASEO_EXTERNAL_URL="$(opt '.external_url // ""')"
 export PASEO_EXTERNAL_URL

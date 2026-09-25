@@ -84,13 +84,17 @@ Logins survive restarts and add-on updates.
 
 ## Extra tools
 
-The image includes `git`, `gh` (GitHub CLI), `jq`, `ripgrep`, Node.js, Bun (`bun`/`bunx`),
-Python 3 (`python`/`python3`, with `venv` and `pip`), `uv`/`uvx` (other Python versions via
+The image includes `git`, `gh` (GitHub CLI), the OpenSSH client (`ssh`, `scp`, `ssh-keygen`),
+`jq`, `yq`, `ripgrep`, `tree`, `wget`, `nano`, `vim`, a C/C++ toolchain (`build-essential`: `gcc`,
+`g++`, `make`, for native npm/pip modules), Node.js, Bun (`bun`/`bunx`), Python 3
+(`python`/`python3`, with `venv` and `pip`), `uv`/`uvx` (other Python versions via
 `uv python install`) and the three agent CLIs. The system Python is externally managed, so
 `pip install` only works inside a virtualenv (`python -m venv .venv` or `uv venv`); for CLI
 tools use `uv tool install`.
 Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
 it for `git push`); the login persists.
+For `git` over SSH or `ssh` to other machines, create a key once with `ssh-keygen -t ed25519`;
+it lives in `~/.ssh` (`/data/home/.ssh`) and persists, as do `~/.ssh/config` and `known_hosts`.
 
 Anything else you install **into your home directory** from a Paseo terminal survives restarts
 and add-on updates, and is on `PATH` for terminals and agents:
@@ -117,6 +121,29 @@ system packages would be reset by the next update).
 | `claude_code_oauth_token` | | Optional `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. |
 | `anthropic_api_key` | | Optional `ANTHROPIC_API_KEY`. |
 | `openai_api_key` | | Optional OpenAI key for Codex. |
+| `env_vars` | `[]` | Extra environment variables for the daemon, agents and terminals (see below). |
+
+### Environment variables
+
+Use `env_vars` to pass any other environment variable to Paseo and everything it runs (agents,
+terminals, workspace scripts), for example a different API endpoint, a model default or a token
+for a CLI tool. In the **Configuration** tab (YAML mode):
+
+```yaml
+env_vars:
+  - name: ANTHROPIC_BASE_URL
+    value: https://llm-gateway.example.com
+  - name: GITHUB_TOKEN
+    value: ghp_...
+  - name: DISABLE_TELEMETRY
+    value: "1"
+```
+
+Restart the add-on to apply changes. Names must be letters, digits and `_` (not starting with a
+digit). Entries override the add-on's own settings, except `HOME`, `SHELL`, `PATH`,
+`PASEO_HOME`, `PASEO_LISTEN`, `PASEO_PASSWORD` and `SUPERVISOR_TOKEN`, which are skipped with a
+warning in the log. Values are shown in plain text in the Configuration tab (unlike the
+dedicated key options above), and agents can read them like any other environment variable.
 
 ## Storage
 
