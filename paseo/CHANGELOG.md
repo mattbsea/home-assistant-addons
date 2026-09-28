@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+- `paseo_version` option: the Paseo version or dist-tag (`latest`, `beta`) to run, installed into the
+  add-on's persistent storage on start. Upgrading or rolling back is now an option change plus a
+  restart, instead of a new add-on version for every upstream release.
+- `auto_update` option (default on): re-resolve `paseo_version`, and upgrade Claude Code, Codex and
+  OpenCode, on every start. With it off, a dist-tag keeps the version that is installed.
+
+### Changed
+- The daemon and the agent CLIs are installed at start (`install.sh`) instead of being baked into
+  the image. The first start after an upgrade downloads about 500 MB from npm, and a broken release
+  now leaves the add-on running the version it already had.
+- `build.yaml` is gone: Supervisor deprecates it (2026.04 and newer build from the base image in the
+  Dockerfile), so the base image and the OCI labels moved into the Dockerfile. **Requires Supervisor
+  2026.04 or newer.**
+
 ## 1.5.0
 
 ### Added

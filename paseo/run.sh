@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # No bashio on the upstream Paseo (Debian) base image -- read options.json with jq and call the
-# Supervisor API with curl. Runs as root to prepare /data and the workspace, then hands off to
-# upstream's paseo-docker-entrypoint, which drops to the non-root `paseo` user via gosu.
+# Supervisor API with curl. Runs as root to prepare /data, install the daemon and the workspace, then
+# hands off to upstream's paseo-docker-entrypoint, which drops to the non-root `paseo` user via
+# gosu.
 set -eu
 
 OPTIONS_FILE="/data/options.json"
@@ -71,6 +72,19 @@ for dir in "${HOME}" "${PASEO_HOME}" "${CLAUDE_CONFIG_DIR}" "${CODEX_HOME}" \
 done
 chown -R paseo:paseo "${HOME}"
 
+# --- Paseo and the agent CLIs --------------------------------------------------------------------
+# Installed here rather than baked into the image, so `paseo_version`/`auto_update` are enough to
+# move to a new Paseo release (or back) without a new add-on version. Needs the home directory
+# above for the npm prefix, and has to run before the `codex login` below.
+PASEO_VERSION_OPTION="$(opt '.paseo_version // "latest"')"
+AUTO_UPDATE_OPTION="$(opt '.auto_update // true')"
+/opt/paseo-addon/install.sh "${PASEO_VERSION_OPTION}" "${AUTO_UPDATE_OPTION}"
+# The base image also has a `paseo` binary in /usr/local/bin, from its own bundled version. Put the
+# installed one first, so the CLI (this script, agents and terminals) always matches the daemon.
+export PASEO_APP_ROOT="${PASEO_APP_ROOT:-/data/paseo-app}"
+export PATH="${PASEO_APP_ROOT}/current/bin:${PATH}"
+unset PASEO_VERSION_OPTION AUTO_UPDATE_OPTION
+
 WORKSPACE_DIR="$(opt '.workspace_dir // "/share/paseo"')"
 mkdir -p "${WORKSPACE_DIR}"
 if [ "$(stat -c '%u' "${WORKSPACE_DIR}")" = "0" ]; then
@@ -111,7 +125,7 @@ fi
 # --- User environment variables (env_vars option) ---------------------------------------------
 # Exported to the daemon, so every agent and Paseo terminal inherits them. Applied after the
 # add-on's own settings, so they can override those too, except for the few the add-on depends on.
-RESERVED_ENV="HOME SHELL PATH PASEO_HOME PASEO_LISTEN PASEO_PASSWORD SUPERVISOR_TOKEN"
+RESERVED_ENV="HOME SHELL PATH PASEO_APP_ROOT PASEO_HOME PASEO_LISTEN PASEO_PASSWORD SUPERVISOR_TOKEN"
 ENV_COUNT="$(opt '(.env_vars // []) | length')"
 for i in $(seq 0 $((ENV_COUNT - 1))); do
     name="$(jq -r --argjson i "${i}" '.env_vars[$i].name // ""' "${OPTIONS_FILE}")"

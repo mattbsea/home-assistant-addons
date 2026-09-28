@@ -1,0 +1,13 @@
+configuration:
+  paseo_version:
+    name: Paseo version
+    description: >-
+      Version of the Paseo daemon to run: a dist-tag (latest, beta) or an exact version such as
+      0.10.1. Installed on start into the add-on's persistent storage, so changing this and
+      restarting is all it takes to upgrade or roll back.
+  auto_update:
+    name: Automatic updates
+    description: >-
+      With a dist-tag, upgrade to the newest published version whenever the add-on starts. Turn
+      this off to keep the version that is installed (and the installed agent CLIs) until you
+      change them yourself.

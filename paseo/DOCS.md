@@ -1,12 +1,16 @@
 # Paseo
 
 [Paseo](https://paseo.sh) is a self-hosted control plane for coding agents. This add-on runs the
-official Paseo daemon (image `ghcr.io/getpaseo/paseo`) with its bundled web UI and adds the
-**Claude Code**, **Codex** and **OpenCode** CLIs, so you can start and supervise agents from:
+official Paseo daemon (the npm packages behind the image `ghcr.io/getpaseo/paseo`) with its
+bundled web UI and adds the **Claude Code**, **Codex** and **OpenCode** CLIs, so you can start and
+supervise agents from:
 
 - the **Paseo** entry in the Home Assistant sidebar,
 - any browser at your public HTTPS address (e.g. `https://paseo.example.com`),
 - the **Paseo iPhone / Android app**.
+
+Requires Home Assistant Supervisor 2026.04 or newer, which is the first release that builds an app
+from the base image in its Dockerfile instead of `build.yaml`.
 
 ## How it fits together
 
@@ -27,6 +31,38 @@ The web UI comes pre-configured for this add-on's daemon:
   setup page with the server filled in; enter the password once and it is remembered. After a reinstall or password change the
   browser is sent back to the password page automatically (or open
   `https://paseo.example.com/paseo-setup.html`).
+
+## Upgrading Paseo
+
+The Paseo daemon and the three agent CLIs are **not** part of the add-on image. They are installed
+into the add-on's persistent storage every time it starts, so moving to a new Paseo release is an
+option change rather than a new add-on version — and the add-on's own version only changes when
+something about the add-on itself (a new tool, a fix) does.
+
+| `paseo_version` | `auto_update` | What a restart does |
+| --- | --- | --- |
+| `latest` or `beta` | on (default) | Installs the newest published version. Upgrades therefore happen on the next add-on start: a Home Assistant restart, a host reboot, or a manual **Restart**. |
+| `latest` or `beta` | off | Keeps the version that is installed. "Latest" is resolved once, when there is nothing installed yet. |
+| an exact version (`0.10.1`) | either | Keeps that version. |
+
+To upgrade on your own schedule, turn `auto_update` off and set `paseo_version` to the version you
+want (or turn it back on and restart) — either way, **Settings → Add-ons → Paseo → Restart** is the
+only step. The log says what happened:
+
+```
+[paseo-addon] Installing Paseo 0.10.1 (npm downloads about 500 MB; a few minutes).
+[paseo-addon] Paseo 0.10.1 is ready (/data/paseo-app/current).
+```
+
+A version that cannot be installed is reported as an error and the add-on keeps running the version
+it already had, so a bad release cannot take the add-on down. **Rolling back** is the same as
+upgrading: set `paseo_version` to the previous version (e.g. `0.9.2`) and restart. The current and
+the previously installed version are kept, so that is immediate; anything older is fetched again
+from npm.
+
+Paseo's state (workspaces, agent sessions, settings) lives in `/data/home` and is unaffected by any
+of this. Claude Code, Codex and OpenCode follow `auto_update` as well: with it on they move to their
+newest releases on every start, with it off they are installed when missing and then left alone.
 
 ## Password
 
@@ -88,10 +124,11 @@ The image includes `git`, `gh` (GitHub CLI), the OpenSSH client (`ssh`, `scp`, `
 `jq`, `yq`, `ripgrep`, `tree`, `wget`, `nano`, `vim`, a C/C++ toolchain (`build-essential`: `gcc`,
 `g++`, `make`, for native npm/pip modules), Node.js, Bun (`bun`/`bunx`), Python 3
 (`python`/`python3`, with `venv` and `pip`), `uv`/`uvx` (other Python versions via
-`uv python install`), FFmpeg (`ffmpeg`, `ffprobe`), OpenCV for the system Python (`import cv2`,
-with NumPy) and the three agent CLIs. The system Python is externally managed, so
-`pip install` only works inside a virtualenv (`python -m venv .venv` or `uv venv`); for CLI
-tools use `uv tool install`. To use the system OpenCV from a virtualenv, create it with
+`uv python install`) and FFmpeg (`ffmpeg`, `ffprobe`). OpenCV for the system Python (`import cv2`,
+with NumPy) is part of the image; the three agent CLIs are installed on start, into the persistent
+home. The system Python is externally managed, so `pip install` only works inside a virtualenv
+(`python -m venv .venv` or `uv venv`); for CLI tools use `uv tool install`. To use the system
+OpenCV from a virtualenv, create it with
 `python -m venv --system-site-packages .venv` (or `uv venv --system-site-packages`); otherwise
 `pip install opencv-python-headless` inside it.
 Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
@@ -116,6 +153,8 @@ system packages would be reset by the next update).
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `paseo_version` | `latest` | Paseo version or dist-tag to run (see **Upgrading Paseo**). |
+| `auto_update` | `true` | Re-resolve `paseo_version` and the agent CLIs on every start. |
 | `password` | *(generated)* | Password all clients must use. Empty = generate and save one. |
 | `external_url` | `https://paseo.mbarclay.org` | HTTPS address of the daemon; the sidebar panel frames it. |
 | `hostnames` | `[paseo.mbarclay.org]` | Extra `Host` headers the daemon accepts (DNS-rebinding guard). IPs and `localhost` are always allowed. |
@@ -144,14 +183,19 @@ env_vars:
 
 Restart the add-on to apply changes. Names must be letters, digits and `_` (not starting with a
 digit). Entries override the add-on's own settings, except `HOME`, `SHELL`, `PATH`,
-`PASEO_HOME`, `PASEO_LISTEN`, `PASEO_PASSWORD` and `SUPERVISOR_TOKEN`, which are skipped with a
-warning in the log. Values are shown in plain text in the Configuration tab (unlike the
-dedicated key options above), and agents can read them like any other environment variable.
+`PASEO_APP_ROOT`, `PASEO_HOME`, `PASEO_LISTEN`, `PASEO_PASSWORD` and `SUPERVISOR_TOKEN`, which are
+skipped with a warning in the log. Values are shown in plain text in the Configuration tab
+(unlike the dedicated key options above), and agents can read them like any other environment
+variable.
 
 ## Storage
 
 - `/data/home` — Paseo state (`.paseo`), agent logins and config (`.claude`, `.codex`,
-  `.config/opencode`) and caches. Included in add-on backups; treat backups as sensitive.
+  `.config/opencode`), the agent CLIs (`.npm-global`), the npm download cache (`.npm`) and other
+  caches. Included in add-on backups; treat backups as sensitive.
+- `/data/paseo-app` — the installed Paseo daemon, one directory per version plus a `current`
+  symlink. The current and the previously installed version are kept; older ones are removed on the
+  next start.
 - `/share/paseo` — default workspace for your repositories. Whenever the server has no workspaces
   (first start, or after removing every project) it is registered as a "Home Assistant"
   workspace at the next start, so **Add project → New directory** offers it as the parent folder.

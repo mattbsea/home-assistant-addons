@@ -1,7 +1,7 @@
 ---
 name: "Paseo"
 description: "Paseo daemon + web UI: run Claude Code, Codex and OpenCode agents from the browser, sidebar or the Paseo iPhone app"
-version: "1.5.0"
+version: "1.6.0"
 slug: "paseo"
 init: false
 
@@ -37,6 +37,8 @@ map:
   - share:rw
 
 options:
+  paseo_version: "latest"
+  auto_update: true
   password: ""
   external_url: "https://paseo.mbarclay.org"
   hostnames:
@@ -50,6 +52,8 @@ options:
   openai_api_key: ""
   env_vars: []
 schema:
+  paseo_version: "str"
+  auto_update: "bool"
   password: "password?"
   external_url: "url"
   hostnames:
