@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+### Added
+- FFmpeg (`ffmpeg`, `ffprobe`) and OpenCV for the system Python (Debian's `python3-opencv`,
+  `import cv2`, with NumPy). Virtualenvs see it only when created with `--system-site-packages`;
+  otherwise `pip install opencv-python-headless` inside the venv.
+
 ## 1.4.0
 
 ### Added

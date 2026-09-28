@@ -88,9 +88,12 @@ The image includes `git`, `gh` (GitHub CLI), the OpenSSH client (`ssh`, `scp`, `
 `jq`, `yq`, `ripgrep`, `tree`, `wget`, `nano`, `vim`, a C/C++ toolchain (`build-essential`: `gcc`,
 `g++`, `make`, for native npm/pip modules), Node.js, Bun (`bun`/`bunx`), Python 3
 (`python`/`python3`, with `venv` and `pip`), `uv`/`uvx` (other Python versions via
-`uv python install`) and the three agent CLIs. The system Python is externally managed, so
+`uv python install`), FFmpeg (`ffmpeg`, `ffprobe`), OpenCV for the system Python (`import cv2`,
+with NumPy) and the three agent CLIs. The system Python is externally managed, so
 `pip install` only works inside a virtualenv (`python -m venv .venv` or `uv venv`); for CLI
-tools use `uv tool install`.
+tools use `uv tool install`. To use the system OpenCV from a virtualenv, create it with
+`python -m venv --system-site-packages .venv` (or `uv venv --system-site-packages`); otherwise
+`pip install opencv-python-headless` inside it.
 Log in to GitHub once from a Paseo terminal with `gh auth login` (add `gh auth setup-git` to use
 it for `git push`); the login persists.
 For `git` over SSH or `ssh` to other machines, create a key once with `ssh-keygen -t ed25519`;

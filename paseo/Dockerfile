@@ -10,8 +10,11 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends jq ripgrep unzip \
       python3 python3-venv python3-pip python-is-python3 openssh-client \
-      wget nano vim tree build-essential; \
-    rm -rf /var/lib/apt/lists/*
+      wget nano vim tree build-essential \
+      ffmpeg python3-opencv; \
+    rm -rf /var/lib/apt/lists/*; \
+    ffmpeg -version | head -n1; \
+    python3 -c 'import cv2; print("OpenCV", cv2.__version__)'
 
 # GitHub CLI from GitHub's official apt repository. Its login (`gh auth login`) is stored under
 # $XDG_CONFIG_HOME/gh = /data/home/.config/gh, so it persists.
