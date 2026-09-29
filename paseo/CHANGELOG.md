@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.1
+
+### Fixed
+- `auto_update: false` was ignored (jq's `//` turned `false` into `true`), so every start upgraded
+  Paseo and the agent CLIs regardless of the setting.
+- A failed install at start no longer stops the add-on: it starts the daemon bundled with the image
+  and logs a warning, instead of restarting in a loop.
+- npm's download cache is kept in a temporary directory rather than `/data/home/.npm`, so it no
+  longer grows every backup or leaves root-owned files in the `paseo` home.
+- Installing an agent CLI can no longer swallow the stdin of the loop that installs the others.
+
 ## 1.6.0
 
 ### Added

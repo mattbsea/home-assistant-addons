@@ -50,6 +50,13 @@ log() {
 export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-${HOME}/.npm-global}"
 export PATH="${NPM_CONFIG_PREFIX}/bin:${PATH}"
 
+# npm's download cache would otherwise land in ${HOME}/.npm: hundreds of MB that end up in every
+# backup, owned by root inside the `paseo` home. Nothing here reuses it, so it lives in a temporary
+# directory that goes away with this script.
+NPM_CONFIG_CACHE="$(mktemp -d)"
+export NPM_CONFIG_CACHE
+trap 'rm -rf "${NPM_CONFIG_CACHE}"' EXIT
+
 # A version ends up as a directory name and as part of an npm spec, so it is checked before it is
 # used as either: only what semver and npm dist-tags can hold, never empty, never a flag, never a
 # path. That also keeps an unusable version from turning `rm -rf "${target}"` into a mistake.
@@ -118,7 +125,7 @@ ensure_agent_clis() {
         fi
         [ "${installed}" = "${wanted}" ] && continue
         log "Installing ${package}@${wanted} (installed: ${installed:-none})."
-        if npm install -g --no-audit --no-fund --loglevel=warn "${package}@${wanted}"; then
+        if npm install -g --no-audit --no-fund --loglevel=warn "${package}@${wanted}" </dev/null; then
             changed=1
         else
             log "WARNING: could not install ${package}@${wanted}; keeping ${installed:-none}."

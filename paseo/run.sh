@@ -77,8 +77,13 @@ chown -R paseo:paseo "${HOME}"
 # move to a new Paseo release (or back) without a new add-on version. Needs the home directory
 # above for the npm prefix, and has to run before the `codex login` below.
 PASEO_VERSION_OPTION="$(opt '.paseo_version // "latest"')"
-AUTO_UPDATE_OPTION="$(opt '.auto_update // true')"
-/opt/paseo-addon/install.sh "${PASEO_VERSION_OPTION}" "${AUTO_UPDATE_OPTION}"
+# Not `.auto_update // true`: jq's `//` also replaces `false`, so the option could never be turned off.
+AUTO_UPDATE_OPTION="$(opt 'if .auto_update == false then "false" else "true" end')"
+# A failed install is not fatal: /etc/paseo-server-entry is only rewritten once a version is usable, so
+# the daemon that ships in the base image starts instead of the add-on crash-looping.
+if ! /opt/paseo-addon/install.sh "${PASEO_VERSION_OPTION}" "${AUTO_UPDATE_OPTION}"; then
+    log "WARNING: installing Paseo failed; starting the daemon bundled with the add-on image instead."
+fi
 # The base image also has a `paseo` binary in /usr/local/bin, from its own bundled version. Put the
 # installed one first, so the CLI (this script, agents and terminals) always matches the daemon.
 export PASEO_APP_ROOT="${PASEO_APP_ROOT:-/data/paseo-app}"
