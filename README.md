@@ -115,6 +115,18 @@ Features:
 
 [Documentation](paseo/DOCS.md)
 
+### Paseo Hub
+
+[Paseo Hub](https://paseo.sh/docs/hub) — the self-hosted automation layer for Paseo. Triggers from
+GitHub, Slack and Discord start agents on your Paseo daemons, with a record of everything that ran.
+
+Features:
+- Official `@getpaseo/hub` with an embedded database persisted in `/data` (or PostgreSQL)
+- Optional unattended first account, provider apps via `env_vars`
+- Served on port 3000 behind your HTTPS reverse proxy; connect daemons with `paseo hub connect`
+
+[Documentation](paseo-hub/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:
