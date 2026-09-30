@@ -1,3 +1,10 @@
+## 0.1.1 - 2026-09-30
+
+### Fixed
+
+- supergateway crashed the whole add-on ("No connection established for request ID: 0") when a client dropped its request mid-`initialize`, which claude.ai's connector does while connecting. A preloaded guard now logs the error instead of exiting.
+- Added a Supervisor watchdog on `/health` so a hung or dead gateway is restarted.
+
 ## 0.1.0 - 2026-09-30
 
 ### Added

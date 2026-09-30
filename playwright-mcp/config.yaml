@@ -1,7 +1,7 @@
 ---
 name: "Playwright MCP"
 description: "Exposes a headless Playwright browser to AI clients via MCP with a secret-path HTTP URL"
-version: "0.1.0"
+version: "0.1.1"
 slug: "playwright_mcp"
 init: false
 url: "https://github.com/mattbsea/home-assistant-addons"
@@ -12,6 +12,7 @@ arch:
 
 startup: application
 boot: auto
+watchdog: "http://[HOST]:[PORT:9585]/health"
 
 ports:
   9585/tcp: 9585

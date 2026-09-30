@@ -67,8 +67,10 @@ bashio::log.info "Browser: ${BROWSER}, viewport: ${VIEWPORT}"
 # --stateful + --sessionTimeout: one playwright-mcp (and browser) per
 # Mcp-Session-Id, reaped after 30 min idle. Stateless mode leaks a child
 # process per request (see portainer-mcp 0.1.6).
+# crash-guard.cjs: supergateway dies on a client dropping mid-initialize
+# (claude.ai's connect probe does this); see CHANGELOG 0.1.1.
 # shellcheck disable=SC2086
-exec supergateway \
+exec env NODE_OPTIONS="--require /opt/crash-guard.cjs" supergateway \
     --stdio "/opt/playwright-mcp/node_modules/.bin/playwright-mcp --config ${CONFIG_FILE} ${EXTRA_ARGS}" \
     --outputTransport streamableHttp \
     --stateful \

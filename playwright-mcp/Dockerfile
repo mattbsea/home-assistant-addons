@@ -27,6 +27,7 @@ RUN mkdir -p /opt/playwright-mcp && cd /opt/playwright-mcp \
     && ./node_modules/.bin/playwright install --with-deps chromium firefox webkit \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
+COPY crash-guard.cjs /opt/crash-guard.cjs
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
