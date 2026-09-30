@@ -27,7 +27,14 @@ matched and what ran. This add-on runs `@getpaseo/hub` (pinned in `build.yaml`).
 | `trusted_client_ip_header` | Header your proxy sets with the client IP; `x-real-ip` for NPM (Hub only accepts a header holding a single IP, so not `x-forwarded-for`). Empty to disable. |
 | `bootstrap_organization`, `bootstrap_owner_email`, `bootstrap_owner_password` | Unattended first account. |
 | `database_url` | PostgreSQL URL. Empty uses the embedded database (one Hub process). |
-| `env_vars` | Extra variables, e.g. `GITHUB_APP_ID`, `GITHUB_WEBHOOK_SECRET`, `SLACK_*`, `DISCORD_*`. See the [self-hosting guide](https://paseo.sh/docs/hub/self-hosting). |
+| `auth_secret` | `PASEO_HUB_AUTH_SECRET`. Overrides the stored secret; changing it signs out dashboard users. |
+| `github_app_*`, `github_webhook_secret` | GitHub App: `GITHUB_APP_SLUG`, `_ID`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_PRIVATE_KEY` (or `github_app_private_key_path`, a file under `/data`), `GITHUB_WEBHOOK_SECRET`. The Configuration field is single-line, so for a multi-line PEM key prefer `github_app_private_key_path`. |
+| `slack_transport` | `socket` or `webhook`. Socket mode uses `slack_app_id` and `slack_app_token`; webhook mode uses `slack_app_id`, `slack_client_id`, `slack_client_secret` and `slack_signing_secret`. |
+| `discord_*` | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`. |
+| `env_vars` | Any other Hub variable. Names the add-on manages itself are ignored. |
+
+Variables set here take precedence over apps configured in the Hub UI. See the
+[self-hosting guide](https://paseo.sh/docs/hub/self-hosting).
 
 ## Data and upgrades
 
