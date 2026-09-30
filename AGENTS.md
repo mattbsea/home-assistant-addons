@@ -4,7 +4,7 @@
 
 Multi-add-on Home Assistant Supervisor repository. Each add-on lives in its own directory with `config.yaml`, `Dockerfile`, `build.yaml`, `run.sh`, `DOCS.md`, `CHANGELOG.md`.
 
-**Add-ons:** `claude-terminal/` (flagship, Node.js + shell), `claude-terminal-dev/` (dev build), `fleet-telemetry/` (Python/FastAPI), `teslausb-viewer/` (Python/FastAPI), `omni-route/` (Node.js/Next.js), `rustdesk-server/`, `rustdesk-web/`, `pai/`, `opencode-serve/`, `portainer-mcp/`, `nginx-proxy-manager-mcp/`, `github-runner/`
+**Add-ons:** `claude-terminal/` (flagship, Node.js + shell), `claude-terminal-dev/` (dev build), `fleet-telemetry/` (Python/FastAPI), `teslausb-viewer/` (Python/FastAPI), `omni-route/` (Node.js/Next.js), `rustdesk-server/`, `rustdesk-web/`, `pai/`, `opencode-serve/`, `portainer-mcp/`, `playwright-mcp/`, `nginx-proxy-manager-mcp/`, `github-runner/`
 
 ## Dev environment
 
