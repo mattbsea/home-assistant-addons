@@ -1,7 +1,7 @@
 ---
 name: "Paseo"
 description: "Paseo daemon + web UI: run Claude Code, Codex and OpenCode agents from the browser, sidebar or the Paseo iPhone app"
-version: "1.6.1"
+version: "1.7.0"
 slug: "paseo"
 init: false
 
@@ -51,6 +51,7 @@ options:
   anthropic_api_key: ""
   openai_api_key: ""
   env_vars: []
+  apt_packages: []
 schema:
   paseo_version: "str"
   auto_update: "bool"
@@ -67,3 +68,5 @@ schema:
   env_vars:
     - name: "match(^[A-Za-z_][A-Za-z0-9_]*$)"
       value: "str?"
+  apt_packages:
+    - "match(^[a-z0-9][a-z0-9+.-]+$)"
