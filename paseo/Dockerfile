@@ -18,11 +18,22 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends jq ripgrep unzip \
       python3 python3-venv python3-pip python-is-python3 openssh-client \
-      wget nano vim tree build-essential \
+      wget nano vim tree build-essential sudo \
       ffmpeg python3-opencv; \
     rm -rf /var/lib/apt/lists/*; \
     ffmpeg -version | head -n1; \
     python3 -c 'import cv2; print("OpenCV", cv2.__version__)'
+
+# Passwordless root for the `paseo` user (the captain's explicit decision): agents can run
+# `sudo apt-get install ...`. The package lists are deleted above to keep the image small, so a
+# first `sudo apt-get update` is needed. This is root inside the container only; the add-on is not
+# privileged. Packages installed this way last until the image is rebuilt -- see the `apt_packages`
+# option (apt-install.sh) for the ones that must survive updates.
+RUN set -eux; \
+    echo 'paseo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/paseo; \
+    chmod 0440 /etc/sudoers.d/paseo; \
+    visudo -cf /etc/sudoers.d/paseo; \
+    visudo -c
 
 # GitHub CLI from GitHub's official apt repository. Its login (`gh auth login`) is stored under
 # $XDG_CONFIG_HOME/gh = /data/home/.config/gh, so it persists.
@@ -72,10 +83,11 @@ COPY profile.d/paseo-addon.sh /etc/profile.d/paseo-addon.sh
 # into the persistent home's npm prefix on every start, so they follow `auto_update` too.
 COPY run.sh /run.sh
 COPY install.sh /opt/paseo-addon/install.sh
+COPY apt-install.sh /opt/paseo-addon/apt-install.sh
 # The web UI assets install.sh adds to each installed daemon's bundled web UI.
 COPY web/ /opt/paseo-addon/web/
 COPY ingress/ /opt/paseo-ingress/
-RUN chmod a+x /run.sh /opt/paseo-addon/install.sh
+RUN chmod a+x /run.sh /opt/paseo-addon/install.sh /opt/paseo-addon/apt-install.sh
 
 # Replace upstream's entrypoint: run.sh needs root to prepare /data and /share, then execs
 # upstream's paseo-docker-entrypoint, which drops to the `paseo` user via gosu.

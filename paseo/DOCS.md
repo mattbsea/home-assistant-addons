@@ -146,8 +146,38 @@ and add-on updates, and is on `PATH` for terminals and agents:
 | `npm install -g` | `~/.npm-global/bin` |
 | `bun add -g` | `~/.bun/bin` |
 
-`apt-get install` is not available (agents and terminals run as the non-root `paseo` user, and
-system packages would be reset by the next update).
+### System packages and sudo
+
+Agents and terminals still run as the `paseo` user, but that user has **passwordless `sudo`**, so
+they can install system (Debian) packages:
+
+```sh
+sudo apt-get update            # the image ships without package lists
+sudo apt-get install -y kicad
+```
+
+**This is root inside the add-on container.** Any agent, including one running with bypass
+permissions (no confirmation prompts), can change anything in the container, read everything it
+can read (the Paseo password and API keys in its environment, `/data`, `/share`) and install or
+run any software. It is not a privileged add-on and gets no extra Home Assistant access, but
+treat every agent as having full control of this container.
+
+Packages installed by hand with `sudo apt-get install` live in the container image layer, so they
+are **lost when the add-on is updated or rebuilt** (a plain restart keeps them). What persists is
+`/data` (including the home directory `/data/home`, see **Storage**) and `/share`. To keep system
+packages across updates, list them in the `apt_packages` option; they are installed with
+`apt-get` on every start, before the daemon launches:
+
+```yaml
+apt_packages:
+  - kicad
+  - graphviz
+```
+
+Names must be Debian package names (lowercase letters, digits and `+ - .`); anything else is
+skipped with an error in the log. A failed install is logged and does not stop the add-on from
+starting. Every start runs `apt-get update` first, so the add-on needs internet access at start
+when this option is not empty.
 
 ## Options
 
@@ -164,6 +194,7 @@ system packages would be reset by the next update).
 | `anthropic_api_key` | | Optional `ANTHROPIC_API_KEY`. |
 | `openai_api_key` | | Optional OpenAI key for Codex. |
 | `env_vars` | `[]` | Extra environment variables for the daemon, agents and terminals (see below). |
+| `apt_packages` | `[]` | Debian packages installed with `apt-get` on every start (see **System packages and sudo**). |
 
 ### Environment variables
 
@@ -207,7 +238,8 @@ variable.
   access but does not encrypt traffic, so use the HTTPS address from outside your network.
 - The static web UI files load before login by design; all API and WebSocket traffic requires
   the password.
-- Agents can run arbitrary commands inside this add-on's container with access to `/share`.
+- Agents can run arbitrary commands inside this add-on's container with access to `/share`, and
+  have passwordless `sudo` (root inside the container; see **System packages and sudo**).
   They inherit the daemon's environment, which includes the Paseo password and any agent API
   keys you set (Paseo reads its password only from the environment); the Supervisor API token is
   removed before the daemon starts.

@@ -11,3 +11,9 @@ configuration:
       With a dist-tag, upgrade to the newest published version whenever the add-on starts. Turn
       this off to keep the version that is installed (and the installed agent CLIs) until you
       change them yourself.
+  apt_packages:
+    name: System packages (apt)
+    description: >-
+      Debian packages to install with apt-get on every start, before the daemon launches. Packages
+      agents install themselves with sudo are lost when the add-on updates; list them here to keep
+      them. A failed install is logged and does not stop the add-on.

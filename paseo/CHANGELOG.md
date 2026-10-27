@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0
+
+### Added
+- `sudo` is installed and the `paseo` user (agents and terminals) has passwordless sudo, so agents
+  can `sudo apt-get install` software. This is root inside the container only: the add-on is still
+  not privileged and has no new Home Assistant permissions. See **System packages and sudo** in
+  the documentation, including what this means for agents running with bypass permissions.
+- `apt_packages` option: Debian packages installed with `apt-get` on every start, so they survive
+  add-on updates (packages installed by hand are lost when the image is rebuilt). Names are
+  validated, and a failed install is logged without stopping the daemon from starting.
+
 ## 1.6.1
 
 ### Fixed

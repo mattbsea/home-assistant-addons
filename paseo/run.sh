@@ -90,6 +90,10 @@ export PASEO_APP_ROOT="${PASEO_APP_ROOT:-/data/paseo-app}"
 export PATH="${PASEO_APP_ROOT}/current/bin:${PATH}"
 unset PASEO_VERSION_OPTION AUTO_UPDATE_OPTION
 
+# --- System packages (apt_packages option) --------------------------------------------------
+# Failures are logged by the script and never stop the add-on.
+/opt/paseo-addon/apt-install.sh "${OPTIONS_FILE}" || log "WARNING: apt_packages: some packages were not installed; see above."
+
 WORKSPACE_DIR="$(opt '.workspace_dir // "/share/paseo"')"
 mkdir -p "${WORKSPACE_DIR}"
 if [ "$(stat -c '%u' "${WORKSPACE_DIR}")" = "0" ]; then
