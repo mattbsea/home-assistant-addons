@@ -11,8 +11,9 @@ are dispatched to a **Logger**, **MQTT**, and/or **Google Pub/Sub**.
 - **Dashboard** with battery/charging, drive, navigation, climate, tires and vehicle tiles, plus the
   newer Tesla fields (firmware-gated, hidden until the car sends them): remote start active, accessory
   rail, power transfer status, automatic emergency braking state, rolling resistance coefficient,
-  lifetime DC fast-charge energy, and a **Self-driving** tile (self-driving miles, share of miles, and
-  an *inferred* "in use" indicator, since Tesla has no direct FSD signal). See [DOCS.md](DOCS.md).
+  lifetime DC fast-charge energy, and a **Self-driving** tile (self-driving miles, the share of miles
+  since the counters' last reset *and* since the add-on began tracking, and an *inferred* "in use"
+  indicator, since Tesla has no direct FSD signal). See [DOCS.md](DOCS.md).
 - **Tolerates newer fields than your car or Tesla's API knows.** If Tesla answers "Unknown field X" when
   the config is sent, that field is dropped and the rest still goes through; the dashboard lists it
   under "Not yet supported by Tesla" and it is offered again daily and after each update.

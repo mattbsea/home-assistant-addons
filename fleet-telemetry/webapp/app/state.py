@@ -16,6 +16,11 @@ from collections import deque
 
 import fields
 
+
+def _iso(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
 HISTORY_MAX = 600  # samples kept per sparkline series
 ONLINE_WINDOW = 660  # seconds of telemetry silence before we fall back to "asleep" (staleness backstop)
 
@@ -24,8 +29,14 @@ ONLINE_WINDOW = 660  # seconds of telemetry silence before we fall back to "asle
 LIVE_ONLY = ("Gear", "VehicleSpeed")
 
 
+SD_KEY, TOTAL_KEY = "SelfDrivingMilesSinceReset", "MilesSinceReset"
+
+
 class Store:
-    def __init__(self):
+    def __init__(self, sd_persist=None):
+        # sd_persist: optional sdtrack.BaselineStore. Without it the since-tracking baseline lives in
+        # memory only and is seeded from the first live reading (no record-log lookup).
+        self.sd_persist = sd_persist
         self._lock = threading.Lock()
         self.vehicles = {}            # vin -> {fields, history, last_epoch, display_name, ...}
         self.total_records = 0
@@ -83,6 +94,7 @@ class Store:
                  "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
                  "connected": True, "sleep_state": None, "last_data_epoch": 0.0, "last_connect_epoch": 0.0,
                  "last_fleet_epoch": 0.0, "sd_increase_epoch": None,
+                 "sd_baseline": self.sd_persist.load(vin) if self.sd_persist else None, "sd_scanned": False,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -107,6 +119,7 @@ class Store:
         changed = {}
         charge_started = False
         disconnected = False
+        sd_save = sd_scan = None
         with self._lock:
             self.total_records += 1
             self.last_record_epoch = now
@@ -151,6 +164,9 @@ class Store:
                 changed["VehicleSpeed"] = 0
                 v["history"]["speed"].append((now, 0))
             charge_started = self._track_charge_baseline(v)
+            # A resent (buffered) record replays old readings: it never seeds, moves or re-anchors the baseline.
+            if not data.get("IsResend") and (SD_KEY in changed or TOTAL_KEY in changed):
+                sd_save, sd_scan = self._sd_step(vin, v, created or _iso(now))
             # Connectivity vs liveness. A real telemetry record means the car is streaming = awake.
             # A CONNECTED frame is also a wake signal; a DISCONNECTED frame starts a sleep check.
             if is_connectivity:
@@ -161,6 +177,10 @@ class Store:
                     disconnected = True
             else:
                 v["connected"], v["sleep_state"], v["last_data_epoch"] = True, None, now
+        if sd_scan:
+            self._sd_seed_from_log(vin, created or _iso(now))
+        elif sd_save:
+            self._sd_save(vin, sd_save)
         if charge_started:
             self.charge_starts.put(vin)   # signal the charge-field worker (off the tail thread)
         if disconnected:
@@ -169,6 +189,56 @@ class Store:
             # `created_at` is the telemetry CreatedAt (sub-second): the streaming sink stamps positions
             # with it, not wall-clock receive time, so TeslaMate's power/regen-over-dt panels stay accurate.
             self._publish({"vin": vin, "changed": changed, "at": now, "created_at": created})
+
+    # --- self-driving share since tracking began -----------------------------------------
+    def _sd_step(self, vin, v, at, seed=None):
+        """Advance the vehicle's since-tracking baseline from its current counters. Caller holds the lock.
+
+        Returns (baseline_to_persist | None, needs_log_scan). With no baseline yet and the log not
+        consulted, asks the caller to scan the record log first (off the lock); otherwise the baseline is
+        `seed` (the log's earliest pair) or the first live reading. If either counter is below its
+        baseline the car reset a counter, so the baseline re-anchors at the new reading."""
+        f = v["fields"]
+        sd = fields.num(f.get(SD_KEY, {}).get("value"))
+        total = fields.num(f.get(TOTAL_KEY, {}).get("value"))
+        if sd is None or total is None:
+            return None, False
+        b, changed = v["sd_baseline"], False
+        if b is None:
+            if seed is None and not v["sd_scanned"]:
+                return None, True
+            b = seed or {"sd_miles": sd, "total_miles": total, "at": at, "source": "live", "reanchor": None}
+            v["sd_baseline"], changed = b, True
+            print(f"[app] self-driving baseline for ...{vin[-4:]} from "
+                  f"{'the record log' if b['source'] == 'record_log' else 'the first live reading'}: "
+                  f"{b['sd_miles']} self-driving / {b['total_miles']} total miles at {b['at']}", flush=True)
+        if sd < b["sd_miles"] or total < b["total_miles"]:
+            why = ("self-driving miles" if sd < b["sd_miles"] else "total miles") + " went down (counter reset)"
+            v["sd_baseline"] = b = {"sd_miles": sd, "total_miles": total, "at": at, "source": "reanchor",
+                                    "reanchor": {"at": at, "reason": why, "previous_sd_miles": b["sd_miles"],
+                                                 "previous_total_miles": b["total_miles"]}}
+            changed = True
+            print(f"[app] self-driving baseline for ...{vin[-4:]} re-anchored at {sd} / {total} at {at}: {why}",
+                  flush=True)
+        return (b if changed else None), False
+
+    def _sd_seed_from_log(self, vin, at):
+        """First counter reading for a vehicle with no stored baseline: look in the persistent record log
+        (streamed, off the store lock, once per vehicle per run), then settle the baseline."""
+        found = self.sd_persist.scan_log(vin) if self.sd_persist else None
+        with self._lock:
+            v = self.vehicles[vin]
+            v["sd_scanned"] = True
+            persist, _ = self._sd_step(vin, v, at, seed=found)
+        if persist:
+            self._sd_save(vin, persist)
+
+    def _sd_save(self, vin, baseline):
+        if self.sd_persist:
+            try:
+                self.sd_persist.save(vin, baseline)
+            except Exception as exc:   # persistence is best-effort; never take down ingest
+                print(f"[app] could not persist self-driving baseline: {exc!r}", flush=True)
 
     @staticmethod
     def _track_charge_baseline(v):
@@ -329,7 +399,8 @@ class Store:
             if not v:
                 return fields.self_driving_status({}, None, now, window)
             snap = {k: f["value"] for k, f in v["fields"].items()}
-            return fields.self_driving_status(snap, v.get("sd_increase_epoch"), now, window)
+            return fields.self_driving_status(snap, v.get("sd_increase_epoch"), now, window,
+                                              baseline=v.get("sd_baseline"))
 
     def vins(self):
         with self._lock:

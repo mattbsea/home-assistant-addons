@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.0.40
+
+### Added — self-driving share since tracking began
+- The Self-driving tile has a second share, **Self-driving share since tracking began**, measured only
+  over the miles driven since the earliest `SelfDrivingMilesSinceReset` / `MilesSinceReset` reading the
+  add-on has, so it no longer depends on when the car last reset its counters. Beside it: self-driving
+  miles gained, total miles gained and the date tracking began (miles follow the km/mi toggle). The
+  existing share is relabelled **Self-driving share (since reset)**.
+- **Baseline:** per vehicle, the earliest pair of counters. When none is stored it is looked up in the
+  persistent record log (`/data/telemetry-log.jsonl` and its `.gz` rotations, oldest first; the first
+  record carrying both counters for that vehicle wins; files are streamed line by line, malformed or
+  truncated lines and corrupt archives are skipped, the scan stops at the first match and runs once per
+  vehicle per run), else the first live reading is used. Source, timestamp and values are logged once.
+  It is stored under `sd_baselines` in `/data/shim-state.json` (by VIN) and survives restarts and updates.
+  `IsResend` records never set, move or re-anchor it; a repeated value changes nothing.
+- **Share** = self-driving miles gained ÷ total miles gained × 100. The counters move in whole miles, so
+  below 1 gained mile the row reads "n/a until the car has driven 1 mile". If gained self-driving exceeds
+  gained total, the counters are flagged inconsistent and no share is shown. If either counter drops
+  below its baseline (a counter reset) the baseline re-anchors at the new reading, the time and reason
+  are kept and a small note appears in the tile; a negative or nonsense share is never shown.
+- `/api/state` → `self_driving.since_tracking`: `baseline` `{sd_miles, total_miles, at, source}`,
+  `sd_miles_gained`, `total_miles_gained`, `share_pct`, `reason`, `reanchor`. See the data dictionary.
+  The TeslaMate-compatible shim output is unchanged (its golden fixture still passes).
+
+### Changed — shares shown to two decimals
+- Both self-driving shares are shown to two decimals, rounded half up (a 97 % share reads `97.00`), and
+  `share_pct` in `/api/state` now carries two decimals (it had one). Nothing else that exposes a share
+  changed: the share is not in the TeslaMate-compatible output.
+
 ## 1.0.39
 
 ### Fixed — config send no longer fails as a whole on a field Tesla does not know

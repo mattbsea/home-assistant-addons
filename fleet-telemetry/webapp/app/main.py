@@ -20,6 +20,7 @@ from starlette.routing import Route
 import elevation as elevation_mod
 import records
 from app import reclog
+from app import sdtrack
 from app import state
 from app.control import monitor, prime
 from app.sinks import shim_rest, stream
@@ -294,6 +295,9 @@ def main():
     cap_path = os.environ.get("FT_TELEMETRY_LOG", "/data/telemetry-log.jsonl")
     if cap_path:
         capture = reclog.RecordLog(cap_path)
+    # Self-driving share "since tracking began": the baseline persists in shim-state and is seeded from
+    # this same record log (see sdtrack.py).
+    store.sd_persist = sdtrack.BaselineStore(os.environ.get("FT_SHIM_STATE", "/data/shim-state.json"), cap_path)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"), capture=capture)
     # Parallel append-only log of every recurring Fleet API call (secrets redacted), same durability
     # guarantees as the telemetry log. Path empty -> disabled.
