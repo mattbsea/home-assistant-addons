@@ -204,3 +204,8 @@ is still needed so the Fleet seed never injects a stale gear.
 5. **No action:** G2 (`vehicle_disconnected` on every P) is by design and TeslaMate-tolerant; W1
    (no wake route) is the deliberate never-wake policy; the two charge fields and streaming power are
    DB-verified correct.
+6. **No action (1.0.38):** the newer telemetry-only fields (268, 272-276, the 258/259 self-driving
+   counters, cruise set speed / follow distance) are deliberately **not** mapped into `vehicle_data`:
+   TeslaMate has no matching field, and adding keys would break the golden contract
+   (`test_app_shim_data.py` pins that the shim output is unchanged with them present). See
+   `docs/teslamate-data-dictionary.md` §9.

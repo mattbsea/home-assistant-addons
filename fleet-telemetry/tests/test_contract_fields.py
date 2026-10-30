@@ -169,3 +169,135 @@ def test_enum_decoders():
     assert fields.defrost_on("DefrostModeOff") is False and fields.defrost_on("DefrostModeNormal") is True
     assert fields.round_int(51.6) == 52 and fields.round_int(None) is None
     assert fields.num("3.5") == 3.5 and fields.num("x") is None
+
+
+# --- upstream fields 268, 272-276 + self-driving (changelog 1.0.38) ----------------------------------
+NEW_FIELDS_1_0_38 = ("RemoteStartActive", "AccessoryRail", "PowerTransferStatus",
+                     "AutomaticEmergencyBrakingState", "RollingResistanceCoefficient", "LifetimeDcChargeEnergyKwh")
+SEMI_ONLY = ("SemiCruiseSpeedLimitMph", "Cabin12vPortKeepOn", "Cabin48vPortKeepOn", "SemiVehicleMassKg")
+SELF_DRIVING_FIELDS = ("SelfDrivingMilesSinceReset", "MilesSinceReset")
+
+
+def test_new_fields_requested_and_grouped():
+    r = fields.TELEMETRY_FIELDS
+    for name in NEW_FIELDS_1_0_38 + SELF_DRIVING_FIELDS + ("CruiseSetSpeed", "CruiseFollowDistance"):
+        assert name in r, name
+        assert name in fields.FIELD_GROUPS and name in fields.ALL_FIELDS, name
+
+
+def test_semi_only_fields_never_requested():
+    for name in SEMI_ONLY:
+        assert name not in fields.TELEMETRY_FIELDS, name
+        assert name not in fields.ALL_FIELDS, name   # not even offered in the editor's "show all" view
+
+
+def test_self_driving_counters_use_minimum_delta_of_at_least_one():
+    """Tesla requires minimum_delta >= 1 for SelfDrivingMilesSinceReset (its data page); MilesSinceReset
+    uses the same so the share compares like with like. Both keep a resend heartbeat."""
+    for name in SELF_DRIVING_FIELDS:
+        e = fields.TELEMETRY_FIELDS[name]
+        assert e["minimum_delta"] >= 1, name
+        assert e["resend_interval_seconds"] > e["interval_seconds"], name
+
+
+def test_new_numeric_fields_stay_quiet_while_parked():
+    """Numeric additions are on-change gated (minimum_delta) with a slow resend heartbeat; the
+    enum/boolean ones carry no minimum_delta (it is numeric-only)."""
+    for name in ("RollingResistanceCoefficient", "LifetimeDcChargeEnergyKwh"):
+        e = fields.TELEMETRY_FIELDS[name]
+        assert e["minimum_delta"] > 0 and e["resend_interval_seconds"] >= 600, name
+    for name in ("RemoteStartActive", "AccessoryRail", "PowerTransferStatus", "AutomaticEmergencyBrakingState"):
+        assert "minimum_delta" not in fields.TELEMETRY_FIELDS[name], name
+        assert fields.TELEMETRY_FIELDS[name]["interval_seconds"] >= 60, name
+
+
+def test_roster_hash_changes_so_autosend_resends_once():
+    """The roster fingerprint covers the new fields, so a car whose last-sent hash predates this
+    version triggers exactly one auto re-send (autosend.maybe_resend compares against shim-state)."""
+    old = {k: v for k, v in fields.TELEMETRY_FIELDS.items()
+           if k not in NEW_FIELDS_1_0_38 + SELF_DRIVING_FIELDS + ("CruiseSetSpeed", "CruiseFollowDistance")}
+    assert fields.telemetry_fields_hash(old) != fields.telemetry_fields_hash()
+    # every requested entry is JSON-serialisable with the keys Tesla accepts
+    for name, e in fields.TELEMETRY_FIELDS.items():
+        assert set(e) <= {"interval_seconds", "minimum_delta", "resend_interval_seconds"}, name
+
+
+def test_effective_roster_keeps_self_driving_minimum_delta_on_interval_override():
+    eff = fields.effective_roster({"SelfDrivingMilesSinceReset": {"enabled": True, "interval_seconds": 30}})
+    assert eff["SelfDrivingMilesSinceReset"]["minimum_delta"] >= 1
+
+
+@pytest.mark.parametrize("sd,total,expected", [
+    (25, 100, 25.0),
+    (12.34, 100, 12.3),
+    (0, 100, 0.0),
+    (100, 100, 100.0),
+    (5, 0, None),            # division by zero guarded
+    (5, -1, None),
+    (30, 20, None),          # sd > total: counters reset out of sync -> no meaningful ratio
+    (-1, 20, None),
+    (None, 100, None),       # missing counters
+    (5, None, None),
+    ("x", 100, None),
+])
+def test_self_driving_share(sd, total, expected):
+    assert fields.self_driving_share(sd, total) == expected
+
+
+NOW = 10_000.0
+
+
+def _status(snap, inc, now=NOW, **kw):
+    return fields.self_driving_status(snap, inc, now, **kw)
+
+
+def test_self_driving_status_active_when_counter_rose_recently_and_moving():
+    s = _status({"SelfDrivingMilesSinceReset": 12.4, "MilesSinceReset": 100, "Gear": "ShiftStateD",
+                 "VehicleSpeed": 45}, NOW - 60)
+    assert s["inferred"] is True and s["active"] is True
+    assert s["miles"] == 12.4 and s["total_miles"] == 100 and s["share_pct"] == 12.4
+    assert s["last_increase_age_s"] == 60
+
+
+def test_self_driving_status_window_boundary():
+    snap = {"SelfDrivingMilesSinceReset": 5, "Gear": "D", "VehicleSpeed": 30}
+    w = fields.SELF_DRIVING_WINDOW_SECONDS
+    assert _status(snap, NOW - w)["active"] is True           # exactly at the edge still counts
+    assert _status(snap, NOW - w - 1)["active"] is False      # stale -> disengaged/unknown
+    assert _status(snap, NOW - 400, window=600)["active"] is True
+
+
+def test_self_driving_status_false_when_parked_or_stopped():
+    base = {"SelfDrivingMilesSinceReset": 5, "MilesSinceReset": 50}
+    assert _status({**base, "Gear": "ShiftStateP", "VehicleSpeed": 0}, NOW - 5)["active"] is False
+    assert _status({**base, "Gear": "D", "VehicleSpeed": 0}, NOW - 5)["active"] is False      # stopped at a light
+    assert _status({**base, "Gear": "D"}, NOW - 5)["active"] is False                          # no speed reading
+    assert _status({**base, "VehicleSpeed": 40}, NOW - 5)["active"] is False                   # no gear reading
+    assert _status({**base, "Gear": "<invalid>", "VehicleSpeed": 40}, NOW - 5)["active"] is False
+
+
+def test_self_driving_status_unknown_when_counter_missing_or_never_increased():
+    moving = {"Gear": "D", "VehicleSpeed": 40}
+    s = _status(moving, None)
+    assert s["active"] is None and s["share_pct"] is None and s["miles"] is None   # unsupported car/firmware
+    s = _status({**moving, "SelfDrivingMilesSinceReset": 5, "MilesSinceReset": 50}, None)
+    assert s["active"] is False and s["last_increase_age_s"] is None               # counter seen, never rose
+    assert s["share_pct"] == 10.0
+    assert _status({}, None)["active"] is None                                      # empty snapshot
+
+
+def test_self_driving_status_future_increase_epoch_not_active():
+    """Clock skew guard: an increase stamped after `now` is not treated as recent engagement."""
+    snap = {"SelfDrivingMilesSinceReset": 5, "Gear": "D", "VehicleSpeed": 40}
+    assert _status(snap, NOW + 30)["active"] is False
+
+
+def test_dashboard_lists_new_fields_as_grouped():
+    """The 'Other signals' catch-all must not swallow the new fields: each is in dashboard.html's
+    grouped set (and the dashboard reads the server-computed self_driving object)."""
+    import pathlib
+    html = (pathlib.Path(conftest.HERE.parent) / "webapp" / "app" / "web" / "static" / "dashboard.html").read_text()
+    grouped = html.split("const grouped=new Set([", 1)[1].split("]);", 1)[0]
+    for name in NEW_FIELDS_1_0_38 + SELF_DRIVING_FIELDS + ("CruiseSetSpeed", "CruiseFollowDistance"):
+        assert f'"{name}"' in grouped, name
+    assert "v.self_driving" in html and "In use (inferred)" in html

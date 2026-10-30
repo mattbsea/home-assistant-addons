@@ -45,6 +45,8 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
             "soc_history": m["soc"], "speed_history": m["speed"],
             "client_version": m["client_version"], "last_seen_epoch": m["last_seen_epoch"],
             "seed_epoch": m["seed_epoch"],
+            # Inferred (NOT a direct Tesla signal) self-driving state + miles/share; see fields.self_driving_status.
+            "self_driving": store.self_driving(vin, now),
         })
     return {"now": now, "uptime_seconds": (now - start_time) if start_time else 0,
             "total_records": total, "records_per_min": store.rate_per_min(),

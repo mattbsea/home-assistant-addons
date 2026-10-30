@@ -536,3 +536,26 @@ miles_to_arrival,minutes_to_arrival,traffic_minutes_delay}` (only inside the `ac
 - **`cost` unit** = the operator's configured currency (not a fixed unit).
 - **`active_route_miles_to_arrival`** is the one published value left in **miles** (not converted).
 - All `file:line` references are against tag `v4.0.1`; re-verify if the installed version changes.
+
+---
+
+## 9. Add-on telemetry fields with no TeslaMate counterpart
+
+The Fleet Telemetry add-on requests some Tesla telemetry fields that have no equivalent in the Fleet-API
+`vehicle_data` shape TeslaMate parses (§2), so the shim (§2 / `shim_data.assemble`) does **not** emit them
+and TeslaMate never sees them; the golden `vehicle_data` fixture is unchanged by them. They reach the
+dashboard, `/api/state` and the raw Logger / MQTT / Pub/Sub output only. (Added in add-on 1.0.38.)
+
+| Telemetry field (proto #) | Unit / values | Where it surfaces |
+|---|---|---|
+| `RemoteStartActive` (268) | bool | Dashboard → Vehicle |
+| `AccessoryRail` (272) | not documented upstream (bool / enum / number all rendered) | Dashboard → Vehicle |
+| `PowerTransferStatus` (273) | enum `PowerTransferStatus{Unknown,Standby,Faulted,EmergencyShutdown,ExtEvseTestAllowed,ExtPrechargeAllowed,ChargeEnabling,ChargeEnabled,GracefulShutdown,Blocked}` | Dashboard → Charging |
+| `AutomaticEmergencyBrakingState` (274) | enum `AutomaticEmergencyBrakingState{Unknown,Unavailable,Standby,Enabled,Standstill}` (upstream remaps device-client 1.3.0 values) | Dashboard → Drive |
+| `RollingResistanceCoefficient` (275) | dimensionless | Dashboard → Drive |
+| `LifetimeDcChargeEnergyKwh` (276) | kWh | Dashboard → Battery |
+| `SelfDrivingMilesSinceReset` (259), `MilesSinceReset` (258) | miles; HW4, firmware 2025.44.25.5+; requested with `minimum_delta` ≥ 1 | Dashboard → Self-driving; `/api/state` `self_driving` (share %, inferred "in use") |
+| `CruiseSetSpeed` (101), `CruiseFollowDistance` (126) | unit as reported by the car; `FollowDistance1..7` | Dashboard → Self-driving (shared with ordinary adaptive cruise) |
+
+Semi-only fields (269-271, 277) are not requested. "FSD in use" is an **inference** from
+`SelfDrivingMilesSinceReset` rising within 3 minutes while moving, not a Tesla field (see DOCS.md).

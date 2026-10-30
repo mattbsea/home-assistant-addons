@@ -120,8 +120,11 @@ function buildCards(v){
  const S=k=>pretty(k,raw(k));
  const B=k=>{const x=raw(k);return (x===true||x===false)?x:null;};
  const nf=(x,dp=0)=>x==null?null:Number(x).toLocaleString(undefined,{maximumFractionDigits:dp});
- const row=(label,val,unit)=>{if(val==null||val===""||val==="<invalid>")return"";
-   return `<div class="kv"><span>${esc(label)}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
+ const row=(label,val,unit,tip)=>{if(val==null||val===""||val==="<invalid>")return"";
+   return `<div class="kv"${tip?` title="${esc(tip)}"`:""}><span>${esc(label)}${tip?" ⓘ":""}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
+ const yesno=b=>b==null?null:(b?"yes":"no");
+ // Value whose wire type is not documented (boolean, enum string or number): render any of them.
+ const flex=k=>{const x=raw(k);return typeof x==="boolean"?(x?"on":"off"):S(k);};
  const mcard=(t,inner)=>inner&&inner.trim()?card(t,inner):"";
  const fahr=useImperial;
  const tc=k=>{const n=N(k);return n==null?null:(fahr?Math.round(n*9/5+32):Math.round(n*10)/10);};
@@ -151,6 +154,7 @@ function buildCards(v){
    +row("Full pack (nominal)",nf(N('NominalFullPackEnergyKwh'),1),"kWh")
    +row("Lowest brick SoC",nf(N('BrickSocMinPercent'),1),"%")
    +row("Lifetime charged",nf(N('LifetimeEnergyChargedKwh'),0),"kWh")
+   +row("Lifetime DC fast-charged",nf(N('LifetimeDcChargeEnergyKwh'),0),"kWh")
    +row("Battery heater",onoff('BatteryHeaterOn'))
    +row("Low power to heat",B('NotEnoughPowerToHeat')==null?null:(B('NotEnoughPowerToHeat')?"yes":"no")));
 
@@ -173,7 +177,8 @@ function buildCards(v){
      +row("Fast charger brand",S('FastChargerBrand'));
  }
  chInner+=row("Port door",B('ChargePortDoorOpen')==null?null:(B('ChargePortDoorOpen')?"open":"closed"))
-   +row("Port latch",S('ChargePortLatch'));
+   +row("Port latch",S('ChargePortLatch'))
+   +row("Power transfer",S('PowerTransferStatus'));
  cards+=mcard("Charging",chInner);
 
  // Drive
@@ -191,7 +196,27 @@ function buildCards(v){
    +row("Elevation",nf(el(N('Elevation'))),elU)
    +row("Grade",nf(N('GradeEstimatePercent'),1),"%")
    +row("GPS accuracy",nf(el(N('GpsAccuracyMeters'))),elU)
+   +row("Emergency braking (AEB)",S('AutomaticEmergencyBrakingState'))
+   +row("Rolling resistance",nf(N('RollingResistanceCoefficient'),4),null,"Rolling resistance coefficient (dimensionless), as reported by the car.")
    +row("Odometer",nf(d(N('Odometer'))),distUnit));
+
+ // Self-driving. There is NO "FSD engaged" field in Tesla's telemetry: "In use" is INFERRED from the
+ // self-driving mileage counter (computed server-side in api.py / fields.self_driving_status). The
+ // counters need a HW4 car on firmware 2025.44.25.5+, so the whole tile stays hidden until they arrive.
+ const sd=v.self_driving||{};
+ const SD_TIP="Inferred, not a direct Tesla signal: yes = the self-driving mile counter rose within the last "
+   +"3 minutes and the car is moving. The counter only updates every whole mile, so this lags engagement by about a mile "
+   +"and can read no in slow traffic. Needs a HW4 car on firmware 2025.44.25.5 or later.";
+ const SINCE_TIP="Counted since an unknown reset: Tesla does not document what resets these counters, so treat the share as "
+   +"'since the last reset', not lifetime. Shown as a share only when both counters are present and consistent.";
+ const follow=(x=>x==null?null:String(x).replace(/^FollowDistance/,""))(S('CruiseFollowDistance'));
+ cards+=mcard("Self-driving",
+   row("In use (inferred)",sd.active==null?null:(sd.active?"yes":"no"),null,SD_TIP)
+   +row("Self-driving miles",nf(d(sd.miles),1),distUnit,SINCE_TIP)
+   +row("Total miles (since reset)",nf(d(sd.total_miles),1),distUnit,SINCE_TIP)
+   +row("Self-driving share",nf(sd.share_pct,1),"%",SINCE_TIP)
+   +row("Cruise set speed",nf(N('CruiseSetSpeed'),0),null,"Unit as reported by the car (not converted). Shared with ordinary adaptive cruise, so it does not by itself mean FSD.")
+   +row("Cruise follow distance",follow,null,"Shared with ordinary adaptive cruise; does not by itself mean FSD."));
 
  // Navigation / trip (active route)
  const navName=S('DestinationName');
@@ -284,6 +309,8 @@ function buildCards(v){
    +row("Software",typeof raw('Version')==="string"?raw('Version'):null)
    +row("Update available",(k=>{const b=B(k);return b==null?null:(b?"yes":"no");})('SoftwareUpdateAvailable'))
    +row("Update in progress",(k=>{const b=B(k);return b==null?null:(b?"yes":"no");})('SoftwareUpdateInProgress'))
+   +row("Remote start active",yesno(B('RemoteStartActive')))
+   +row("Accessory rail",flex('AccessoryRail'))
    +(()=>{const uv=raw('SoftwareUpdateVersion');
       // Only show update status when a real version is staged. The percent fields report a stray
       // idle value (e.g. install=1) when nothing is updating, so gate strictly on a pending version.
@@ -301,7 +328,7 @@ function buildCards(v){
    +row("Signals",Object.keys(f).length));
 
  // Other — only genuinely ungrouped signals (future-proofing)
- const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","ChargerPilotCurrent","FastChargerBrand","VehicleConfig","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Elevation","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","TpmsHardWarnings","TpmsSoftWarnings","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","SoftwareUpdateVersion","SoftwareUpdateInstallationPercentComplete","SoftwareUpdateDownloadPercentComplete","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","MaxSpeedToReachDestinationMph","GpsAccuracyMeters","GradeEstimatePercent","LifetimeEnergyChargedKwh","BrickSocMinPercent","NominalFullPackEnergyKwh","SoftwareUpdateAvailable","SoftwareUpdateInProgress","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
+ const grouped=new Set(["Soc","BatteryLevel","RatedRange","IdealBatteryRange","EstBatteryRange","EnergyRemaining","ChargeLimitSoc","ChargeState","DetailedChargeState","ACChargingPower","DCChargingPower","ChargeRateMilePerHour","ChargeAmps","ChargerVoltage","ChargerPhases","ACChargingEnergyIn","DCChargingEnergyIn","TimeToFullCharge","ChargingCableType","FastChargerType","FastChargerPresent","ChargePortDoorOpen","ChargePortLatch","ChargeCurrentRequest","ChargeCurrentRequestMax","ChargerPilotCurrent","FastChargerBrand","VehicleConfig","PackVoltage","PackCurrent","BatteryHeaterOn","NotEnoughPowerToHeat","VehicleSpeed","Gear","GpsHeading","Elevation","Odometer","InsideTemp","OutsideTemp","HvacACEnabled","HvacPower","HvacFanStatus","HvacLeftTemperatureRequest","HvacRightTemperatureRequest","PreconditioningEnabled","DefrostMode","RearDefrostEnabled","ClimateKeeperMode","CabinOverheatProtectionMode","DoorState","Locked","SentryMode","FdWindow","FpWindow","RdWindow","RpWindow","TpmsPressureFl","TpmsPressureFr","TpmsPressureRl","TpmsPressureRr","TpmsHardWarnings","TpmsSoftWarnings","VehicleName","CarType","Trim","ExteriorColor","Wheels","Version","SoftwareUpdateVersion","SoftwareUpdateInstallationPercentComplete","SoftwareUpdateDownloadPercentComplete","NetworkInterface","Location","LocatedAtHome","LocatedAtWork","LocatedAtFavorite","Destination","DestinationName","DestinationLocation","MilesToArrival","MinutesToArrival","RouteLastUpdated","RouteTrafficMinutesDelay","ExpectedEnergyPercentAtTripArrival","MaxSpeedToReachDestinationMph","GpsAccuracyMeters","GradeEstimatePercent","LifetimeEnergyChargedKwh","BrickSocMinPercent","NominalFullPackEnergyKwh","SoftwareUpdateAvailable","SoftwareUpdateInProgress","RemoteStartActive","AccessoryRail","PowerTransferStatus","AutomaticEmergencyBrakingState","RollingResistanceCoefficient","LifetimeDcChargeEnergyKwh","MilesSinceReset","SelfDrivingMilesSinceReset","CruiseSetSpeed","CruiseFollowDistance","SettingTemperatureUnit","SettingDistanceUnit","ConnectionID","Status"]);
  const extra=Object.keys(f).filter(k=>!grouped.has(k));
  if(extra.length){cards+=card("Other signals",extra.map(k=>row(k,typeof raw(k)==="object"?JSON.stringify(raw(k)):(pretty(k,raw(k))!=null?pretty(k,raw(k)):raw(k)))).join(""));}
 

@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.38
+
+### Added — upstream fields 268 and 272-276 on the roster and dashboard
+- Requested from the car: `RemoteStartActive` (268), `AccessoryRail`, `PowerTransferStatus`,
+  `AutomaticEmergencyBrakingState`, `RollingResistanceCoefficient`, `LifetimeDcChargeEnergyKwh`
+  (272-276). The two numeric ones use `minimum_delta` + `resend_interval_seconds` so they stay quiet
+  while parked; the enum/boolean ones are sampled at 60-300 s. The Semi-only fields (269-271, 277) are
+  deliberately not requested.
+- Dashboard rows: Vehicle → remote start active, accessory rail; Charging → power transfer status;
+  Drive → emergency braking (AEB) state, rolling resistance; Battery → lifetime DC fast-charged (kWh).
+  Enums are decoded to their suffix (`Enabled`, `Standby`, ...).
+- Tesla gates 272-276 on firmware 2026.32.300 or 2026.38.6 (and 268 on 2026.32+). On older firmware the
+  rows stay hidden until the car starts emitting values, exactly as for 260-267 in 1.0.37.
+- **The roster hash changes, so autosend re-pushes `fleet_telemetry_config` to the car once** (on the
+  first prime cycle after setup is complete; the new hash is stored only after a successful send, so a
+  failed send retries). A rejected config is inert: the car keeps streaming its previous config.
+
+### Added — self-driving data and an inferred "FSD in use" indicator
+- New **Self-driving** dashboard tile: self-driving miles, total miles (since reset), and the
+  self-driving share as a percentage (`SelfDrivingMilesSinceReset` / `MilesSinceReset`, requested with
+  `minimum_delta` 1 as Tesla requires; HW4, firmware 2025.44.25.5+). The share is omitted when a counter
+  is missing, the total is zero, or the self-driving count exceeds the total (counters reset out of
+  sync). Tooltips explain that nothing documents what triggers the "since reset" reset.
+- **In use (inferred):** Tesla has no FSD-engaged field, so the add-on infers it: yes when the
+  self-driving counter *rose* within the last 3 minutes while the car is moving (gear D/R/N and speed
+  above zero). A counter reset (decrease), a repeated value and a buffered resend (`IsResend`) never
+  count. Limits: updates only every whole mile (detection lags about a mile, lingers up to 3 minutes,
+  and can read "no" under ~20 mph); HW4 + firmware gated; ordinary cruise looks the same in the cruise
+  fields. The state is computed server-side (`fields.self_driving_status`, `Store.self_driving`) and
+  exposed as `self_driving` per vehicle in `/api/state`.
+- Also requested and shown in that tile: `CruiseSetSpeed` and `CruiseFollowDistance` (shared with
+  ordinary adaptive cruise, so context only; speed is shown in the car's reported unit).
+- The TeslaMate-compatible shim output is unchanged (TeslaMate has no matching fields); the golden
+  fixture still passes and a new test pins that. See `docs/teslamate-data-dictionary.md` §9.
+
+### Changed — fleet-telemetry binary now built from upstream commit 18800f77 (Go 1.27)
+- The newest tag, v0.9.5 (2026-09-28), has Field enum entries only through 271. Fields 272-277 first
+  landed in upstream commit 18800f77 ("Add Semi streaming fields", 2026-10-26, one commit after v0.9.5),
+  and the logger names fields via `protos.Field_name`, so any older binary would log them under an
+  empty key. Pinned to that commit (supersedes 8fbaa100); it also adds the AEB / power-transfer-status
+  value decoders. Its `go.mod` requires Go 1.27, so the build stage is now `golang:1.27-bookworm`.
+  Switch back to a tagged image once a release contains 18800f77.
+- Version: patch bump, following this changelog's convention (1.0.37 also shipped new fields and a
+  binary change as a patch).
+
 ## 1.0.37
 
 ### Added — eight new Tesla telemetry fields (proto 260–267) on the roster and dashboard

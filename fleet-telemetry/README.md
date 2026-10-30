@@ -6,7 +6,13 @@ are dispatched to a **Logger**, **MQTT**, and/or **Google Pub/Sub**.
 
 ## Features
 
-- Runs the official `fleet-telemetry` binary (pinned `v0.9.0`, amd64).
+- Runs the official `fleet-telemetry` binary, built from source at upstream commit `18800f77`
+  (v0.9.5 plus one commit; the newest tag lacks fields 272-277), amd64.
+- **Dashboard** with battery/charging, drive, navigation, climate, tires and vehicle tiles, plus the
+  newer Tesla fields (firmware-gated, hidden until the car sends them): remote start active, accessory
+  rail, power transfer status, automatic emergency braking state, rolling resistance coefficient,
+  lifetime DC fast-charge energy, and a **Self-driving** tile (self-driving miles, share of miles, and
+  an *inferred* "in use" indicator, since Tesla has no direct FSD signal). See [DOCS.md](DOCS.md).
 - **Built-in setup wizard.** No Configuration page — everything is configured through a guided
   wizard that generates the EC keypair, hosts the public key, registers your Tesla partner
   account, fetches your TLS cert, and configures your vehicle. It writes one local config file
