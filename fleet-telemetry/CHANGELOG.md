@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.39
+
+### Fixed — config send no longer fails as a whole on a field Tesla does not know
+- 1.0.38's automatic `fleet_telemetry_config` re-send was rejected by Tesla's Fleet API with HTTP 400
+  `Unknown field AccessoryRail` (272; the car is on firmware 2026.38.5, below the 2026.38.6 that
+  introduces it). Tesla validates the config atomically, so the car kept its previous config and none of
+  the new roster took effect, including the valid parts: `RemoteStartActive` (268) and the
+  `minimum_delta` for `SelfDrivingMilesSinceReset` / `MilesSinceReset` (259 / 258).
+- The send now parses `Unknown field <Name>` (HTTP 400 only; name = letters and digits), drops that
+  field and sends again, up to 10 drops per send (one token refresh and one signing proxy for all
+  attempts). Every drop is logged, and so are the result (fields sent, fields not supported) and the
+  list of fields sent. Any other error (another 400, 401, 403, 5xx, network) drops nothing and keeps
+  the old behaviour: inert, retried. The `ESSENTIAL_FIELDS` TeslaMate depends on are never dropped.
+- Dropped fields are kept in `shim-state.json` (`telemetry_unsupported`) and shown on the dashboard as
+  **Not yet supported by Tesla**, with the firmware note. Their rows stay hidden.
+- They are offered again in full once a day and after an add-on update, so they switch on by
+  themselves. The roster hash is that of the *desired* roster and is stored after a partial send too,
+  so a restart does not re-push the config and the dropped set can't cause a re-send loop. A new
+  hourly loop makes the daily retry (and the retry of a failed send) happen without a restart.
+- The wizard's "Send to vehicle" uses the same fallback and records the same state.
+- Also fixed: a "signing proxy did not start" failure now still persists the rotated refresh token.
+- After upgrading, expect one config send at boot (no hash was stored: 1.0.38's send failed).
+
 ## 1.0.38
 
 ### Added — upstream fields 268 and 272-276 on the roster and dashboard

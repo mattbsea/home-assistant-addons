@@ -109,6 +109,8 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
         successful seed (creds may arrive after the wizard's OAuth; the car may be asleep at boot).
         After it succeeds, no recurring poll — telemetry owns the structure. Auto-resends
         fleet_telemetry_config if the requested-field roster changed (e.g. across an upgrade).
+      - **autosend**: hourly check that retries a failed config send and re-offers the fields Tesla
+        rejected as unknown (once a day / after an update).
       - **charge**: block on the Store's charge-start signal and do ONE targeted Fleet fetch of the
         two non-streamed charge fields (charger_pilot_current / fast_charger_brand) per session.
 
@@ -139,6 +141,17 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
         return (c.get("client_id", ""), _load_refresh_token() or c.get("shim_refresh_token", ""),
                 tesla.fleet_host(c.get("region", "na")))
 
+    addon_version = os.environ.get("FT_ADDON_VERSION", "")
+    # How often the periodic loop looks for a due retry of the fields Tesla rejected (the retry itself
+    # only fires once a day / after an update, see autosend.RETRY_SECS; an ordinary tick is a cheap no-op).
+    autosend_check_secs = int(os.environ.get("FT_AUTOSEND_CHECK_SECS", "3600"))
+
+    def resend_config():
+        return autosend.maybe_resend(vins=registry.vins(), config_path=config_path,
+                                     shim_state_path=shim_state, wizard_state_path=wizard_state,
+                                     cert_file=cert_file, private_key_path=priv, auth_host=auth,
+                                     log=lambda m: print(m, flush=True), version=addon_version)
+
     def seed_loop():
         while True:
             cid, rt, fleet_host = _creds()
@@ -146,14 +159,18 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
                 n = prime.prime_once(registry, client_id=cid, refresh_token=rt, auth_host=auth,
                                      fleet_host=fleet_host, on_token=_save_refresh_token,
                                      post_form=logged_post_form, get=logged_get)
-                autosend.maybe_resend(vins=registry.vins(), config_path=config_path,
-                                      shim_state_path=shim_state, wizard_state_path=wizard_state,
-                                      cert_file=cert_file, private_key_path=priv, auth_host=auth,
-                                      log=lambda m: print(m, flush=True))
+                resend_config()
                 if n > 0:
                     print("[app] seed complete; telemetry now owns the store (no recurring poll)", flush=True)
                     return   # seeded ≥1 vehicle — stop; telemetry is the source of truth from here
             time.sleep(seed_retry_secs)   # creds not ready or car asleep — retry until first seed
+
+    def autosend_loop():
+        # seed_loop stops after the first seed, so this keeps the config send alive: it retries a failed
+        # send and re-offers the fields Tesla rejected earlier (daily / after an add-on update).
+        while True:
+            time.sleep(autosend_check_secs)
+            resend_config()   # never raises (maybe_resend swallows and logs)
 
     def charge_loop():
         while True:
@@ -205,6 +222,7 @@ def start_prime(registry, config_path, fleet_log=None, seed_retry_secs=120):
                 print(f"[app] stream-monitor error: {exc!r}", flush=True)
 
     threading.Thread(target=seed_loop, daemon=True).start()
+    threading.Thread(target=autosend_loop, daemon=True).start()
     threading.Thread(target=charge_loop, daemon=True).start()
     threading.Thread(target=stream_monitor, daemon=True).start()
 

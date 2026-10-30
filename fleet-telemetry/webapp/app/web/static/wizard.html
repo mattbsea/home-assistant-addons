@@ -169,7 +169,8 @@ function configResultHtml(r){
   if(!r)return"";
   if(r.ok){
     const vins=(r.vins||[]).map(v=>"…"+v.slice(-6)).join(", ");
-    return`<div class="result ok">✓ Sent to ${(r.vins||[]).length} vehicle(s)${vins?" ("+vins+")":""}</div>`;
+    const dr=(r.dropped||[]).length?`<div style="font-size:12px;margin-top:4px">Not yet supported by Tesla, left out for now: ${esc(r.dropped.join(", "))}. They are offered again daily and after an add-on update.</div>`:"";
+    return`<div class="result ok">✓ Sent to ${(r.vins||[]).length} vehicle(s)${vins?" ("+vins+")":""}${dr}</div>`;
   }
   return`<div class="result err">✗ ${esc(r.error||"Send failed")}</div>`;
 }

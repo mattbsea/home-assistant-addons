@@ -136,10 +136,24 @@ support simply don't appear.
 The Semi-only fields (269-271, 277) are not requested.
 
 When the add-on's requested-field list changes (every upgrade that adds fields), it re-sends the
-signed `fleet_telemetry_config` to your car(s) once automatically; there is nothing to click. If
-Tesla rejects the config (for example a car on older firmware that doesn't know a new field), the
-send is inert: the car keeps its previous config and the add-on retries on its next cycle, with the
-failure in the add-on log.
+signed `fleet_telemetry_config` to your car(s) once automatically; there is nothing to click.
+
+**Fields Tesla does not accept yet.** Tesla's Fleet API validates the whole config and answers HTTP 400
+`Unknown field <Name>` when a field is newer than the car's firmware (for example `AccessoryRail`,
+272, on firmware 2026.38.5). The add-on then drops that field and sends again, one field at a time (at
+most 10 per send), so the fields Tesla does accept (such as `RemoteStartActive`, and the self-driving
+counters with their `minimum_delta`) still take effect. Nothing is dropped for any other error (a
+different 400, 401, 403, 5xx, a network problem): such a send is inert, the car keeps its previous
+config, and the add-on retries it hourly.
+
+- The log says which fields Tesla rejected (`[sendconfig] Tesla does not know field X yet ...`) and, once
+  the send works, how many fields were sent, which were not supported, and the list of fields sent.
+- The dashboard shows a **Not yet supported by Tesla** card listing them, with the firmware note. Their
+  rows stay hidden, as for any field the car has not sent.
+- They are offered to Tesla again in full **once a day and after an add-on update**, so they turn on by
+  themselves when your car's firmware (or Tesla's API) catches up. The fields never trigger a re-send on
+  their own: a normal restart does not push the config again.
+- State lives in `/data/shim-state.json` (`telemetry_unsupported`, `telemetry_fields_hash`).
 
 ### Self-driving (FSD) data, and how "in use" is inferred
 

@@ -10,7 +10,7 @@ from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.routing import Route
 
-from app.control import checks, config as cfgmod, hostports, keys, npm, sendconfig, tesla, tokens
+from app.control import autosend, checks, config as cfgmod, hostports, keys, npm, sendconfig, tesla, tokens
 from app.web import api
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -55,7 +55,8 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
     # --- dashboard data ----------------------------------------------------------------
     def _payload():
         return api.state_payload(store, version=version, cert=checks.cert_detail(cert_file),
-                                 namespace=namespace, elevation_resolver=elevation, start_time=start_time)
+                                 namespace=namespace, elevation_resolver=elevation, start_time=start_time,
+                                 telemetry_config=autosend.config_status(shim_state_path, version=version))
 
     async def state(_req):
         return JSONResponse(_payload())
@@ -226,14 +227,16 @@ def build_wizard_app(*, config_path, wizard_state_path, shim_state_path, private
             roster = fields.effective_roster(tokens.read_state(shim_state_path).get("telemetry_roster"))
             r = sendconfig.send(vins=registry.vins() if registry else [], client_id=c.get("client_id", ""),
                                 refresh_token=refresh_token, domain=domain, region=region,
-                                port=port, cert_file=cert_file, private_key_file=private_key_path, roster=roster)
+                                port=port, cert_file=cert_file, private_key_file=private_key_path, roster=roster,
+                                log=lambda m: print(m, flush=True))
             if r.get("new_refresh_token"):
                 # Rotated token -> shim-state (NOT the watched config; would bounce the binary). Persist
                 # on success OR failure: the token rotates during the refresh regardless of the POST.
                 tokens.save(shim_state_path, r["new_refresh_token"])
-            if r.get("ok"):
-                # Record the roster fingerprint so the post-prime auto-resend doesn't re-fire needlessly.
-                tokens.write_state(shim_state_path, telemetry_fields_hash=fields.telemetry_fields_hash(roster))
+            if r.get("ok") or r.get("dropped"):
+                # Record the roster fingerprint (so the post-prime auto-resend doesn't re-fire needlessly) and
+                # any fields Tesla rejected as unknown (shown on the dashboard, offered again later).
+                autosend.record_result(shim_state_path, desired=roster, result=r, version=version)
             return JSONResponse(r)
         return JSONResponse({"error": "unknown check type"}, status_code=400)
 
