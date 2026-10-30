@@ -10,7 +10,8 @@ import time
 import fields
 
 
-def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0, elevation_resolver=None):
+def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0, elevation_resolver=None,
+                  telemetry_config=None):
     now = time.time()
     with store._lock:
         meta = [(vin, {
@@ -52,6 +53,9 @@ def state_payload(store, *, version="", cert=None, namespace="", start_time=0.0,
             "total_records": total, "records_per_min": store.rate_per_min(),
             "last_record_epoch": last, "namespace": namespace,
             "version": version, "cert": cert or {}, "vehicles": vehicles,
+            # Config-send status: fields Tesla's API rejected as unknown ("Not yet supported by Tesla").
+            "telemetry_config": telemetry_config or {"unsupported": [], "note": "", "next_retry_epoch": None,
+                                                     "last_send": None},
             # Fleet-API calls made since add-on start (in-memory; resets on restart).
             "fleet_api": {**store.fleet_calls(), "since": start_time}}
 

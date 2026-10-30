@@ -120,3 +120,45 @@ def test_send_config_rotation_goes_to_shim_state_not_config(tmp_path, monkeypatc
     assert c.post("/api/wizard/check", json={"check": "send_telemetry_config"}).json()["ok"]
     assert tokens.load(str(tmp_path / "shim.json")) == "NEWTOKEN"          # rotation -> shim-state
     assert json.load(open(tmp_path / "c.json"))["tesla"]["shim_refresh_token"] == "SEED"  # config untouched
+
+
+def test_manual_send_records_dropped_fields_and_the_dashboard_reports_them(tmp_path, monkeypatch):
+    """'Send to vehicle' that Tesla only partly accepts: remembered (hash + unsupported) and surfaced on the
+    dashboard payload and in the send result, while the rows for those fields stay absent."""
+    import importlib
+    sendconfig = importlib.import_module("app.control.sendconfig")
+    tokens = importlib.import_module("app.control.tokens")
+    fields = importlib.import_module("fields")
+    monkeypatch.setattr(sendconfig, "send",
+                        lambda **kw: {"ok": True, "vins": kw.get("vins"), "dropped": ["AccessoryRail"],
+                                      "sent_fields": ["Soc"], "new_refresh_token": "N"})
+    c = _client(tmp_path)
+    c.post("/api/wizard/config", json={"tesla": {"client_id": "c", "shim_refresh_token": "SEED",
+                                                  "telemetry_domain": "d.org"}})
+    r = c.post("/api/wizard/check", json={"check": "send_telemetry_config"}).json()
+    assert r["ok"] and r["dropped"] == ["AccessoryRail"]
+    st = tokens.read_state(str(tmp_path / "shim.json"))
+    assert st["telemetry_fields_hash"] == fields.telemetry_fields_hash(fields.effective_roster())
+    assert set(st["telemetry_unsupported"]) == {"AccessoryRail"}
+    tc = c.get("/api/state").json()["telemetry_config"]
+    assert [u["name"] for u in tc["unsupported"]] == ["AccessoryRail"] and "firmware" in tc["note"]
+
+
+def test_manual_send_failure_without_drops_records_nothing(tmp_path, monkeypatch):
+    import importlib
+    sendconfig = importlib.import_module("app.control.sendconfig")
+    tokens = importlib.import_module("app.control.tokens")
+    monkeypatch.setattr(sendconfig, "send", lambda **kw: {"ok": False, "dropped": [], "error": "HTTP 403"})
+    c = _client(tmp_path)
+    c.post("/api/wizard/config", json={"tesla": {"client_id": "c", "shim_refresh_token": "SEED",
+                                                  "telemetry_domain": "d.org"}})
+    assert c.post("/api/wizard/check", json={"check": "send_telemetry_config"}).json()["ok"] is False
+    assert tokens.read_state(str(tmp_path / "shim.json")) == {}
+    assert c.get("/api/state").json()["telemetry_config"]["unsupported"] == []
+
+
+def test_dashboard_and_wizard_pages_render_the_unsupported_panel(tmp_path):
+    c = _client(tmp_path)
+    c.post("/api/wizard/save", json={"completed": True})
+    assert 'id="unsupported"' in c.get("/").text and "Not yet supported by Tesla" in c.get("/").text
+    assert "Not yet supported by Tesla" in c.get("/setup").text

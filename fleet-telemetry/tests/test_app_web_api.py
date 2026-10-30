@@ -153,3 +153,12 @@ def test_fields_view_seed_and_override_rules():
     store.ingest({"msg": "record_payload", "vin": VIN, "data": {"Soc": 58.0}})
     fv = store.fields_view(VIN)
     assert fv["Soc"]["value"] == 58.0 and fv["Soc"]["source"] == "telemetry"
+
+
+def test_state_payload_telemetry_config_defaults_to_empty_and_passes_through():
+    store = state.Store()
+    p = api.state_payload(store)
+    assert p["telemetry_config"] == {"unsupported": [], "note": "", "next_retry_epoch": None, "last_send": None}
+    tc = {"unsupported": [{"name": "AccessoryRail", "first_seen": 1, "last_tried": 2}], "note": "n",
+          "next_retry_epoch": 3, "last_send": None}
+    assert api.state_payload(store, telemetry_config=tc)["telemetry_config"] == tc

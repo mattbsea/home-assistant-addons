@@ -557,5 +557,11 @@ dashboard, `/api/state` and the raw Logger / MQTT / Pub/Sub output only. (Added 
 | `SelfDrivingMilesSinceReset` (259), `MilesSinceReset` (258) | miles; HW4, firmware 2025.44.25.5+; requested with `minimum_delta` ≥ 1 | Dashboard → Self-driving; `/api/state` `self_driving` (share %, inferred "in use") |
 | `CruiseSetSpeed` (101), `CruiseFollowDistance` (126) | unit as reported by the car; `FollowDistance1..7` | Dashboard → Self-driving (shared with ordinary adaptive cruise) |
 
+A field Tesla's Fleet API does not know yet (HTTP 400 `Unknown field <Name>`, e.g. `AccessoryRail` on
+firmware 2026.38.5) is dropped from the `fleet_telemetry_config` send, which is repeated without it; the other
+fields still go through (add-on 1.0.39). Dropped fields are listed on the dashboard under "Not yet supported by
+Tesla" and offered again daily and after an add-on update. Any other failed send is inert: the car keeps its
+previous config.
+
 Semi-only fields (269-271, 277) are not requested. "FSD in use" is an **inference** from
 `SelfDrivingMilesSinceReset` rising within 3 minutes while moving, not a Tesla field (see DOCS.md).

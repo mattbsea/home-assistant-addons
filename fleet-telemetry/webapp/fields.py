@@ -368,7 +368,8 @@ TELEMETRY_FIELDS = {
     "ExpectedEnergyPercentAtTripArrival":    {"interval_seconds": 30},
     "MaxSpeedToReachDestinationMph":         {"interval_seconds": 30},
     # Fields 260-267 — firmware 2026.32+ (device client 1.3.0). Until the car emits them the dashboard
-    # rows stay hidden. If Fleet API rejects the config ("Unknown field"), autosend's send is inert.
+    # rows stay hidden. If the Fleet API answers "Unknown field", sendconfig drops that field and re-sends
+    # without it; the dropped ones are re-offered daily (see autosend).
     "GpsAccuracyMeters":         {"interval_seconds": 10, "minimum_delta": 1, "resend_interval_seconds": 600},
     "GradeEstimatePercent":      {"interval_seconds": 10, "minimum_delta": 0.5, "resend_interval_seconds": 600},
     "LifetimeEnergyChargedKwh":  {"interval_seconds": 60, "minimum_delta": 0.1},
