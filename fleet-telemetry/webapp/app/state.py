@@ -82,7 +82,7 @@ class Store:
             v = {"fields": {}, "last_epoch": 0.0, "display_name": vin, "client_version": None,
                  "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
                  "connected": True, "sleep_state": None, "last_data_epoch": 0.0, "last_connect_epoch": 0.0,
-                 "last_fleet_epoch": 0.0,
+                 "last_fleet_epoch": 0.0, "sd_increase_epoch": None,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
@@ -126,9 +126,16 @@ class Store:
                 # both correct and avoids a redundant clear.
                 if val in ("<invalid>", "invalid"):
                     continue
+                n = fields.num(val)
+                if k == "SelfDrivingMilesSinceReset" and n is not None:
+                    # Inferred-FSD signal: note when the counter goes UP (see fields.self_driving_status).
+                    # A decrease is a counter reset (never counts) and a resent (buffered) record is old news,
+                    # not a live engagement signal — so skip IsResend.
+                    prev = fields.num(v["fields"].get(k, {}).get("value"))
+                    if prev is not None and n > prev and not data.get("IsResend"):
+                        v["sd_increase_epoch"] = now
                 v["fields"][k] = {"value": val, "created_at": created, "received_at": now, "source": "telemetry"}
                 changed[k] = val
-                n = fields.num(val)
                 if k == "Soc" and n is not None:
                     v["history"]["soc"].append((now, n))
                 elif k == "VehicleSpeed" and n is not None:
@@ -312,6 +319,17 @@ class Store:
         with self._lock:
             v = self.vehicles.get(vin)
             return {k: dict(f) for k, f in v["fields"].items()} if v else {}
+
+    def self_driving(self, vin, now=None, window=fields.SELF_DRIVING_WINDOW_SECONDS):
+        """Inferred self-driving status for the VIN (fields.self_driving_status) — computed here so the
+        dashboard and any other reader share one definition and one set of timestamps."""
+        now = time.time() if now is None else now
+        with self._lock:
+            v = self.vehicles.get(vin)
+            if not v:
+                return fields.self_driving_status({}, None, now, window)
+            snap = {k: f["value"] for k, f in v["fields"].items()}
+            return fields.self_driving_status(snap, v.get("sd_increase_epoch"), now, window)
 
     def vins(self):
         with self._lock:

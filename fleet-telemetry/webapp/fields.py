@@ -129,6 +129,54 @@ def gear_letter(v):
     return s
 
 
+# --- self-driving (FSD) inference -----------------------------------------------------------------
+# Tesla's stream has NO "FSD engaged" field. The closest signal is SelfDrivingMilesSinceReset (259, HW4,
+# firmware 2025.44.25.5+), a counter requested with minimum_delta=1 so it is only sent when it moves by a
+# whole mile. We call the car "self-driving (inferred)" when that counter last increased within
+# SELF_DRIVING_WINDOW_SECONDS AND the car is moving now. Limits, stated plainly in DOCS.md:
+#   * one mile of granularity -> detection lags engagement by about a mile (~1 min at 60 mph) and lingers
+#     up to the window after disengagement while still moving;
+#   * below ~20 mph a mile takes longer than the window, so slow traffic can read "no" mid-drive;
+#   * the CruiseSetSpeed/CruiseFollowDistance fields are shared with ordinary adaptive cruise, so they
+#     cannot confirm FSD; only the counter can, and only on supported firmware/hardware;
+#   * nothing documents what triggers the "since reset" counters to reset.
+SELF_DRIVING_WINDOW_SECONDS = 180
+
+
+def self_driving_share(sd_miles, total_miles):
+    """Self-driving share of miles as a percentage (0-100, 1 dp), or None when it cannot be computed:
+    a missing counter, a non-positive total (division by zero), a negative counter, or sd > total (the
+    two counters reset independently / out of sync, so the ratio would be meaningless)."""
+    sd, total = num(sd_miles), num(total_miles)
+    if sd is None or total is None or total <= 0 or sd < 0 or sd > total:
+        return None
+    return round(sd / total * 100.0, 1)
+
+
+def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WINDOW_SECONDS):
+    """Inferred self-driving state from a flat {field: value} snapshot (see the block comment above).
+
+    Returns {"inferred": True, "active": True/False/None, "miles", "total_miles", "share_pct",
+    "last_increase_age_s"}. ``active`` is None when SelfDrivingMilesSinceReset is not reported (older
+    firmware / non-HW4), False when the car is parked or the counter has not moved within ``window``
+    seconds, True otherwise. ``last_increase_epoch`` is when the counter last went UP (a decrease is a
+    counter reset and never counts as engagement), or None if it never has this run."""
+    sd = num(snap.get("SelfDrivingMilesSinceReset"))
+    total = num(snap.get("MilesSinceReset"))
+    g = snap.get("Gear")
+    gear = gear_letter(g) if g not in (None, "<invalid>", "invalid", "") else None
+    speed = num(snap.get("VehicleSpeed"))
+    moving = gear in ("D", "R", "N") and speed is not None and speed > 0
+    age = (now - last_increase_epoch) if last_increase_epoch is not None else None
+    if sd is None:
+        active = None
+    else:
+        active = bool(moving and age is not None and 0 <= age <= window)
+    return {"inferred": True, "active": active, "miles": sd, "total_miles": total,
+            "share_pct": self_driving_share(sd, total),
+            "last_increase_age_s": round(age, 1) if age is not None else None}
+
+
 def fleet_api_to_fields(p):
     """Map a Tesla Fleet-API ``vehicle_data`` response to flat telemetry field names, so the response
     can seed the single per-VIN field map at startup (and refresh the two non-streamed charge fields
@@ -328,6 +376,26 @@ TELEMETRY_FIELDS = {
     "NominalFullPackEnergyKwh":  {"interval_seconds": 3600},
     "SoftwareUpdateAvailable":   {"interval_seconds": 300},
     "SoftwareUpdateInProgress":  {"interval_seconds": 60},
+    # Field 268 — firmware 2026.32+. Boolean; the car only reports it on change at the sample interval.
+    "RemoteStartActive":         {"interval_seconds": 60},
+    # Fields 272-276 — first available in firmware 2026.32.300 and 2026.38.6. Same rules as above: rows
+    # stay hidden until the car emits a value. The Semi-only fields (269-271, 277) are deliberately NOT
+    # requested. Enum/boolean fields carry no minimum_delta (it is numeric-only); the two numeric ones
+    # are gated on change with a slow resend heartbeat so they stay quiet while parked.
+    "AccessoryRail":                  {"interval_seconds": 300},
+    "PowerTransferStatus":            {"interval_seconds": 60},
+    "AutomaticEmergencyBrakingState": {"interval_seconds": 60},
+    "RollingResistanceCoefficient":   {"interval_seconds": 300, "minimum_delta": 0.001, "resend_interval_seconds": 1800},
+    "LifetimeDcChargeEnergyKwh":      {"interval_seconds": 60, "minimum_delta": 0.1, "resend_interval_seconds": 1800},
+    # Self-driving data (258-259 need firmware 2025.44.25.5+, HW4). Tesla requires minimum_delta >= 1 for
+    # SelfDrivingMilesSinceReset; MilesSinceReset uses the same so the share compares like with like. Both
+    # counters only move while driving, so they stay silent while parked (resend is just a heartbeat).
+    "SelfDrivingMilesSinceReset": {"interval_seconds": 10, "minimum_delta": 1, "resend_interval_seconds": 600},
+    "MilesSinceReset":            {"interval_seconds": 10, "minimum_delta": 1, "resend_interval_seconds": 600},
+    # Cruise fields are shared with ordinary adaptive cruise (they do NOT mean FSD); shown beside the
+    # inferred self-driving indicator for context.
+    "CruiseSetSpeed":            {"interval_seconds": 10, "minimum_delta": 1, "resend_interval_seconds": 600},
+    "CruiseFollowDistance":      {"interval_seconds": 30},
 }
 
 
@@ -337,7 +405,8 @@ DEFAULT_ROSTER = TELEMETRY_FIELDS   # the curated set IS the default ("TeslaMate
 FIELD_GROUPS = {
     **{k: "Drive & Location" for k in (
         "VehicleSpeed", "Location", "GpsHeading", "Gear", "Odometer", "GpsAccuracyMeters",
-        "GradeEstimatePercent")},
+        "GradeEstimatePercent", "AutomaticEmergencyBrakingState", "RollingResistanceCoefficient",
+        "SelfDrivingMilesSinceReset", "MilesSinceReset", "CruiseSetSpeed", "CruiseFollowDistance")},
     **{k: "Battery & Charging" for k in (
         "Soc", "BatteryLevel", "EnergyRemaining", "RatedRange", "EstBatteryRange", "IdealBatteryRange",
         "PackVoltage", "PackCurrent", "DetailedChargeState", "ACChargingPower", "DCChargingPower",
@@ -345,13 +414,14 @@ FIELD_GROUPS = {
         "ChargerPhases", "ChargeLimitSoc", "TimeToFullCharge", "ChargingCableType", "FastChargerPresent",
         "FastChargerType", "ChargeCurrentRequest", "ChargeCurrentRequestMax", "ChargePortDoorOpen",
         "ChargePortLatch", "BatteryHeaterOn", "NotEnoughPowerToHeat", "LifetimeEnergyChargedKwh",
-        "BrickSocMinPercent", "NominalFullPackEnergyKwh")},
+        "BrickSocMinPercent", "NominalFullPackEnergyKwh", "LifetimeDcChargeEnergyKwh", "PowerTransferStatus")},
     **{k: "Climate" for k in (
         "InsideTemp", "OutsideTemp", "HvacACEnabled", "HvacPower", "HvacFanStatus",
         "HvacLeftTemperatureRequest", "HvacRightTemperatureRequest", "ClimateKeeperMode",
         "CabinOverheatProtectionMode", "PreconditioningEnabled", "DefrostMode", "RearDefrostEnabled")},
     **{k: "Body & Security" for k in (
-        "Locked", "SentryMode", "DoorState", "FdWindow", "FpWindow", "RdWindow", "RpWindow", "VehicleName")},
+        "Locked", "SentryMode", "DoorState", "FdWindow", "FpWindow", "RdWindow", "RpWindow", "VehicleName",
+        "RemoteStartActive", "AccessoryRail")},
     **{k: "Tires" for k in (
         "TpmsPressureFl", "TpmsPressureFr", "TpmsPressureRl", "TpmsPressureRr",
         "TpmsHardWarnings", "TpmsSoftWarnings")},
@@ -421,7 +491,9 @@ ALL_FIELDS = (
     "SeatVentEnabled", "RearDefrostEnabled", "ChargeRateMilePerHour", "MilesSinceReset",
     "SelfDrivingMilesSinceReset", "GpsAccuracyMeters", "LifetimeEnergyChargedKwh", "BrickSocMinPercent",
     "NominalFullPackEnergyKwh", "GradeEstimatePercent", "MaxSpeedToReachDestinationMph",
-    "SoftwareUpdateAvailable", "SoftwareUpdateInProgress",
+    "SoftwareUpdateAvailable", "SoftwareUpdateInProgress", "RemoteStartActive", "AccessoryRail",
+    "PowerTransferStatus", "AutomaticEmergencyBrakingState", "RollingResistanceCoefficient",
+    "LifetimeDcChargeEnergyKwh",
 )
 
 

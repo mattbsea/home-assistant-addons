@@ -274,3 +274,66 @@ def test_charge_baseline_captured_and_reset():
                   "data": {"DetailedChargeState": "DetailedChargeStateDisconnected"}})
     assert store.charge_baseline(VIN) is None
     assert store.charge_baseline("NOPE") is None
+
+
+# --- inferred self-driving (SelfDrivingMilesSinceReset counter + moving) ---------------------------------
+
+def _sd(store, sd, **extra):
+    store.ingest(_data(SelfDrivingMilesSinceReset=sd, **extra))
+
+
+def test_self_driving_inferred_from_counter_increase_while_moving():
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=50, MilesSinceReset=100))
+    _sd(store, 10.0)                                   # first reading: baseline, not an increase
+    assert store.self_driving(VIN)["active"] is False
+    _sd(store, 11.0)                                   # rose by a mile while moving
+    s = store.self_driving(VIN)
+    assert s["active"] is True and s["inferred"] is True
+    assert s["miles"] == 11.0 and s["total_miles"] == 100.0 and s["share_pct"] == 11.0
+
+
+def test_self_driving_lapses_after_window_and_clears_when_parked():
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=50))
+    _sd(store, 10.0)
+    _sd(store, 11.0)
+    t = store.vehicles[VIN]["sd_increase_epoch"]
+    assert store.self_driving(VIN, now=t + 10)["active"] is True
+    assert store.self_driving(VIN, now=t + 10_000)["active"] is False       # no further increase
+    store.ingest(_data(Gear="ShiftStateP"))                                   # park zeroes VehicleSpeed (SSOT)
+    assert store.self_driving(VIN, now=t + 10)["active"] is False
+
+
+def test_self_driving_counter_reset_is_not_engagement():
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=50))
+    _sd(store, 40.0)
+    assert store.vehicles[VIN]["sd_increase_epoch"] is None
+    _sd(store, 0.0)                                    # reset: decrease, must not count as an increase
+    assert store.vehicles[VIN]["sd_increase_epoch"] is None
+    assert store.self_driving(VIN)["active"] is False
+    _sd(store, 1.0)                                    # genuine increase from the new baseline
+    assert store.self_driving(VIN)["active"] is True
+
+
+def test_self_driving_repeat_and_resend_do_not_count():
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=50))
+    _sd(store, 10.0)
+    _sd(store, 10.0)                                   # unchanged (heartbeat resend)
+    assert store.vehicles[VIN]["sd_increase_epoch"] is None
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"SelfDrivingMilesSinceReset": 12.0, "IsResend": True}})   # buffered/old record
+    assert store.vehicles[VIN]["sd_increase_epoch"] is None
+    assert store.snapshot(VIN)["SelfDrivingMilesSinceReset"] == 12.0                  # value still stored
+
+
+def test_self_driving_unknown_without_counter_and_for_unseen_vin():
+    store = state.Store()
+    store.ingest(_data(Gear="ShiftStateD", VehicleSpeed=50))
+    s = store.self_driving(VIN)
+    assert s["active"] is None and s["share_pct"] is None
+    assert store.self_driving("NOPE")["active"] is None
+    store.ingest(_data(SelfDrivingMilesSinceReset="<invalid>"))                       # sentinel never clobbers
+    assert store.self_driving(VIN)["active"] is None

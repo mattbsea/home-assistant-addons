@@ -29,6 +29,22 @@ def test_state_payload_shape():
     assert v["last_seen_epoch"] > 0
 
 
+def test_state_payload_carries_inferred_self_driving():
+    store = state.Store()
+    store.ingest({"msg": "record_payload", "vin": VIN,
+                  "data": {"Gear": "ShiftStateD", "VehicleSpeed": 50, "MilesSinceReset": 200,
+                           "SelfDrivingMilesSinceReset": 50}})
+    store.ingest({"msg": "record_payload", "vin": VIN, "data": {"SelfDrivingMilesSinceReset": 51}})
+    sd = api.state_payload(store)["vehicles"][0]["self_driving"]
+    assert sd["inferred"] is True and sd["active"] is True
+    assert sd["miles"] == 51 and sd["total_miles"] == 200 and sd["share_pct"] == 25.5
+    # a car that never reports the counter: tile data present but active is unknown (None), not False
+    plain = state.Store()
+    for r in conftest.load_records():
+        plain.ingest(r)
+    assert api.state_payload(plain)["vehicles"][0]["self_driving"]["active"] is None
+
+
 class _FakeElevation:
     def __init__(self):
         self.calls = []

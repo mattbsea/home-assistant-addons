@@ -121,6 +121,52 @@ latest battery/charging, speed, gear, odometer and a location mini-map, plus str
 (records/min, total, last-seen, TLS expiry, uptime). It's read-only and isolated from the
 telemetry path. The Logger backend feeds it, so keep Logger on for a populated panel.
 
+Rows stay hidden until the car actually emits a value, so fields your car or firmware doesn't
+support simply don't appear.
+
+### Newer fields and firmware
+
+| Field (proto) | Dashboard row | Needs |
+|---------------|---------------|-------|
+| `GpsAccuracyMeters`, `GradeEstimatePercent`, `NominalFullPackEnergyKwh`, `BrickSocMinPercent`, `LifetimeEnergyChargedKwh`, `MaxSpeedToReachDestinationMph`, `SoftwareUpdateAvailable`, `SoftwareUpdateInProgress` (260-267) | Drive, Battery, Navigation, Vehicle | firmware 2026.32+ |
+| `RemoteStartActive` (268) | Vehicle → Remote start active | firmware 2026.32+ |
+| `AccessoryRail`, `PowerTransferStatus`, `AutomaticEmergencyBrakingState`, `RollingResistanceCoefficient`, `LifetimeDcChargeEnergyKwh` (272-276) | Vehicle → Accessory rail; Charging → Power transfer; Drive → Emergency braking (AEB) and Rolling resistance; Battery → Lifetime DC fast-charged | firmware 2026.32.300 or 2026.38.6 |
+| `SelfDrivingMilesSinceReset`, `MilesSinceReset` (259, 258) | Self-driving tile | HW4 car, firmware 2025.44.25.5+ |
+
+The Semi-only fields (269-271, 277) are not requested.
+
+When the add-on's requested-field list changes (every upgrade that adds fields), it re-sends the
+signed `fleet_telemetry_config` to your car(s) once automatically; there is nothing to click. If
+Tesla rejects the config (for example a car on older firmware that doesn't know a new field), the
+send is inert: the car keeps its previous config and the add-on retries on its next cycle, with the
+failure in the add-on log.
+
+### Self-driving (FSD) data, and how "in use" is inferred
+
+Tesla's telemetry has **no "FSD engaged" field**. The Self-driving tile shows what exists:
+
+- **Self-driving miles** and **Total miles (since reset)** — the `SelfDrivingMilesSinceReset` and
+  `MilesSinceReset` counters, and the **Self-driving share** (self-driving ÷ total, shown only when
+  both are present, the total is above zero and the self-driving count isn't larger than the total).
+  Nothing documents what resets these counters, so read the share as "since the last reset", not
+  lifetime.
+- **In use (inferred)** — "yes" when the self-driving counter **rose within the last 3 minutes while
+  the car is moving** (gear D/R/N and speed above zero), "no" otherwise. It is hidden if the car
+  never reports the counter. A counter reset (the value goes down), a repeated value or a buffered
+  resend never counts as engagement.
+- **Cruise set speed** and **follow distance** (`CruiseSetSpeed`, `CruiseFollowDistance`) — shown for
+  context. They are shared with ordinary adaptive cruise / Autopilot, so they do not by themselves
+  mean FSD, and the speed is shown in whatever unit the car reports.
+
+Limits, honestly: the counters are requested with `minimum_delta` 1 (Tesla requires at least 1 for
+the self-driving counter), so they only update every whole mile. Detection therefore **lags
+engagement by about a mile** (roughly a minute at highway speed), **lingers up to 3 minutes** after
+you take over while still moving, and can read "no" in slow traffic (under about 20 mph a mile takes
+longer than the window). It only works on HW4 cars with firmware 2025.44.25.5 or later. It is an
+inference from mileage, not a direct signal. The same values are in `/api/state` (`self_driving`
+object per vehicle, and the raw fields) and in the raw Logger/MQTT/Pub/Sub output; they are not part
+of the TeslaMate-compatible output because TeslaMate has no matching field.
+
 ---
 
 ## Where things are stored

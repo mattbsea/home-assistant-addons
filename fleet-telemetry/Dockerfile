@@ -2,14 +2,17 @@
 # builder's --build-arg substitution reaches the runtime stage below.
 ARG BUILD_FROM
 
-# Build the fleet-telemetry binary from source, pinned to an upstream commit. No release yet
-# includes the Field enum entries 260-269 (GpsAccuracyMeters, NominalFullPackEnergyKwh, ...), and
-# the logger names fields via protos.Field_name — a binary built from an older proto silently
-# drops them. Mirrors upstream's own Dockerfile. The binary is CGO/dynamically linked (glibc +
-# libstdc++); libsodium and ZeroMQ are statically linked in, so the runtime base only needs
-# libstdc++6. Switch back to a tesla/fleet-telemetry:vX image once a release contains 8fbaa100.
-FROM golang:1.26-bookworm AS upstream
-ARG FT_COMMIT=8fbaa100bd365936dab6ecbf0e2d7070c4d765cb
+# Build the fleet-telemetry binary from source, pinned to an upstream commit. The newest tag (v0.9.5)
+# has Field enum entries through 271 but not 272-277 (AccessoryRail, PowerTransferStatus,
+# AutomaticEmergencyBrakingState, RollingResistanceCoefficient, LifetimeDcChargeEnergyKwh, ...), which
+# first landed in commit 18800f77 ("Add Semi streaming fields", 2026-10-26, v0.9.5 + 1). The logger
+# names fields via protos.Field_name, so a binary built from an older proto silently drops them. That
+# commit also adds the AEB / power-transfer-status value decoders. Mirrors upstream's own Dockerfile
+# (Go 1.27 per its go.mod). The binary is CGO/dynamically linked (glibc + libstdc++); libsodium and
+# ZeroMQ are statically linked in, so the runtime base only needs libstdc++6. Switch back to a
+# tesla/fleet-telemetry:vX image once a release contains 18800f77.
+FROM golang:1.27-bookworm AS upstream
+ARG FT_COMMIT=18800f7738757a741479e71b38ece584d363ef2d
 WORKDIR /build
 RUN wget -q https://github.com/jedisct1/libsodium/releases/download/1.0.19-RELEASE/libsodium-1.0.19.tar.gz \
     && tar -xzf libsodium-1.0.19.tar.gz \

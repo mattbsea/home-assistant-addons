@@ -129,3 +129,21 @@ def test_seed_never_supplies_ephemeral_gear_speed():
     assert vd["drive_state"]["shift_state"] is None    # parked, not stale "D"
     assert vd["drive_state"]["speed"] == 0              # parked -> 0, not stale 38, not null
     assert vd["drive_state"]["heading"] == 200          # non-ephemeral seed field shows through
+
+
+def test_new_fields_do_not_change_the_teslamate_contract():
+    """The upstream 268/272-276 fields and the self-driving counters have no Fleet-API vehicle_data
+    counterpart, so the TeslaMate-facing shim output must be byte-identical with or without them (the
+    golden above stays valid). They reach the dashboard / /api/state / MQTT instead."""
+    base = _assembled()
+    store = state.Store()
+    store.seed(VIN, _prime())
+    for r in conftest.load_records():
+        store.ingest(r)
+    store.ingest({"msg": "record_payload", "vin": VIN, "data": {
+        "RemoteStartActive": True, "AccessoryRail": True, "PowerTransferStatus": "PowerTransferStatusStandby",
+        "AutomaticEmergencyBrakingState": "AutomaticEmergencyBrakingStateEnabled",
+        "RollingResistanceCoefficient": 0.009, "LifetimeDcChargeEnergyKwh": 812.5,
+        "SelfDrivingMilesSinceReset": 12, "MilesSinceReset": 100, "CruiseSetSpeed": 55,
+        "CruiseFollowDistance": "FollowDistance3"}})
+    assert shim_data.vehicle_data(store.snapshot(VIN), ts=0, identity=IDENT) == base
