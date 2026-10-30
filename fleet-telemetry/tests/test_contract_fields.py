@@ -229,7 +229,13 @@ def test_effective_roster_keeps_self_driving_minimum_delta_on_interval_override(
 
 @pytest.mark.parametrize("sd,total,expected", [
     (25, 100, 25.0),
-    (12.34, 100, 12.3),
+    (12.34, 100, 12.34),
+    (1, 800, 0.13),          # 0.125 rounds half UP (Python's round() would give 0.12)
+    (97, 100, 97.0),
+    (1, 3, 33.33),
+    (2, 3, 66.67),
+    (float('nan'), 100, None),
+    (5, float('inf'), None),
     (0, 100, 0.0),
     (100, 100, 100.0),
     (5, 0, None),            # division by zero guarded
@@ -301,3 +307,7 @@ def test_dashboard_lists_new_fields_as_grouped():
     for name in NEW_FIELDS_1_0_38 + SELF_DRIVING_FIELDS + ("CruiseSetSpeed", "CruiseFollowDistance"):
         assert f'"{name}"' in grouped, name
     assert "v.self_driving" in html and "In use (inferred)" in html
+    # the two shares are labelled apart and shown to 2 dp
+    assert "Self-driving share (since reset)" in html and "Self-driving share since tracking began" in html
+    assert "sd.since_tracking" in html and "n/a until the car has driven 1 mile" in html
+    assert "minimumFractionDigits:2,maximumFractionDigits:2" in html

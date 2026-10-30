@@ -160,10 +160,28 @@ config, and the add-on retries it hourly.
 Tesla's telemetry has **no "FSD engaged" field**. The Self-driving tile shows what exists:
 
 - **Self-driving miles** and **Total miles (since reset)** — the `SelfDrivingMilesSinceReset` and
-  `MilesSinceReset` counters, and the **Self-driving share** (self-driving ÷ total, shown only when
-  both are present, the total is above zero and the self-driving count isn't larger than the total).
-  Nothing documents what resets these counters, so read the share as "since the last reset", not
+  `MilesSinceReset` counters, and the **Self-driving share (since reset)** (self-driving ÷ total, shown
+  only when both are present, the total is above zero and the self-driving count isn't larger than the
+  total). Nothing documents what resets these counters, so read the share as "since the last reset", not
   lifetime.
+- **Self-driving share since tracking began** — the same share, but measured only over the miles driven
+  since the **earliest reading the add-on has**, so it does not depend on when the car last reset its
+  counters. Beside it: **Self-driving miles gained**, **Total miles gained** and **Tracking since** (the
+  baseline's date). Both shares are shown to two decimals (rounded half up, so 97 shows as `97.00`).
+  - *Baseline.* Per vehicle, the first pair of counters the add-on has: it is looked up in the
+    persistent record log (`/data/telemetry-log.jsonl` and its gzip rotations, oldest first; the first
+    record carrying both counters wins, the files are streamed line by line, malformed lines are skipped),
+    and if the log has none, the first live reading is used. The source, timestamp and values are logged
+    once, and the baseline is stored in `/data/shim-state.json` (`sd_baselines`, keyed by VIN), so it
+    survives restarts and updates. A buffered resend (`IsResend`) never sets or moves it, and a repeated
+    value changes nothing.
+  - *Share.* `(self-driving now − self-driving at baseline) ÷ (total now − total at baseline) × 100`.
+    The counters move in whole miles, so until the car has driven **1 mile** since the baseline the row
+    reads "n/a until the car has driven 1 mile". If the gained self-driving miles exceed the gained
+    total miles the counters are inconsistent and no share is shown.
+  - *Counter reset.* If either counter drops below its baseline value the car reset it: the baseline is
+    re-anchored at the new reading (the time and reason are kept, a small note appears in the tile, and
+    the share is measured from there). No negative or nonsense share is ever shown.
 - **In use (inferred)** — "yes" when the self-driving counter **rose within the last 3 minutes while
   the car is moving** (gear D/R/N and speed above zero), "no" otherwise. It is hidden if the car
   never reports the counter. A counter reset (the value goes down), a repeated value or a buffered
@@ -178,7 +196,7 @@ engagement by about a mile** (roughly a minute at highway speed), **lingers up t
 you take over while still moving, and can read "no" in slow traffic (under about 20 mph a mile takes
 longer than the window). It only works on HW4 cars with firmware 2025.44.25.5 or later. It is an
 inference from mileage, not a direct signal. The same values are in `/api/state` (`self_driving`
-object per vehicle, and the raw fields) and in the raw Logger/MQTT/Pub/Sub output; they are not part
+object per vehicle, with the new share under `since_tracking`, and the raw fields) and in the raw Logger/MQTT/Pub/Sub output; they are not part
 of the TeslaMate-compatible output because TeslaMate has no matching field.
 
 ---

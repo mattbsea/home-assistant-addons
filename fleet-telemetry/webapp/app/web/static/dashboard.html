@@ -121,6 +121,7 @@ function buildCards(v){
  const S=k=>pretty(k,raw(k));
  const B=k=>{const x=raw(k);return (x===true||x===false)?x:null;};
  const nf=(x,dp=0)=>x==null?null:Number(x).toLocaleString(undefined,{maximumFractionDigits:dp});
+ const pf=x=>x==null?null:Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});   // percentages: always 2 dp
  const row=(label,val,unit,tip)=>{if(val==null||val===""||val==="<invalid>")return"";
    return `<div class="kv"${tip?` title="${esc(tip)}"`:""}><span>${esc(label)}${tip?" ⓘ":""}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
  const yesno=b=>b==null?null:(b?"yes":"no");
@@ -210,12 +211,30 @@ function buildCards(v){
    +"and can read no in slow traffic. Needs a HW4 car on firmware 2025.44.25.5 or later.";
  const SINCE_TIP="Counted since an unknown reset: Tesla does not document what resets these counters, so treat the share as "
    +"'since the last reset', not lifetime. Shown as a share only when both counters are present and consistent.";
+ // Share since the add-on began tracking: the same counters, measured from the earliest reading it has
+ // (the baseline, computed server-side in fields.self_driving_since), so it does not depend on the reset.
+ const st=sd.since_tracking||{};
+ const TRACK_TIP="Measured from the earliest self-driving and total mileage readings this add-on has, so it covers only "
+   +"the miles driven since then. The counters move in whole miles, so it needs 1 mile of driving first.";
+ const TRACK_NA={under_1_mile:"n/a until the car has driven 1 mile",inconsistent:"n/a (counters inconsistent)",
+   below_baseline:"n/a (a counter is below its baseline)"};
+ const sinceTxt=st.share_pct!=null?pf(st.share_pct):(TRACK_NA[st.reason]||null);
+ const base=st.baseline;
+ const baseAt=base&&base.at?new Date(base.at):null;
+ const baseDate=baseAt&&!isNaN(baseAt)?baseAt.toLocaleDateString():(base&&base.at?String(base.at):null);
+ const re=st.reanchor;
+ const trackRows=row("Self-driving share since tracking began",sinceTxt,st.share_pct!=null?"%":null,TRACK_TIP)
+   +row("Self-driving miles gained",nf(d(st.sd_miles_gained),1),distUnit,TRACK_TIP)
+   +row("Total miles gained",nf(d(st.total_miles_gained),1),distUnit,TRACK_TIP)
+   +row("Tracking since",baseDate,null,base&&base.at?String(base.at):null)
+   +(re?`<div class="sub">Counters reset ${esc(re.at||"")}: tracking restarted from there (${esc(re.reason||"")}).</div>`:"");
  const follow=(x=>x==null?null:String(x).replace(/^FollowDistance/,""))(S('CruiseFollowDistance'));
  cards+=mcard("Self-driving",
    row("In use (inferred)",sd.active==null?null:(sd.active?"yes":"no"),null,SD_TIP)
    +row("Self-driving miles",nf(d(sd.miles),1),distUnit,SINCE_TIP)
    +row("Total miles (since reset)",nf(d(sd.total_miles),1),distUnit,SINCE_TIP)
-   +row("Self-driving share",nf(sd.share_pct,1),"%",SINCE_TIP)
+   +row("Self-driving share (since reset)",pf(sd.share_pct),"%",SINCE_TIP)
+   +trackRows
    +row("Cruise set speed",nf(N('CruiseSetSpeed'),0),null,"Unit as reported by the car (not converted). Shared with ordinary adaptive cruise, so it does not by itself mean FSD.")
    +row("Cruise follow distance",follow,null,"Shared with ordinary adaptive cruise; does not by itself mean FSD."));
 

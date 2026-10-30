@@ -5,7 +5,9 @@ numeric coercion, enum stripping, gear normalization, location parsing, the smal
 (fan / window / defrost), and the vehicle_data -> telemetry-field mapping. Each consumer imports
 from here instead of carrying its own copy.
 """
+import math
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 # Keys that are never vehicle telemetry fields. The dashboard and bridge keep the connectivity
 # frame keys (ConnectionID / NetworkInterface / Status) because the dashboard renders them; the
@@ -143,24 +145,79 @@ def gear_letter(v):
 SELF_DRIVING_WINDOW_SECONDS = 180
 
 
+def _dec(x):
+    """Exact Decimal of a float's shortest repr (15982.12890625 -> Decimal('15982.12890625')), so share
+    arithmetic is free of binary-float noise and rounds the way a person would."""
+    return Decimal(repr(float(x)))
+
+
+def _pct(part, whole):
+    """part / whole as a percentage with 2 dp, rounded half up (0.125 -> 0.13, unlike Python's round(),
+    which rounds half to even). Callers have already checked both are finite and whole > 0."""
+    return float((_dec(part) * 100 / _dec(whole)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 def self_driving_share(sd_miles, total_miles):
-    """Self-driving share of miles as a percentage (0-100, 1 dp), or None when it cannot be computed:
-    a missing counter, a non-positive total (division by zero), a negative counter, or sd > total (the
-    two counters reset independently / out of sync, so the ratio would be meaningless)."""
+    """Self-driving share of miles as a percentage (0-100, 2 dp, rounded half up), or None when it cannot
+    be computed: a missing counter, a non-positive total (division by zero), a negative counter, or
+    sd > total (the two counters reset independently / out of sync, so the ratio would be meaningless)."""
     sd, total = num(sd_miles), num(total_miles)
-    if sd is None or total is None or total <= 0 or sd < 0 or sd > total:
+    if sd is None or total is None or not (math.isfinite(sd) and math.isfinite(total)):
         return None
-    return round(sd / total * 100.0, 1)
+    if total <= 0 or sd < 0 or sd > total:
+        return None
+    return _pct(sd, total)
 
 
-def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WINDOW_SECONDS):
+# Counters update in whole-mile steps (minimum_delta 1), so a share over fewer than this many gained total
+# miles would be noise. Below it the since-tracking share is "n/a until the car has driven 1 mile".
+SINCE_TRACKING_MIN_MILES = 1
+
+
+def self_driving_since(baseline, sd_miles, total_miles):
+    """Self-driving share since the add-on began tracking (the earliest reading it has), from the stored
+    ``baseline`` {sd_miles, total_miles, at, source, reanchor} and the current counters.
+
+    Returns {"baseline", "sd_miles_gained", "total_miles_gained", "share_pct", "reason", "reanchor"}.
+    ``share_pct`` (2 dp, half up) is None with a ``reason`` when it cannot be shown: "no_baseline",
+    "missing_counter", "below_baseline" (a counter is under its baseline, e.g. a stale resend; a real
+    reset re-anchors the baseline at ingest), "under_1_mile" (gained total miles < 1) or "inconsistent"
+    (gained self-driving miles exceed gained total miles)."""
+    out = {"baseline": None, "sd_miles_gained": None, "total_miles_gained": None, "share_pct": None,
+           "reason": None, "reanchor": None}
+    if not baseline:
+        out["reason"] = "no_baseline"
+        return out
+    out["baseline"] = {k: baseline.get(k) for k in ("sd_miles", "total_miles", "at", "source")}
+    out["reanchor"] = baseline.get("reanchor")
+    sd, total = num(sd_miles), num(total_miles)
+    if sd is None or total is None or not (math.isfinite(sd) and math.isfinite(total)):
+        out["reason"] = "missing_counter"
+        return out
+    if sd < baseline["sd_miles"] or total < baseline["total_miles"]:
+        out["reason"] = "below_baseline"
+        return out
+    gained_sd = _dec(sd) - _dec(baseline["sd_miles"])
+    gained_total = _dec(total) - _dec(baseline["total_miles"])
+    out["sd_miles_gained"], out["total_miles_gained"] = float(gained_sd), float(gained_total)
+    if gained_total < SINCE_TRACKING_MIN_MILES:
+        out["reason"] = "under_1_mile"
+    elif gained_sd > gained_total:
+        out["reason"] = "inconsistent"
+    else:
+        out["share_pct"] = _pct(gained_sd, gained_total)
+    return out
+
+
+def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WINDOW_SECONDS, baseline=None):
     """Inferred self-driving state from a flat {field: value} snapshot (see the block comment above).
 
     Returns {"inferred": True, "active": True/False/None, "miles", "total_miles", "share_pct",
-    "last_increase_age_s"}. ``active`` is None when SelfDrivingMilesSinceReset is not reported (older
-    firmware / non-HW4), False when the car is parked or the counter has not moved within ``window``
+    "last_increase_age_s", "since_tracking"}. ``active`` is None when SelfDrivingMilesSinceReset is not
+    reported (older firmware / non-HW4), False when the car is parked or the counter has not moved within ``window``
     seconds, True otherwise. ``last_increase_epoch`` is when the counter last went UP (a decrease is a
-    counter reset and never counts as engagement), or None if it never has this run."""
+    counter reset and never counts as engagement), or None if it never has this run. ``baseline`` is the
+    stored tracking baseline behind ``since_tracking`` (see self_driving_since)."""
     sd = num(snap.get("SelfDrivingMilesSinceReset"))
     total = num(snap.get("MilesSinceReset"))
     g = snap.get("Gear")
@@ -174,7 +231,8 @@ def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WIND
         active = bool(moving and age is not None and 0 <= age <= window)
     return {"inferred": True, "active": active, "miles": sd, "total_miles": total,
             "share_pct": self_driving_share(sd, total),
-            "last_increase_age_s": round(age, 1) if age is not None else None}
+            "last_increase_age_s": round(age, 1) if age is not None else None,
+            "since_tracking": self_driving_since(baseline, sd, total)}
 
 
 def fleet_api_to_fields(p):

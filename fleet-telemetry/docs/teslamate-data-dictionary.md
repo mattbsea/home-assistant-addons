@@ -554,7 +554,7 @@ dashboard, `/api/state` and the raw Logger / MQTT / Pub/Sub output only. (Added 
 | `AutomaticEmergencyBrakingState` (274) | enum `AutomaticEmergencyBrakingState{Unknown,Unavailable,Standby,Enabled,Standstill}` (upstream remaps device-client 1.3.0 values) | Dashboard → Drive |
 | `RollingResistanceCoefficient` (275) | dimensionless | Dashboard → Drive |
 | `LifetimeDcChargeEnergyKwh` (276) | kWh | Dashboard → Battery |
-| `SelfDrivingMilesSinceReset` (259), `MilesSinceReset` (258) | miles; HW4, firmware 2025.44.25.5+; requested with `minimum_delta` ≥ 1 | Dashboard → Self-driving; `/api/state` `self_driving` (share %, inferred "in use") |
+| `SelfDrivingMilesSinceReset` (259), `MilesSinceReset` (258) | miles; HW4, firmware 2025.44.25.5+; requested with `minimum_delta` ≥ 1 | Dashboard → Self-driving; `/api/state` `self_driving` (`share_pct` since reset, 2 dp; `since_tracking`: baseline, miles gained, `share_pct` since tracking began, 2 dp, `reason`; inferred "in use") |
 | `CruiseSetSpeed` (101), `CruiseFollowDistance` (126) | unit as reported by the car; `FollowDistance1..7` | Dashboard → Self-driving (shared with ordinary adaptive cruise) |
 
 A field Tesla's Fleet API does not know yet (HTTP 400 `Unknown field <Name>`, e.g. `AccessoryRail` on
@@ -562,6 +562,8 @@ firmware 2026.38.5) is dropped from the `fleet_telemetry_config` send, which is 
 fields still go through (add-on 1.0.39). Dropped fields are listed on the dashboard under "Not yet supported by
 Tesla" and offered again daily and after an add-on update. Any other failed send is inert: the car keeps its
 previous config.
+
+`self_driving.since_tracking` (add-on 1.0.40) is derived, not a Tesla field: `baseline` `{sd_miles, total_miles, at, source: record_log|live|reanchor}` (the earliest counter pair the add-on has, persisted per VIN in `/data/shim-state.json` `sd_baselines`), `sd_miles_gained`, `total_miles_gained`, `share_pct` (2 dp, half up; `null` unless gained total ≥ 1 mile and gained self-driving ≤ gained total), `reason` (`null`, `no_baseline`, `missing_counter`, `below_baseline`, `under_1_mile`, `inconsistent`) and `reanchor` (`{at, reason, previous_sd_miles, previous_total_miles}` after a counter reset, else `null`). Neither share is part of the TeslaMate-compatible output.
 
 Semi-only fields (269-271, 277) are not requested. "FSD in use" is an **inference** from
 `SelfDrivingMilesSinceReset` rising within 3 minutes while moving, not a Tesla field (see DOCS.md).
