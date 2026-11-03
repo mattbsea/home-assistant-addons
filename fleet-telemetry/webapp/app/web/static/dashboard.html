@@ -24,8 +24,9 @@ h1{font-size:18px;margin:0;font-weight:650}
 .gear{display:flex;gap:6px;margin-top:6px}
 .gear b{width:34px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--card2);color:var(--mut);font-weight:700;font-size:16px}
 .gear b.on{background:var(--accent);color:#04121f}
-.kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .kv:last-child{border-bottom:0}.kv span:first-child{color:var(--mut)}
+.kv>span:last-child{text-align:right;min-width:0;max-width:12em}.kv>span.nw{white-space:nowrap}
 .kv i{font-style:normal;color:var(--mut);font-size:11px;margin-left:3px}
 @keyframes kvpulse{0%,8%{color:var(--good);font-weight:700;font-size:14.5px}100%{color:inherit;font-weight:inherit;font-size:inherit}}
 .kv-pulse>span:last-child{animation:kvpulse 2s ease-out forwards}
@@ -123,7 +124,7 @@ function buildCards(v){
  const nf=(x,dp=0)=>x==null?null:Number(x).toLocaleString(undefined,{maximumFractionDigits:dp});
  const pf=x=>x==null?null:Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});   // percentages: always 2 dp
  const row=(label,val,unit,tip)=>{if(val==null||val===""||val==="<invalid>")return"";
-   return `<div class="kv"${tip?` title="${esc(tip)}"`:""}><span>${esc(label)}${tip?" ⓘ":""}</span><span>${esc(String(val))}${unit?` <i>${esc(unit)}</i>`:""}</span></div>`;};
+   return `<div class="kv"${tip?` title="${esc(tip)}"`:""}><span>${esc(label)}${tip?"\u00a0ⓘ":""}</span><span${unit?' class="nw"':""}>${esc(String(val))}${unit?`\u00a0<i>${esc(unit)}</i>`:""}</span></div>`;};
  const yesno=b=>b==null?null:(b?"yes":"no");
  // Value whose wire type is not documented (boolean, enum string or number): render any of them.
  const flex=k=>{const x=raw(k);return typeof x==="boolean"?(x?"on":"off"):S(k);};
