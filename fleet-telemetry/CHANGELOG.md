@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.41
+
+### Fixed — dashboard rows wrapped badly on narrow cards
+- Tile rows (`.kv`) are now a two-column grid (`minmax(0,1fr) auto`). A value and its unit sit in one
+  non-wrapping, right-aligned cell, so "16,716.3 mi" and "97.07 %" no longer split over two lines and the
+  value column lines up on every row. Long labels wrap inside their own column, and the ⓘ marker is joined to
+  the label's last word with a no-break space so it can no longer dangle on its own line. Long text values
+  (such as "n/a until the car has driven 1 mile") wrap within 12em instead of squeezing the label.
+  Markup/CSS only; no data, metric or behaviour change.
+
 ## 1.0.40
 
 ### Added — self-driving share since tracking began
