@@ -6,7 +6,7 @@ build_from:
 # commit SHA, never a branch or tag) together with `version:` in config.yaml for every release.
 args:
   APP_REPO: "https://github.com/mattbsea/nutrition-mcp.git"
-  APP_REF: "c3e14b2adb7ef1aff756bca83eb151c4809735a3"
+  APP_REF: "5dbae008cef2e76ebefe4bdcd828899306420602"
 
 labels:
   org.opencontainers.image.title: "Home Assistant Add-on: Food Tracker (nutrition-mcp)"
