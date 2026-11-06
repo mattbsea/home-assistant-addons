@@ -4,7 +4,7 @@
 
 Multi-add-on Home Assistant Supervisor repository. Each add-on lives in its own directory with `config.yaml`, `Dockerfile`, `build.yaml`, `run.sh`, `DOCS.md`, `CHANGELOG.md`.
 
-**Add-ons:** `claude-terminal/` (flagship, Node.js + shell), `claude-terminal-dev/` (dev build), `fleet-telemetry/` (Python/FastAPI), `teslausb-viewer/` (Python/FastAPI), `omni-route/` (Node.js/Next.js), `rustdesk-server/`, `rustdesk-web/`, `pai/`, `opencode-serve/`, `portainer-mcp/`, `playwright-mcp/`, `paseo-hub/`, `nginx-proxy-manager-mcp/`, `github-runner/`
+**Add-ons:** `claude-terminal/` (flagship, Node.js + shell), `claude-terminal-dev/` (dev build), `fleet-telemetry/` (Python/FastAPI), `teslausb-viewer/` (Python/FastAPI), `omni-route/` (Node.js/Next.js), `rustdesk-server/`, `rustdesk-web/`, `pai/`, `opencode-serve/`, `portainer-mcp/`, `playwright-mcp/`, `paseo-hub/`, `nginx-proxy-manager-mcp/`, `github-runner/`, `food-tracker/`
 
 ## Dev environment
 
@@ -51,6 +51,7 @@ Bump `version:` in `config.yaml` on every change. Home Assistant Supervisor cach
 - **claude-terminal:** Express + xterm.js + node-pty web terminal (`web-terminal/server.js`). Tabs configured via `CLAUDE_TAB_CONFIG` env var (JSON). Uses nvm's Node 24 (installed at build time). `/home/claude` is symlinked to `/data/home` at runtime for persistence.
 - **fleet-telemetry:** Multi-stage Dockerfile (pulls upstream Tesla binary + builds `tesla-http-proxy` from Go source). Python webapp under `webapp/`. Configured via built-in setup wizard, not config.yaml options.
 - **teslausb-viewer:** FastAPI app under `app/`. Uses `uv` for Python dependency management. Ingress on 8099, upload API on 8101 (port-restricted).
+- **food-tracker:** Bun app built from its own repo (`mattbsea/nutrition-mcp`) at the full commit SHA `APP_REF` in `build.yaml`; bump `APP_REF` and `version:` together. Bun 1.4.4 is copied from the `oven/bun` image (pinned by digest). No ingress, one port (8080 in the container, 18440 on the host), `backup: cold` because SQLite runs in WAL mode. Keys are generated into `/data/keys.json`; `show-keys` prints them. `run.sh` honours `FOOD_TRACKER_APP_DIR` / `FOOD_TRACKER_DATA_DIR` so it can be dry-run with a stubbed bashio.
 - **omni-route:** No ingress (Next.js routing breaks under HA's prefix-stripping proxy). Accessed via exposed port directly.
 
 ## GitHub workflows

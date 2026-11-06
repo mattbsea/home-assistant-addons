@@ -127,6 +127,21 @@ Features:
 
 [Documentation](paseo-hub/DOCS.md)
 
+### Food Tracker (nutrition-mcp)
+
+Self-hosted nutrition tracker in one add-on: a fork of [nutrition-mcp](https://github.com/akutishevsky/nutrition-mcp)
+with SQLite storage instead of a cloud database. Log meals by chatting with Claude, sync daily totals with
+Apple Health through two iOS Shortcuts, and view a dashboard.
+
+Features:
+- MCP server for Claude custom connectors, secured by a secret key in the URL path
+- Apple Health Shortcut API with its own separate key
+- Password-protected dashboard: calories and macros against goals, trends, meals, water, weight
+- Data in `/data` (SQLite), cold backups so the database is always consistent; amd64 and aarch64
+- Served on port 18440 behind your HTTPS reverse proxy
+
+[Documentation](food-tracker/DOCS.md)
+
 ## Community Tools
 
 Tools built by the community to enhance Claude Terminal:
