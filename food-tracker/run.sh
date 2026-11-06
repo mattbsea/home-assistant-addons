@@ -33,24 +33,24 @@ export_option shortcut_key SHORTCUT_KEY
 export_option dashboard_password DASHBOARD_PASSWORD
 export_option usda_api_key USDA_API_KEY
 
-# The MCP key sits in a URL path, so it must be URL-safe; the app also refuses fewer than 16 characters.
-# Report the problem without echoing the value.
-if [ -n "${MCP_KEY:-}" ]; then
-    if [ "${#MCP_KEY}" -lt 16 ] || ! [[ "${MCP_KEY}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
-        bashio::log.fatal "mcp_key must be at least 16 characters from A-Z a-z 0-9 . _ ~ - (it is part of a URL). Fix it in the Configuration tab, or clear it to have one generated."
+# Match src/keys.ts: keys are at least 32 URL-safe characters; the two keys differ.
+for key_name in MCP_KEY SHORTCUT_KEY; do
+    key_value="${!key_name:-}"
+    if [ -n "${key_value}" ] && { [ "${#key_value}" -lt 32 ] || ! [[ "${key_value}" =~ ^[A-Za-z0-9_-]+$ ]]; }; then
+        option_name="${key_name,,}"
+        bashio::log.fatal "${option_name} must be at least 32 characters using only A-Z, a-z, 0-9, _ and -. Fix it in the Configuration tab, or clear it to have one generated."
         exit 1
     fi
-fi
-if [ -n "${SHORTCUT_KEY:-}" ] && [ "${#SHORTCUT_KEY}" -lt 16 ]; then
-    bashio::log.fatal "shortcut_key must be at least 16 characters. Fix it in the Configuration tab, or clear it to have one generated."
-    exit 1
-fi
+done
 if [ -n "${MCP_KEY:-}" ] && [ "${MCP_KEY}" = "${SHORTCUT_KEY:-}" ]; then
     bashio::log.fatal "mcp_key and shortcut_key must be different."
     exit 1
 fi
-if [ -n "${DASHBOARD_PASSWORD:-}" ] && [ "${#DASHBOARD_PASSWORD}" -lt 12 ]; then
-    bashio::log.warning "dashboard_password is shorter than 12 characters. The dashboard is on the internet; use a longer one."
+if [ -n "${DASHBOARD_PASSWORD:-}" ]; then
+    if [ "${#DASHBOARD_PASSWORD}" -lt 12 ] || [ "${#DASHBOARD_PASSWORD}" -gt 200 ] || [[ "${DASHBOARD_PASSWORD}" == *[$'\001'-$'\037'$'\177']* ]]; then
+        bashio::log.fatal "dashboard_password must be 12 to 200 characters with no control characters."
+        exit 1
+    fi
 fi
 
 # Timezone: the option, else Home Assistant's own, else UTC.

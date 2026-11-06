@@ -30,9 +30,9 @@ All options are optional.
 
 | Option | Purpose |
 | --- | --- |
-| `mcp_key` | The secret in the Claude connector URL: `https://YOUR-DOMAIN/mcp/YOUR_MCP_KEY`. At least 16 characters from `A-Z a-z 0-9 . _ ~ -` (it sits in a URL). Blank: one is generated once and stored. |
-| `shortcut_key` | Bearer key the Apple Health Shortcuts send. At least 16 characters. Must differ from `mcp_key`, so a leaked Shortcut cannot open the MCP endpoint or the reverse. Blank: generated once and stored. |
-| `dashboard_password` | The single password for the dashboard login. Use 12 or more characters. |
+| `mcp_key` | The secret in the Claude connector URL: `https://YOUR-DOMAIN/mcp/YOUR_MCP_KEY`. At least 32 characters from `A-Z a-z 0-9 _ -` (it sits in a URL). Blank: one is generated once and stored. |
+| `shortcut_key` | Bearer key the Apple Health Shortcuts send. At least 32 characters from `A-Z a-z 0-9 _ -`. Must differ from `mcp_key`, so a leaked Shortcut cannot open the MCP endpoint or the reverse. Blank: generated once and stored. |
+| `dashboard_password` | The single password for the dashboard login. Use 12–200 characters with no control characters. Invalid values stop the add-on at startup. |
 | `usda_api_key` | Optional [USDA FoodData Central](https://fdc.nal.usda.gov/api-key-signup) key for food lookups. |
 | `timezone` | IANA name such as `Europe/Berlin`. Blank: Home Assistant's own timezone. |
 
