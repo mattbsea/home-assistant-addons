@@ -1,0 +1,46 @@
+---
+name: "Food Tracker (nutrition-mcp)"
+description: "Self-hosted nutrition tracker: MCP server for Claude, Apple Health shortcut API and a dashboard, with SQLite storage"
+version: "1.0.0"
+slug: "food_tracker"
+init: false
+url: "https://github.com/mattbsea/nutrition-mcp"
+
+# Bun publishes no armv7 / i386 builds.
+arch:
+  - aarch64
+  - amd64
+
+startup: application
+boot: auto
+
+# The liveness endpoint is unauthenticated and returns a bare "ok".
+watchdog: "http://[HOST]:[PORT:8080]/health"
+
+# SQLite runs in WAL mode (main file + -wal + -shm). A hot backup copies those files at different
+# moments and can capture a torn database, so Supervisor stops the add-on for the backup instead.
+# The app checkpoints and closes the database on SIGTERM; the restart takes a few seconds.
+backup: cold
+
+# One port, for NGINX Proxy Manager to forward to. No ingress: Claude and the iOS Shortcuts need
+# real URLs, and the dashboard uses absolute paths.
+ports:
+  8080/tcp: 18440
+ports_description:
+  8080/tcp: "Food Tracker HTTP (MCP, Apple Health shortcut API, dashboard). Front it with an HTTPS reverse proxy."
+
+# keys.json, nutrition.db (+ WAL) and exports/ live in /data, which Supervisor includes in backups.
+map:
+  - data:rw
+
+# Only used for bashio::info.timezone (Home Assistant's configured timezone).
+hassio_api: true
+
+# Every option is optional. A blank key is generated on first start and kept in /data/keys.json.
+options: {}
+schema:
+  mcp_key: "password?"
+  shortcut_key: "password?"
+  dashboard_password: "password?"
+  usda_api_key: "password?"
+  timezone: "str?"
