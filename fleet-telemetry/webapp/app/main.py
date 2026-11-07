@@ -298,6 +298,12 @@ def main():
     # Self-driving share "since tracking began": the baseline persists in shim-state and is seeded from
     # this same record log (see sdtrack.py).
     store.sd_persist = sdtrack.BaselineStore(os.environ.get("FT_SHIM_STATE", "/data/shim-state.json"), cap_path)
+    # Upgrade repair: a baseline re-anchored from a transient (0, 0) reading is meaningless; drop it so
+    # it is rebuilt from the record log on the car's first reading.
+    try:
+        store.sd_persist.repair_suspect_zero_reanchors()
+    except Exception as exc:   # repair is best-effort; never block startup
+        print(f"[app] could not repair suspect self-driving baselines: {exc!r}", flush=True)
     start_ingest(store, os.environ.get("FT_RECORDS_FILE", "/tmp/ft-records.jsonl"), capture=capture)
     # Parallel append-only log of every recurring Fleet API call (secrets redacted), same durability
     # guarantees as the telemetry log. Path empty -> disabled.

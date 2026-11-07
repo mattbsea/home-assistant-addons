@@ -24,6 +24,17 @@ def num(v):
         return None
 
 
+def usable_counters(sd, total):
+    """True when both values are real mileage-counter readings.
+
+    Finite and non-negative, and never the (0, 0) pair: a transient zero pair is a glitch, not a
+    reading, so it must never seed or re-anchor the since-tracking baseline."""
+    if sd is None or total is None:
+        return False
+    return math.isfinite(sd) and math.isfinite(total) and sd >= 0 and total >= 0 \
+        and not (sd == 0 and total == 0)
+
+
 def parse_location(val):
     """Return (lat, lon) from a Location value in dict or 'lat,lon' string shape; else (None, None)."""
     if isinstance(val, dict):
@@ -174,17 +185,20 @@ def self_driving_share(sd_miles, total_miles):
 SINCE_TRACKING_MIN_MILES = 1
 
 
-def self_driving_since(baseline, sd_miles, total_miles):
+def self_driving_since(baseline, sd_miles, total_miles, reset_pending=False):
     """Self-driving share since the add-on began tracking (the earliest reading it has), from the stored
     ``baseline`` {sd_miles, total_miles, at, source, reanchor} and the current counters.
 
-    Returns {"baseline", "sd_miles_gained", "total_miles_gained", "share_pct", "reason", "reanchor"}.
-    ``share_pct`` (2 dp, half up) is None with a ``reason`` when it cannot be shown: "no_baseline",
-    "missing_counter", "below_baseline" (a counter is under its baseline, e.g. a stale resend; a real
-    reset re-anchors the baseline at ingest), "under_1_mile" (gained total miles < 1) or "inconsistent"
-    (gained self-driving miles exceed gained total miles)."""
+    Returns {"baseline", "sd_miles_gained", "total_miles_gained", "share_pct", "reason", "reanchor",
+    "reset_pending"}. ``share_pct`` (2 dp, half up) is None with a ``reason`` when it cannot be shown:
+    "no_baseline", "missing_counter", "below_baseline" (a counter is under its baseline; at ingest this
+    is a pending reset awaiting confirmation, and a confirmed reset re-anchors the baseline),
+    "under_1_mile" (gained total miles < 1) or "inconsistent" (gained self-driving miles exceed gained
+    total miles).
+    ``reset_pending`` is True while a below-baseline reading awaits its confirming second reading; the
+    baseline is unchanged and no negative gain is shown."""
     out = {"baseline": None, "sd_miles_gained": None, "total_miles_gained": None, "share_pct": None,
-           "reason": None, "reanchor": None}
+           "reason": None, "reanchor": None, "reset_pending": bool(reset_pending)}
     if not baseline:
         out["reason"] = "no_baseline"
         return out
@@ -209,7 +223,8 @@ def self_driving_since(baseline, sd_miles, total_miles):
     return out
 
 
-def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WINDOW_SECONDS, baseline=None):
+def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WINDOW_SECONDS, baseline=None,
+                        reset_pending=False):
     """Inferred self-driving state from a flat {field: value} snapshot (see the block comment above).
 
     Returns {"inferred": True, "active": True/False/None, "miles", "total_miles", "share_pct",
@@ -217,7 +232,8 @@ def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WIND
     reported (older firmware / non-HW4), False when the car is parked or the counter has not moved within ``window``
     seconds, True otherwise. ``last_increase_epoch`` is when the counter last went UP (a decrease is a
     counter reset and never counts as engagement), or None if it never has this run. ``baseline`` is the
-    stored tracking baseline behind ``since_tracking`` (see self_driving_since)."""
+    stored tracking baseline behind ``since_tracking`` (see self_driving_since); ``reset_pending`` marks
+    a below-baseline reading whose reset is still awaiting its confirming second reading."""
     sd = num(snap.get("SelfDrivingMilesSinceReset"))
     total = num(snap.get("MilesSinceReset"))
     g = snap.get("Gear")
@@ -232,7 +248,7 @@ def self_driving_status(snap, last_increase_epoch, now, window=SELF_DRIVING_WIND
     return {"inferred": True, "active": active, "miles": sd, "total_miles": total,
             "share_pct": self_driving_share(sd, total),
             "last_increase_age_s": round(age, 1) if age is not None else None,
-            "since_tracking": self_driving_since(baseline, sd, total)}
+            "since_tracking": self_driving_since(baseline, sd, total, reset_pending=reset_pending)}
 
 
 def fleet_api_to_fields(p):

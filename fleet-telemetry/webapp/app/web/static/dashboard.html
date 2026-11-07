@@ -228,7 +228,8 @@ function buildCards(v){
    +row("Self-driving miles gained",nf(d(st.sd_miles_gained),1),distUnit,TRACK_TIP)
    +row("Total miles gained",nf(d(st.total_miles_gained),1),distUnit,TRACK_TIP)
    +row("Tracking since",baseDate,null,base&&base.at?String(base.at):null)
-   +(re?`<div class="sub">Counters reset ${esc(re.at||"")}: tracking restarted from there (${esc(re.reason||"")}).</div>`:"");
+   +(re?`<div class="sub">Counters reset ${esc(re.at||"")}: tracking restarted from there (${esc(re.reason||"")}).</div>`:"")
+   +(st.reset_pending?`<div class="sub">Possible counter reset: waiting for a second reading before tracking restarts.</div>`:"");
  const follow=(x=>x==null?null:String(x).replace(/^FollowDistance/,""))(S('CruiseFollowDistance'));
  cards+=mcard("Self-driving",
    row("In use (inferred)",sd.active==null?null:(sd.active?"yes":"no"),null,SD_TIP)
