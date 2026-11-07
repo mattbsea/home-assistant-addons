@@ -94,10 +94,30 @@ class Store:
                  "charge_baseline": None, "tesla_id": None, "seed_epoch": 0.0,
                  "connected": True, "sleep_state": None, "last_data_epoch": 0.0, "last_connect_epoch": 0.0,
                  "last_fleet_epoch": 0.0, "sd_increase_epoch": None,
-                 "sd_baseline": self.sd_persist.load(vin) if self.sd_persist else None, "sd_scanned": False,
+                 "sd_baseline": self._load_sd_baseline(vin), "sd_scanned": False, "sd_reset_pending": None,
                  "history": {"soc": deque(maxlen=HISTORY_MAX), "speed": deque(maxlen=HISTORY_MAX)}}
             self.vehicles[vin] = v
         return v
+
+    def _load_sd_baseline(self, vin):
+        """The persisted since-tracking baseline, repaired on load. A re-anchor stored from a (0, 0)
+        glitch reading is suspect: discard it so it is rebuilt from the record log (or first live
+        reading), and say so once. Every other stored baseline is left untouched."""
+        if not self.sd_persist:
+            return None
+        b = self.sd_persist.load(vin)
+        if b is None:
+            return None
+        if b.get("source") == "reanchor" and fields.num(b.get("sd_miles")) == 0 \
+                and fields.num(b.get("total_miles")) == 0:
+            try:
+                self.sd_persist.discard(vin)
+            except Exception as exc:   # persistence is best-effort; never take down ingest
+                print(f"[app] could not discard suspect self-driving baseline: {exc!r}", flush=True)
+            print(f"[app] discarding suspect zero self-driving baseline for ...{vin[-4:]} "
+                  f"(re-anchor from a (0, 0) reading); rebuilding from the record log (or first live reading)", flush=True)
+            return None
+        return b
 
     def ingest(self, rec):
         """Fold one telemetry record into state and publish a change event. Thread-safe."""
@@ -196,15 +216,23 @@ class Store:
 
         Returns (baseline_to_persist | None, needs_log_scan). With no baseline yet and the log not
         consulted, asks the caller to scan the record log first (off the lock); otherwise the baseline is
-        `seed` (the log's earliest pair) or the first live reading. If either counter is below its
-        baseline the car reset a counter, so the baseline re-anchors at the new reading."""
+        `seed` (the log's earliest pair) or the first live reading.
+
+        A (0, 0) pair and any non-finite or negative value are not readings: they never seed and never
+        move the baseline. A reading below the baseline starts a pending reset candidate; it becomes a
+        confirmed reset (the baseline re-anchors at the first lower reading) only after a second
+        consecutive reading is also below it. A reading at or above the baseline discards the candidate,
+        because the counters came back."""
         f = v["fields"]
         sd = fields.num(f.get(SD_KEY, {}).get("value"))
         total = fields.num(f.get(TOTAL_KEY, {}).get("value"))
-        if sd is None or total is None:
+        if not fields.usable_counters(sd, total):
             return None, False
         b, changed = v["sd_baseline"], False
         if b is None:
+            if seed is not None and not fields.usable_counters(
+                    fields.num(seed.get("sd_miles")), fields.num(seed.get("total_miles"))):
+                seed = None
             if seed is None and not v["sd_scanned"]:
                 return None, True
             b = seed or {"sd_miles": sd, "total_miles": total, "at": at, "source": "live", "reanchor": None}
@@ -213,13 +241,25 @@ class Store:
                   f"{'the record log' if b['source'] == 'record_log' else 'the first live reading'}: "
                   f"{b['sd_miles']} self-driving / {b['total_miles']} total miles at {b['at']}", flush=True)
         if sd < b["sd_miles"] or total < b["total_miles"]:
-            why = ("self-driving miles" if sd < b["sd_miles"] else "total miles") + " went down (counter reset)"
-            v["sd_baseline"] = b = {"sd_miles": sd, "total_miles": total, "at": at, "source": "reanchor",
-                                    "reanchor": {"at": at, "reason": why, "previous_sd_miles": b["sd_miles"],
-                                                 "previous_total_miles": b["total_miles"]}}
-            changed = True
-            print(f"[app] self-driving baseline for ...{vin[-4:]} re-anchored at {sd} / {total} at {at}: {why}",
-                  flush=True)
+            cand = v.get("sd_reset_pending")
+            if cand is None:
+                v["sd_reset_pending"] = {"count": 1, "sd_miles": sd, "total_miles": total, "at": at}
+            else:
+                cand["count"] = cand.get("count", 1) + 1
+                if cand["count"] >= 2:
+                    why = ("self-driving miles" if cand["sd_miles"] < b["sd_miles"] else "total miles") \
+                        + " went down (counter reset)"
+                    v["sd_baseline"] = b = {"sd_miles": cand["sd_miles"], "total_miles": cand["total_miles"],
+                                            "at": cand["at"], "source": "reanchor",
+                                            "reanchor": {"at": cand["at"], "reason": why,
+                                                         "previous_sd_miles": b["sd_miles"],
+                                                         "previous_total_miles": b["total_miles"]}}
+                    v["sd_reset_pending"] = None
+                    changed = True
+                    print(f"[app] self-driving baseline for ...{vin[-4:]} re-anchored at "
+                          f"{b['sd_miles']} / {b['total_miles']} at {b['at']}: {why}", flush=True)
+        else:
+            v["sd_reset_pending"] = None
         return (b if changed else None), False
 
     def _sd_seed_from_log(self, vin, at):
@@ -400,7 +440,8 @@ class Store:
                 return fields.self_driving_status({}, None, now, window)
             snap = {k: f["value"] for k, f in v["fields"].items()}
             return fields.self_driving_status(snap, v.get("sd_increase_epoch"), now, window,
-                                              baseline=v.get("sd_baseline"))
+                                              baseline=v.get("sd_baseline"),
+                                              reset_pending=v.get("sd_reset_pending") is not None)
 
     def vins(self):
         with self._lock:

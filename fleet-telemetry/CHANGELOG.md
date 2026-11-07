@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.42
+
+### Fixed — a transient zero reading no longer re-anchors "since tracking began"
+- A `(0, 0)` counter pair (and any non-finite or negative value) is now treated as "no reading": it
+  never seeds the baseline, never re-anchors it, and is skipped by the record-log scan. A single glitch
+  frame can no longer wipe the original baseline and make the since-tracking share meaningless.
+- A counter drop below the baseline is now a **pending reset candidate**, not an immediate re-anchor.
+  The reset is confirmed only after a second consecutive reading is also below the baseline; a reading
+  at or above the baseline discards the candidate and keeps the old baseline. While pending, the old
+  baseline keeps being used, no negative gain is shown, the tile notes a possible counter reset, and
+  `/api/state` carries `since_tracking.reset_pending: true`.
+- **Upgrade repair:** a stored baseline with source `reanchor` and `sd_miles == 0` /
+  `total_miles == 0` (the glitch signature) is discarded when loaded, so it is rebuilt from the record
+  log (or the first live reading). Other stored baselines are untouched. One log line records it.
+
 ## 1.0.41
 
 ### Fixed — dashboard rows wrapped badly on narrow cards

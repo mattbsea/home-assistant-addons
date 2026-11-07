@@ -179,9 +179,17 @@ Tesla's telemetry has **no "FSD engaged" field**. The Self-driving tile shows wh
     The counters move in whole miles, so until the car has driven **1 mile** since the baseline the row
     reads "n/a until the car has driven 1 mile". If the gained self-driving miles exceed the gained
     total miles the counters are inconsistent and no share is shown.
-  - *Counter reset.* If either counter drops below its baseline value the car reset it: the baseline is
-    re-anchored at the new reading (the time and reason are kept, a small note appears in the tile, and
-    the share is measured from there). No negative or nonsense share is ever shown.
+  - *Zero and invalid readings.* A `(0, 0)` counter pair, and any non-finite or negative value, is not a
+    reading: it never seeds the baseline, never re-anchors it, and is skipped when the record log is
+    searched for a seed. A transient zero pair from the car is therefore ignored.
+  - *Counter reset.* If either counter drops below its baseline value the car may have reset it, but a
+    single low reading is not enough: the drop becomes a **pending reset candidate**, the old baseline
+    keeps being used, no negative gain is shown, and the tile adds a short "possible counter reset" note
+    (`reset_pending: true` in `/api/state`). The reset is confirmed only after a **second consecutive
+    reading is also below the baseline**, at which point the baseline re-anchors at the first lower
+    reading (the time and reason are kept, a small note appears in the tile, and the share is measured
+    from there). If a reading at or above the baseline arrives in between, the counters came back, the
+    candidate is discarded and the original baseline kept. No negative or nonsense share is ever shown.
 - **In use (inferred)** — "yes" when the self-driving counter **rose within the last 3 minutes while
   the car is moving** (gear D/R/N and speed above zero), "no" otherwise. It is hidden if the car
   never reports the counter. A counter reset (the value goes down), a repeated value or a buffered

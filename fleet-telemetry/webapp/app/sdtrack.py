@@ -4,7 +4,9 @@ The baseline is the earliest (SelfDrivingMilesSinceReset, MilesSinceReset) pair 
 vehicle. It is stored per VIN under `sd_baselines` in shim-state.json (the unwatched operational state
 file, so writing it never bounces the telemetry binary) and so survives restarts and updates. When none
 is stored yet it is seeded from the persistent record log (/data/telemetry-log.jsonl plus its gzip
-rotations, oldest first), else from the first live reading (see state.Store._sd_step).
+rotations, oldest first), else from the first live reading (see state.Store._sd_step). A `(0, 0)` pair, or
+any non-finite/negative value, is not a reading: it is skipped when seeding from the log and never moves
+the baseline at ingest.
 """
 import glob
 import gzip
@@ -65,8 +67,8 @@ def _match(line, vin):
     if not isinstance(data, dict) or data.get("IsResend") or (rec.get("vin") or data.get("Vin")) != vin:
         return None
     sd, total = fields.num(data.get(SD_KEY)), fields.num(data.get(TOTAL_KEY))
-    if sd is None or total is None:
-        return None
+    if not fields.usable_counters(sd, total):
+        return None      # missing, non-finite/negative, or the (0, 0) glitch pair
     return {"sd_miles": sd, "total_miles": total, "at": data.get("CreatedAt") or None,
             "source": "record_log", "reanchor": None}
 
@@ -110,6 +112,38 @@ class BaselineStore:
             all_ = dict(all_) if isinstance(all_, dict) else {}
             all_[vin] = baseline
             tokens.write_state(self.state_path, **{STATE_KEY: all_})
+
+    def discard(self, vin):
+        """Remove one vehicle's stored baseline (so it is rebuilt from the record log)."""
+        with _LOCK:
+            all_ = tokens.read_state(self.state_path).get(STATE_KEY)
+            if not isinstance(all_, dict) or vin not in all_:
+                return
+            all_ = dict(all_)
+            all_.pop(vin, None)
+            tokens.write_state(self.state_path, **{STATE_KEY: all_})
+
+    def repair_suspect_zero_reanchors(self):
+        """Drop stored baselines that are the (0, 0) glitch signature: source 'reanchor' with both
+        counters zero. Each is rebuilt from the record log (or the first live reading) on first ingest.
+        Other baselines are untouched. Returns the VINs repaired."""
+        with _LOCK:
+            all_ = tokens.read_state(self.state_path).get(STATE_KEY)
+            if not isinstance(all_, dict):
+                return []
+            bad = [vin for vin, b in all_.items()
+                   if isinstance(b, dict) and b.get("source") == "reanchor"
+                   and fields.num(b.get("sd_miles")) == 0 and fields.num(b.get("total_miles")) == 0]
+            if not bad:
+                return []
+            all_ = dict(all_)
+            for vin in bad:
+                all_.pop(vin, None)
+            tokens.write_state(self.state_path, **{STATE_KEY: all_})
+        for vin in bad:
+            print(f"[app] discarding suspect zero self-driving baseline for ...{vin[-4:]} "
+                  f"(re-anchor from a (0, 0) reading); rebuilding from the record log (or first live reading)", flush=True)
+        return bad
 
     def scan_log(self, vin):
         return scan_log(self.log_path, vin)

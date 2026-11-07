@@ -258,6 +258,9 @@ def test_counter_reset_reanchors_baseline_and_records_why(tmp_path, capsys, new,
     store.ingest(rec(110, 210, at="2026-10-30T01:00:00Z"))
     assert since(store)["share_pct"] == 100.0
     store.ingest(rec(*new, at="2026-10-31T00:00:00Z"))          # a counter dropped below its baseline
+    assert since(store)["reset_pending"] is True                # but a reset is only a candidate so far
+    assert since(store)["reanchor"] is None
+    store.ingest(rec(*new, at="2026-10-31T00:30:00Z"))          # the same lower reading confirms it
     s = since(store)
     assert s["baseline"]["source"] == "reanchor" and s["baseline"]["at"] == "2026-10-31T00:00:00Z"
     assert (s["baseline"]["sd_miles"], s["baseline"]["total_miles"]) == new
@@ -273,26 +276,158 @@ def test_reanchor_survives_restart(tmp_path):
     store, _ = make_store(tmp_path, log=False)
     store.ingest(rec(100, 200))
     store.ingest(rec(2, 3, at="2026-11-01T00:00:00Z"))
+    store.ingest(rec(2, 4, at="2026-11-01T00:30:00Z"))          # the second lower reading confirms the reset
     again, _ = make_store(tmp_path, log=False)
     again.ingest(rec(None, None, Soc=50))
     s = since(again)
     assert s["baseline"]["sd_miles"] == 2 and s["reanchor"]["at"] == "2026-11-01T00:00:00Z"
 
 
-def test_stored_baseline_above_current_counters_reanchors_on_first_reading(tmp_path):
+def test_stored_baseline_above_current_counters_reanchors_after_confirmation(tmp_path):
     store, _ = make_store(tmp_path, log=False)
     store.ingest(rec(100, 200))
     again, _ = make_store(tmp_path, log=False)
     again.ingest(rec(1, 2, at="2026-11-02T00:00:00Z"))          # the car reset while the add-on was down
+    assert since(again)["reset_pending"] is True
+    again.ingest(rec(2, 3, at="2026-11-02T00:30:00Z"))
     assert since(again)["baseline"]["source"] == "reanchor"
 
 
-def test_log_baseline_above_current_counters_reanchors_immediately(tmp_path):
+def test_log_baseline_above_current_counters_reanchors_after_confirmation(tmp_path):
     (tmp_path / "log.jsonl").write_text(line(rec(500, 600, at="2026-09-01T00:00:00Z")))
     store, _ = make_store(tmp_path)
     store.ingest(rec(4, 9, at="2026-10-01T00:00:00Z"))
+    assert since(store)["reset_pending"] is True and since(store)["reanchor"] is None
+    store.ingest(rec(5, 10, at="2026-10-01T01:00:00Z"))
     b = since(store)["baseline"]
     assert b["source"] == "reanchor" and (b["sd_miles"], b["total_miles"]) == (4, 9)
+
+
+# --- counter reset: glitch filter and confirmation rule ---------------------------------------------
+
+def test_zero_pair_and_invalid_readings_are_never_baselines(tmp_path):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(0, 0, at="2026-11-06T08:00:00Z"))           # the glitch signature: not a reading
+    assert since(store)["baseline"] is None
+    store.ingest(rec(-1, 210, at="2026-11-06T08:01:00Z"))
+    store.ingest(rec(110, -5, at="2026-11-06T08:02:00Z"))
+    store.ingest(rec(float("nan"), float("inf"), at="2026-11-06T08:03:00Z"))
+    assert since(store)["baseline"] is None                       # still nothing usable
+    store.ingest(rec(100, 200, at="2026-11-06T08:04:00Z"))
+    assert since(store)["baseline"]["sd_miles"] == 100
+
+
+def test_single_zero_pair_glitch_does_not_reanchor(tmp_path, capsys):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(15982.13, 16470.60, at="2026-11-06T08:00:00Z"))
+    store.ingest(rec(0, 0, at="2026-11-06T08:37:06Z"))          # a transient (0, 0) must be ignored
+    s = since(store)
+    assert s["baseline"]["sd_miles"] == 15982.13 and s["baseline"]["source"] == "live"
+    assert s["reanchor"] is None and s["reset_pending"] is False
+    store.ingest(rec(16396.56, 16887.38, at="2026-11-06T09:00:00Z"))
+    s = since(store)
+    assert s["baseline"]["sd_miles"] == 15982.13 and s["reanchor"] is None
+    assert "re-anchored" not in capsys.readouterr().out
+
+
+def test_persistent_drop_confirms_reset_after_second_reading(tmp_path, capsys):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(100, 200, at="2026-10-30T00:00:00Z"))
+    store.ingest(rec(110, 210, at="2026-10-30T01:00:00Z"))
+    store.ingest(rec(3, 210, at="2026-10-31T00:00:00Z"))        # first lower reading: candidate only
+    s = since(store)
+    assert s["baseline"]["sd_miles"] == 100 and s["reanchor"] is None and s["reset_pending"] is True
+    assert s["reason"] == "below_baseline" and s["share_pct"] is None
+    store.ingest(rec(4, 211, at="2026-10-31T01:00:00Z"))        # still lower: the reset is confirmed
+    s = since(store)
+    assert s["baseline"]["source"] == "reanchor" and s["baseline"]["at"] == "2026-10-31T00:00:00Z"
+    assert (s["baseline"]["sd_miles"], s["baseline"]["total_miles"]) == (3, 210)
+    assert s["reset_pending"] is False and s["reanchor"] is not None
+    assert "self-driving" in s["reanchor"]["reason"] and "re-anchored" in capsys.readouterr().out
+
+
+def test_one_below_reading_then_recovery_discards_the_candidate(tmp_path):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(100, 200))
+    store.ingest(rec(3, 210, at="2026-11-01T00:00:00Z"))
+    assert since(store)["reset_pending"] is True
+    store.ingest(rec(101, 202, at="2026-11-01T01:00:00Z"))      # the counters came back
+    s = since(store)
+    assert s["baseline"]["sd_miles"] == 100 and s["reanchor"] is None and s["reset_pending"] is False
+    store.ingest(rec(3, 210, at="2026-11-01T02:00:00Z"))        # a fresh drop needs two readings again
+    assert since(store)["reset_pending"] is True and since(store)["reanchor"] is None
+
+
+def test_log_scan_ignores_zero_and_invalid_counter_pairs(tmp_path):
+    p = tmp_path / "log.jsonl"
+    p.write_text(line(rec(0, 0, at="2026-09-30T00:00:00Z"))
+                 + line(rec(-1, 5, at="2026-09-30T01:00:00Z"))
+                 + line(rec(float("nan"), 6, at="2026-09-30T02:00:00Z"))
+                 + line(rec(20, 30, at="2026-10-01T00:00:00Z")))
+    b = sdtrack.scan_log(str(p), VIN)
+    assert b["sd_miles"] == 20 and b["total_miles"] == 30 and b["at"] == "2026-10-01T00:00:00Z"
+
+
+def test_startup_repair_drops_zero_reanchor_and_rebuilds_from_log(tmp_path, capsys):
+    (tmp_path / "log.jsonl").write_text(line(rec(15982.13, 16470.60, at="2026-10-01T00:00:00Z")))
+    other = {"sd_miles": 5, "total_miles": 6, "at": "2026-10-01T00:00:00Z", "source": "reanchor",
+             "reanchor": {"at": "2026-10-01T00:00:00Z", "reason": "total miles went down (counter reset)",
+                          "previous_sd_miles": 10, "previous_total_miles": 20}}
+    (tmp_path / "shim-state.json").write_text(json.dumps({"refresh_token": "t", "sd_baselines": {
+        VIN: {"sd_miles": 0, "total_miles": 0, "at": "2026-11-06T08:37:06Z", "source": "reanchor",
+              "reanchor": {"at": "2026-11-06T08:37:06Z", "reason": "self-driving miles went down (counter reset)",
+                           "previous_sd_miles": 15982.13, "previous_total_miles": 16470.60}},
+        OTHER: other}}))
+    store, _ = make_store(tmp_path)
+    store.ingest(rec(16396.56, 16887.38, at="2026-11-06T09:00:00Z"))
+    s = since(store)
+    assert s["baseline"]["source"] == "record_log" and s["baseline"]["sd_miles"] == 15982.13
+    saved = json.loads((tmp_path / "shim-state.json").read_text())
+    assert saved["refresh_token"] == "t" and saved["sd_baselines"][OTHER] == other   # others untouched
+    rebuilt = saved["sd_baselines"][VIN]
+    assert rebuilt["source"] == "record_log" and rebuilt["sd_miles"] == 15982.13
+    out = capsys.readouterr().out
+    assert "suspect zero" in out and "self-driving baseline" in out
+
+
+def test_startup_repair_method_discards_only_zero_reanchors(tmp_path, capsys):
+    other = {"sd_miles": 5, "total_miles": 6, "at": "2026-10-01T00:00:00Z", "source": "reanchor",
+             "reanchor": {"at": "2026-10-01T00:00:00Z", "reason": "total miles went down (counter reset)",
+                          "previous_sd_miles": 10, "previous_total_miles": 20}}
+    zero = {"sd_miles": 0, "total_miles": 0, "at": "2026-11-06T08:37:06Z", "source": "reanchor",
+            "reanchor": {"at": "2026-11-06T08:37:06Z", "reason": "self-driving miles went down (counter reset)",
+                         "previous_sd_miles": 15982.13, "previous_total_miles": 16470.60}}
+    (tmp_path / "shim-state.json").write_text(json.dumps({"sd_baselines": {VIN: zero, OTHER: other}}))
+    _, persist = make_store(tmp_path)
+    assert persist.repair_suspect_zero_reanchors() == [VIN]
+    saved = json.loads((tmp_path / "shim-state.json").read_text())["sd_baselines"]
+    assert VIN not in saved and saved[OTHER] == other
+    assert "suspect zero" in capsys.readouterr().out
+    assert persist.repair_suspect_zero_reanchors() == []        # nothing left to repair
+
+
+def test_resends_never_confirm_a_pending_reset(tmp_path):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(100, 200))
+    store.ingest(rec(3, 210, at="2026-11-01T00:00:00Z"))
+    assert since(store)["reset_pending"] is True
+    store.ingest(rec(2, 209, resend=True, at="2026-11-01T00:10:00Z"))
+    s = since(store)
+    assert s["reanchor"] is None and s["reset_pending"] is True and s["baseline"]["sd_miles"] == 100
+    store.ingest(rec(4, 211, at="2026-11-01T01:00:00Z"))
+    assert since(store)["baseline"]["source"] == "reanchor"
+
+
+def test_no_negative_gains_while_reset_pending(tmp_path):
+    store, _ = make_store(tmp_path, log=False)
+    store.ingest(rec(100, 200))
+    store.ingest(rec(3, 210, at="2026-11-01T00:00:00Z"))
+    s = since(store)
+    assert s["reset_pending"] is True and s["reason"] == "below_baseline"
+    assert s["share_pct"] is None
+    assert s["sd_miles_gained"] is None and s["total_miles_gained"] is None
+    sd = api.state_payload(store)["vehicles"][0]["self_driving"]
+    assert sd["since_tracking"]["reset_pending"] is True
 
 
 # --- resends and repeats ---------------------------------------------------------------------------
